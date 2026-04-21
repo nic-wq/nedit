@@ -9,7 +9,7 @@ const DOC_LUA: &str = include_str!("../docs/lua.md");
 const DOC_BINDS: &str = include_str!("../docs/binds.md");
 const DOC_MAIN: &str = include_str!("../docs/docs.md");
 
-use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
+use syntect::parsing::SyntaxSet;
 use syntect::highlighting::ThemeSet;
 
 #[derive(PartialEq, Eq)]
@@ -123,18 +123,13 @@ impl App {
         let _ = fs::create_dir_all(config_dir.join("syntax"));
         let _ = fs::create_dir_all(config_dir.join("themes"));
 
-        // Load default syntaxes
-        let mut builder = SyntaxSetBuilder::new();
-        builder.add_plain_text_syntax();
+        // Load syntaxes
+        let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
         
         // Try to load custom syntaxes from ~/.config/nedit/syntax
         let _ = builder.add_from_folder(config_dir.join("syntax"), true);
         
-        let syntax_set = if builder.syntaxes().len() <= 1 {
-            SyntaxSet::load_defaults_newlines()
-        } else {
-            builder.build()
-        };
+        let syntax_set = builder.build();
 
         let mut theme_set = ThemeSet::load_defaults();
         let _ = theme_set.add_from_folder(config_dir.join("themes"));
