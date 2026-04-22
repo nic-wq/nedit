@@ -1,5 +1,5 @@
 target/
 .agents/
 .issues/
-.gemini/
-gha-creds-*.json
+.tasks/
+tasks/

@@ -2,13 +2,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
-pub struct FileItem {
-    pub path: PathBuf,
-    pub is_dir: bool,
-    pub name: String,
-    pub depth: usize,
-    pub expanded: bool,
-}
+use super::FileItem;
 
 pub struct FileExplorer {
     pub root: PathBuf,
@@ -33,7 +27,7 @@ impl FileExplorer {
         let selected_path = self.items.get(self.selected_idx).map(|i| i.path.clone());
         self.items.clear();
         self.load_dir_recursive(&self.root.clone(), 0);
-        
+
         if let Some(path) = selected_path {
             if let Some(idx) = self.items.iter().position(|i| i.path == path) {
                 self.selected_idx = idx;
@@ -46,21 +40,23 @@ impl FileExplorer {
     fn load_dir_recursive(&mut self, path: &PathBuf, depth: usize) {
         let mut entries_vec = Vec::new();
         if let Ok(entries) = fs::read_dir(path) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let entry_path = entry.path();
-                    let is_dir = entry_path.is_dir();
-                    let name = entry_path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                    let expanded = is_dir && self.expanded_paths.contains(&entry_path);
-                    
-                    entries_vec.push(FileItem {
-                        path: entry_path,
-                        is_dir,
-                        name,
-                        depth,
-                        expanded,
-                    });
-                }
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                let is_dir = entry_path.is_dir();
+                let name = entry_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
+                let expanded = is_dir && self.expanded_paths.contains(&entry_path);
+
+                entries_vec.push(FileItem {
+                    path: entry_path,
+                    is_dir,
+                    name,
+                    depth,
+                    expanded,
+                });
             }
         }
 

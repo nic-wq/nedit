@@ -1,20 +1,29 @@
-use std::io;
 use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    event::{EnableMouseCapture, DisableMouseCapture},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
+use std::io;
 
+#[path = "app/mod.rs"]
 mod app;
+#[path = "buffer/mod.rs"]
 mod buffer;
-mod explorer;
-mod input;
-mod ui;
-mod config;
-mod i18n;
-pub mod lua;
+#[path = "clipboard/mod.rs"]
 pub mod clipboard;
+#[path = "config/mod.rs"]
+mod config;
+#[path = "explorer/mod.rs"]
+mod explorer;
+#[path = "i18n/mod.rs"]
+mod i18n;
+#[path = "input/mod.rs"]
+mod input;
+#[path = "lua/mod.rs"]
+pub mod lua;
+#[path = "ui/mod.rs"]
+mod ui;
 
 use crate::app::App;
 
@@ -53,7 +62,11 @@ fn main() -> anyhow::Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
     Ok(())
