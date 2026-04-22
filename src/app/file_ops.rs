@@ -264,6 +264,7 @@ impl App {
         self.explorer.root = path;
         self.explorer.selected_idx = 0;
         self.explorer.refresh();
+        self.collect_all_files();
     }
 
     pub fn switch_tab_relative(&mut self, delta: isize) {

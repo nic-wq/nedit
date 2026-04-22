@@ -44,7 +44,7 @@ impl App {
             .join("_")
     }
 
-    fn collect_all_files(&mut self) {
+    pub(crate) fn collect_all_files(&mut self) {
         self.all_files = WalkDir::new(&self.explorer.root)
             .into_iter()
             .filter_map(|e| e.ok())
