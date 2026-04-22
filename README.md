@@ -4,21 +4,23 @@ A modern, lightweight terminal text editor written in Rust. Fast, extensible, an
 
 ## ✨ Features
 
-- 🎨 **Syntax Highlighting** - Support for multiple programming languages with accurate code highlighting
-- 📁 **File Explorer** - Built-in file navigator to browse and manage your project files
-- 📋 **Clipboard Integration** - Seamless copy/paste with system clipboard
-- 🔧 **Lua Extensibility** - Customize and extend the editor with Lua scripts
-- 🌍 **Internationalization** - Support for multiple languages
-- ⚡ **Fast & Responsive** - Built with Rust for blazing-fast performance
+- 🎨 **Syntax Highlighting** - High-performance code highlighting with support for multiple languages.
+- 📁 **File Explorer** - Interactive navigation with keyboard-only scrolling.
+- 📋 **Clipboard Integration** - Seamless copy/paste with system clipboard.
+- 🔧 **Lua Extensibility** - Customize and extend the editor with Lua scripts.
+- 🌍 **Internationalization (i18n)** - Multi-language support.
+- 🐭 **Mouse Support** - Scroll independently of cursor, click to position, and drag for selection.
+- 📂 **Workspaces** - Save and restore state for multiple project roots.
+- 🔍 **Fuzzy Finder & Global Search** - Quick file opening and content search across your projects.
+- ⚡ **Autocomplete** - Built-in word-based autocomplete with interactive navigation.
 
 ## 🛠️ Technologies
 
-- **Ratatui** - Terminal UI framework
-- **Crossterm** - Cross-platform terminal control
-- **Ropey** - Efficient text editing data structure
-- **Syntect** - Syntax highlighting engine
-- **MLua** - Lua integration
-- **Arboard** - System clipboard access
+- **Ratatui** - Terminal UI framework.
+- **Crossterm** - Mouse and keyboard event handling.
+- **Ropey** - Efficient text editing data structure.
+- **Syntect** - Advanced syntax highlighting.
+- **MLua** - Deep Lua integration.
 
 ## 📦 Installation
 
@@ -28,11 +30,7 @@ A modern, lightweight terminal text editor written in Rust. Fast, extensible, an
 curl -fsSL https://raw.githubusercontent.com/nic-wq/nedit/main/install.sh | bash
 ```
 
-> **ℹ️ Note:** Windows support is coming soon!
-
 ### From Source
-
-Make sure you have **Rust 1.70+** installed.
 
 ```bash
 git clone https://github.com/nic-wq/nedit
@@ -41,34 +39,31 @@ cargo build --release
 ./target/release/nedit
 ```
 
-## 🚀 Quick Start
+## 📚 Project Structure (Restructured)
 
-```bash
-# Open nedit
-nedit
-
-# Open a specific file
-nedit path/to/file.txt
-
-# Open a directory
-nedit ./my-project
-```
-
-## 📚 Project Structure
+The codebase has been refactored into a modular architecture for better maintainability:
 
 ```
 src/
-├── main.rs       # Entry point and main event loop
-├── app.rs        # Application state management
-├── ui.rs         # Interface rendering
-├── input.rs      # Event handling and keybindings
-├── buffer.rs     # Text buffer management
-├── explorer.rs   # File explorer implementation
-├── config.rs     # Configuration handling
-├── lua.rs        # Lua scripting support
-├── i18n.rs       # Internationalization
-└── clipboard.rs  # System clipboard operations
+├── main.rs            # Entry point and terminal setup
+├── app/               # Application state, workspaces, and themes
+├── buffer/            # Buffer management, cursor, and history
+├── clipboard/         # System clipboard abstraction
+├── config/            # TOML-based configuration and keybinds
+├── explorer/          # File system navigation logic
+├── i18n/              # Translation engine
+├── input/             # Key and Mouse event processing
+├── lua/               # Scripting API and environment
+└── ui/                # Ratatui rendering and layouts
 ```
+
+## ⚙️ Configuration
+
+Config files are stored in `~/.config/nedit/`:
+- `config.toml`: General settings (keybinds, theme, autocomplete).
+- `workspaces.toml`: Persistent workspace state.
+- `theme.txt`: Last selected theme.
+- `scripts/`: Your custom Lua scripts.
 
 ## 🤝 Contributing
 
