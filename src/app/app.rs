@@ -160,16 +160,6 @@ impl App {
             }
         }
 
-        let root = app.explorer.root.clone();
-        if let Some(ws) = app.workspaces.iter().find(|w| w.path == root).cloned() {
-            app.current_workspace = Some(ws.name.clone());
-            if app.buffers.is_empty() {
-                for tab_path in ws.tabs {
-                    app.open_file(tab_path);
-                }
-            }
-        }
-
         app
     }
 }

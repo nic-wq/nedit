@@ -682,6 +682,18 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                 Style::default().fg(colors.surface),
             ),
         ]))
+    } else if app.fuzzy_mode == FuzzyMode::DeleteConfirm {
+        let path_str = app
+            .pending_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        Paragraph::new(Line::from(vec![
+            Span::styled(" 󰆴 ", Style::default().fg(colors.error)),
+            Span::styled("Confirm Delete: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(path_str),
+            Span::styled(" (Enter: Confirm, Esc: Cancel)", Style::default().fg(colors.surface)),
+        ]))
     } else {
         Paragraph::new(Line::from(vec![
             Span::styled(" 󰍉 ", Style::default().fg(colors.accent)),

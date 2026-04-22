@@ -8,6 +8,7 @@ pub struct UIColors {
     pub sel: Color,
     pub accent: Color,
     pub surface: Color,
+    pub error: Color,
 }
 
 pub fn get_colors(app: &App) -> UIColors {
@@ -35,5 +36,6 @@ pub fn get_colors(app: &App) -> UIColors {
             .unwrap_or(Color::Rgb(69, 71, 90)),
         accent: Color::Rgb(137, 180, 250),
         surface: Color::Rgb(49, 50, 68),
+        error: Color::Rgb(243, 139, 168),
     }
 }
