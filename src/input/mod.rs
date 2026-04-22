@@ -1,6 +1,6 @@
 mod templates;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 
 use crate::app::{App, Focus};
 
@@ -11,13 +11,73 @@ pub fn handle_events(app: &mut App) -> anyhow::Result<()> {
     if event::poll(std::time::Duration::from_millis(16))? {
         match event::read()? {
             Event::Key(key) => handle_key_event(app, key),
+            Event::Mouse(mouse) => handle_mouse_event(app, mouse),
             _ => {}
         }
     }
     Ok(())
 }
 
+fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => {
+            if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                buffer.scroll_row = buffer.scroll_row.saturating_sub(3);
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                buffer.scroll_row = buffer.scroll_row.saturating_add(3);
+            }
+        }
+        MouseEventKind::Down(button) if button == event::MouseButton::Left => {
+            if app.editor_area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                app.focus = Focus::Editor;
+                let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
+                let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
+                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                    let target_row = buffer.scroll_row + rel_row;
+                    let target_col = buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
+                    buffer.cursor_row = target_row.min(buffer.content.len_lines().saturating_sub(1));
+                    let line_len = buffer.content.line(buffer.cursor_row).len_chars().saturating_sub(1);
+                    buffer.cursor_col = target_col.min(line_len);
+                    buffer.selection_start = None;
+                }
+            } else if app.explorer_area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                app.focus = Focus::Explorer;
+                let rel_row = mouse.row.saturating_sub(app.explorer_area.y) as usize;
+                let target_idx = app.explorer.scroll_offset + rel_row;
+                if target_idx < app.explorer.items.len() {
+                    app.explorer.selected_idx = target_idx;
+                }
+            }
+        }
+        MouseEventKind::Drag(button) if button == event::MouseButton::Left => {
+            if app.editor_area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
+                let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
+                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                    if buffer.selection_start.is_none() {
+                        buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
+                    }
+                    let target_row = buffer.scroll_row + rel_row;
+                    let target_col = buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
+                    buffer.cursor_row = target_row.min(buffer.content.len_lines().saturating_sub(1));
+                    let line_len = buffer.content.line(buffer.cursor_row).len_chars().saturating_sub(1);
+                    buffer.cursor_col = target_col.min(line_len);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn handle_key_event(app: &mut App, key: KeyEvent) {
+    if app.is_fuzzy {
+        handle_fuzzy_input(app, key);
+        return;
+    }
+
     if app.config.matches(key, "quit") {
         app.should_quit = true;
         return;
@@ -240,6 +300,30 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             app.temp_ws_name = None;
             app.clear_notification();
             app.is_fuzzy = false;
+        }
+        KeyCode::Tab => {
+            if app.fuzzy_mode == crate::app::FuzzyMode::Move {
+                if let (Some(old_path), Some(new_dir)) = (app.pending_path.take(), app.move_dir.take()) {
+                    let new_path = new_dir.join(old_path.file_name().unwrap());
+                    match std::fs::rename(&old_path, &new_path) {
+                        Ok(()) => {
+                            app.update_buffer_paths(&old_path, &new_path);
+                            app.explorer.refresh();
+                            app.show_notification(
+                                format!("Moved to {}", new_path.display()),
+                                crate::app::NotificationType::Info,
+                            );
+                        }
+                        Err(err) => {
+                            app.show_notification(
+                                format!("Error moving file: {}", err),
+                                crate::app::NotificationType::Error,
+                            );
+                        }
+                    }
+                }
+                app.is_fuzzy = false;
+            }
         }
         KeyCode::Up => {
             if app.fuzzy_idx > 0 {
@@ -669,39 +753,32 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             app.fuzzy_query.pop();
             app.update_fuzzy();
         }
-        KeyCode::Tab => {
-            if app.fuzzy_mode == crate::app::FuzzyMode::Move {
-                if let (Some(old_path), Some(dest_dir)) =
-                    (app.pending_path.clone(), app.move_dir.clone())
-                {
-                    let dest_path = dest_dir.join(old_path.file_name().unwrap_or_default());
-                    match std::fs::rename(&old_path, &dest_path) {
-                        Ok(()) => {
-                            app.update_buffer_paths(&old_path, &dest_path);
-                            app.explorer.refresh();
-                            app.pending_path = None;
-                            app.is_fuzzy = false;
-                            app.show_notification(
-                                format!("Moved to {}", dest_path.display()),
-                                crate::app::NotificationType::Info,
-                            );
-                        }
-                        Err(err) => app.show_notification(
-                            format!("Error moving file: {}", err),
-                            crate::app::NotificationType::Error,
-                        ),
-                    }
-                }
-            }
-        }
         _ => {}
     }
 }
 
 fn handle_explorer_input(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Up => app.explorer.previous(),
-        KeyCode::Down => app.explorer.next(),
+        KeyCode::Up => {
+            app.explorer.previous();
+            let height = app.explorer_area.height.saturating_sub(2) as usize;
+            if app.explorer.selected_idx < app.explorer.scroll_offset {
+                app.explorer.scroll_offset = app.explorer.selected_idx;
+            }
+            if app.explorer.selected_idx == app.explorer.items.len().saturating_sub(1) { // Wrapped to bottom
+                app.explorer.scroll_offset = app.explorer.selected_idx.saturating_sub(height).saturating_add(1);
+            }
+        }
+        KeyCode::Down => {
+            app.explorer.next();
+            let height = app.explorer_area.height.saturating_sub(2) as usize;
+            if app.explorer.selected_idx >= app.explorer.scroll_offset + height {
+                app.explorer.scroll_offset = app.explorer.selected_idx.saturating_sub(height).saturating_add(1);
+            }
+            if app.explorer.selected_idx == 0 { // Wrapped
+                app.explorer.scroll_offset = 0;
+            }
+        }
         KeyCode::Enter => {
             if let Some(item) = app.explorer.get_selected() {
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -732,20 +809,39 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_editor_input(app: &mut App, key: KeyEvent) {
-    let buffer = &mut app.buffers[app.current_buffer_idx];
+    let current_idx = app.current_buffer_idx;
+    if app.buffers.get(current_idx).is_none() {
+        return;
+    }
 
     match (key.code, key.modifiers) {
-        (KeyCode::Right, m)
-            if m.contains(KeyModifiers::SHIFT) && !buffer.autocomplete_options.is_empty() =>
-        {
-            buffer.accept_autocomplete();
+        (KeyCode::Up, m) if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::NONE => {
+            let buffer = &mut app.buffers[current_idx];
+            if buffer.autocomplete_idx > 0 {
+                buffer.autocomplete_idx -= 1;
+            } else {
+                buffer.autocomplete_idx = buffer.autocomplete_options.len().saturating_sub(1);
+            }
+            return;
         }
-        (KeyCode::Esc, _) if buffer.show_autocomplete_list => {
-            buffer.show_autocomplete_list = false;
+        (KeyCode::Down, m) if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::NONE => {
+            let buffer = &mut app.buffers[current_idx];
+            buffer.autocomplete_idx = (buffer.autocomplete_idx + 1) % buffer.autocomplete_options.len();
+            return;
+        }
+        (KeyCode::Right, m)
+            if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::SHIFT =>
+        {
+            app.buffers[current_idx].accept_autocomplete();
+            return;
+        }
+        (KeyCode::Esc, _) if app.buffers[current_idx].show_autocomplete_list => {
+            app.buffers[current_idx].show_autocomplete_list = false;
         }
         (KeyCode::Up, m) if m == KeyModifiers::CONTROL => {}
         (KeyCode::Down, m) if m == KeyModifiers::CONTROL => {}
         (KeyCode::Up, m) => {
+            let buffer = &mut app.buffers[current_idx];
             if m.contains(KeyModifiers::SHIFT) && buffer.selection_start.is_none() {
                 buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
             } else if !m.contains(KeyModifiers::SHIFT) {
@@ -754,6 +850,7 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
             buffer.move_cursor(-1, 0, 80);
         }
         (KeyCode::Down, m) => {
+            let buffer = &mut app.buffers[current_idx];
             if m.contains(KeyModifiers::SHIFT) && buffer.selection_start.is_none() {
                 buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
             } else if !m.contains(KeyModifiers::SHIFT) {
@@ -762,6 +859,7 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
             buffer.move_cursor(1, 0, 80);
         }
         (KeyCode::Left, m) => {
+            let buffer = &mut app.buffers[current_idx];
             if m.contains(KeyModifiers::SHIFT) && buffer.selection_start.is_none() {
                 buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
             } else if !m.contains(KeyModifiers::SHIFT) {
@@ -774,6 +872,7 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
             }
         }
         (KeyCode::Right, m) => {
+            let buffer = &mut app.buffers[current_idx];
             if m.contains(KeyModifiers::SHIFT) && buffer.selection_start.is_none() {
                 buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
             } else if !m.contains(KeyModifiers::SHIFT) {
@@ -785,11 +884,12 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
                 buffer.move_cursor(0, 1, 80);
             }
         }
-        (KeyCode::Home, _) => buffer.move_to_line_start(),
-        (KeyCode::End, _) => buffer.move_to_line_end(),
+        (KeyCode::Home, _) => app.buffers[current_idx].move_to_line_start(),
+        (KeyCode::End, _) => app.buffers[current_idx].move_to_line_end(),
         (KeyCode::Char(c), KeyModifiers::NONE) | (KeyCode::Char(c), KeyModifiers::SHIFT)
-            if !buffer.is_read_only =>
+            if !app.buffers[current_idx].is_read_only =>
         {
+            let buffer = &mut app.buffers[current_idx];
             if buffer.selection_start.is_some() {
                 buffer.delete_selection();
             }
@@ -798,13 +898,15 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
                 buffer.update_autocomplete();
             }
         }
-        (KeyCode::Enter, _) if !buffer.is_read_only => {
+        (KeyCode::Enter, _) if !app.buffers[current_idx].is_read_only => {
+            let buffer = &mut app.buffers[current_idx];
             if buffer.selection_start.is_some() {
                 buffer.delete_selection();
             }
             buffer.insert_char('\n');
         }
-        (KeyCode::Backspace, _) if !buffer.is_read_only => {
+        (KeyCode::Backspace, _) if !app.buffers[current_idx].is_read_only => {
+            let buffer = &mut app.buffers[current_idx];
             if buffer.selection_start.is_some() {
                 buffer.delete_selection();
             } else {
@@ -814,26 +916,36 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
                 buffer.update_autocomplete();
             }
         }
-        _ if app.config.matches(key, "save") && !buffer.is_read_only => {
+        _ if app.config.matches(key, "save") && !app.buffers[current_idx].is_read_only => {
             app.save_current_buffer();
         }
-        _ if app.config.matches(key, "undo") && !buffer.is_read_only => buffer.undo(),
-        _ if app.config.matches(key, "redo") && !buffer.is_read_only => buffer.redo(),
+        _ if app.config.matches(key, "undo") && !app.buffers[current_idx].is_read_only => app.buffers[current_idx].undo(),
+        _ if app.config.matches(key, "redo") && !app.buffers[current_idx].is_read_only => app.buffers[current_idx].redo(),
         _ if app.config.matches(key, "copy") => {
-            app.buffers[app.current_buffer_idx].copy();
+            app.buffers[current_idx].copy();
         }
-        _ if app.config.matches(key, "paste") && !buffer.is_read_only => {
-            app.buffers[app.current_buffer_idx].paste();
+        _ if app.config.matches(key, "paste") && !app.buffers[current_idx].is_read_only => {
+            app.buffers[current_idx].paste();
         }
-        _ if app.config.matches(key, "cut") && !buffer.is_read_only => {
-            app.buffers[app.current_buffer_idx].cut();
+        _ if app.config.matches(key, "cut") && !app.buffers[current_idx].is_read_only => {
+            app.buffers[current_idx].cut();
         }
-        (KeyCode::Tab, KeyModifiers::NONE) if !buffer.is_read_only => {
+        (KeyCode::Tab, KeyModifiers::NONE) if !app.buffers[current_idx].is_read_only => {
+            let buffer = &mut app.buffers[current_idx];
             for _ in 0..4 {
                 buffer.insert_char(' ');
             }
         }
         _ => {}
+    }
+
+    if let Some(buffer) = app.buffers.get_mut(current_idx) {
+        let height = app.editor_area.height as usize;
+        if buffer.cursor_row < buffer.scroll_row {
+            buffer.scroll_row = buffer.cursor_row;
+        } else if buffer.cursor_row >= buffer.scroll_row + height {
+            buffer.scroll_row = buffer.cursor_row.saturating_sub(height).saturating_add(1);
+        }
     }
 }
 
@@ -864,7 +976,18 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
             app.refresh_workspace_results();
             return true;
         }
-        "Open Lua Script" | "Run Lua Script" => {
+        "New Lua Script" => {
+            let home_dir = std::env::var("HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let scripts_dir = home_dir.join(".config/nedit/scripts");
+            let _ = std::fs::create_dir_all(&scripts_dir);
+            let name = format!("script_{}.lua", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+            let path = scripts_dir.join(name);
+            let _ = std::fs::write(&path, "-- New Lua Script\n");
+            app.open_file(path);
+        }
+        "Run Lua Script" => {
             app.toggle_fuzzy(crate::app::FuzzyMode::RunScript);
             return true;
         }

@@ -3,16 +3,22 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct Config {
     #[serde(default = "default_true")]
     pub autocomplete_enabled: bool,
     #[serde(default)]
     pub keybinds: HashMap<String, String>,
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_theme() -> String {
+    "base16-ocean.dark".to_string()
 }
 
 impl Config {
@@ -22,34 +28,13 @@ impl Config {
             .unwrap_or_else(|_| PathBuf::from("."));
         let config_path = home_dir.join(".config/nedit/config.toml");
 
-        let mut config = Self::default();
-
         if let Ok(content) = fs::read_to_string(&config_path) {
-            if let Ok(value) = toml::from_str::<toml::Value>(&content) {
-                if let Some(table) = value.as_table() {
-                    for (k, v) in table {
-                        if k == "keybinds" {
-                            if let Some(kb_table) = v.as_table() {
-                                for (kb_k, kb_v) in kb_table {
-                                    if let Some(s) = kb_v.as_str() {
-                                        config.keybinds.insert(kb_k.clone(), s.to_string());
-                                    }
-                                }
-                            }
-                        } else if k == "autocomplete_enabled" {
-                            if let Some(b) = v.as_bool() {
-                                config.autocomplete_enabled = b;
-                            }
-                        } else if let Some(s) = v.as_str() {
-                            config.keybinds.insert(k.clone(), s.to_string());
-                        }
-                    }
-                }
+            if let Ok(config) = toml::from_str::<Config>(&content) {
                 return config;
             }
         }
 
-        config
+        Self::default()
     }
 
     pub fn default() -> Self {
@@ -83,6 +68,7 @@ impl Config {
         Self {
             autocomplete_enabled: true,
             keybinds,
+            theme: default_theme(),
         }
     }
 

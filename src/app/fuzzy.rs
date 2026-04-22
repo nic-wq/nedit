@@ -71,7 +71,7 @@ impl App {
                 "Local Search",
                 "Switch Theme",
                 "Workspaces",
-                "Open Lua Script",
+                "New Lua Script",
                 "Run Lua Script",
                 "Edit Lua Script",
                 "Delete Lua Script",

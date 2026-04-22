@@ -166,11 +166,6 @@ pub fn run_script(
 
         for action in &actions {
             match action {
-                LuaAction::WriteCurrentFile(_) => {
-                    if ctx.current_file.is_empty() {
-                        return Err("Error: WriteCurrentFile requires a valid target file in live script mode".to_string());
-                    }
-                }
                 LuaAction::WriteFile(path, _)
                 | LuaAction::CreateFile(path, _)
                 | LuaAction::DeleteFile(path) => {

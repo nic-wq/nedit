@@ -34,7 +34,7 @@ impl App {
             }
         }
 
-        match EditorBuffer::from_file(path.clone()) {
+        match EditorBuffer::from_path(path.clone()) {
             Ok(buffer) => {
                 self.buffers.push(buffer);
                 self.current_buffer_idx = self.buffers.len() - 1;
@@ -336,8 +336,17 @@ impl App {
             self.toggle_fuzzy(FuzzyMode::SaveAs);
         } else {
             let buffer = &mut self.buffers[self.current_buffer_idx];
+            let path = buffer.path.clone();
             match buffer.save() {
-                Ok(()) => self.explorer.refresh(),
+                Ok(()) => {
+                    self.explorer.refresh();
+                    if let Some(p) = path {
+                        self.show_notification(
+                            format!("Saved to {}", p.display()),
+                            NotificationType::Info,
+                        );
+                    }
+                }
                 Err(err) => self.show_notification(
                     format!("Could not save file: {}", err),
                     NotificationType::Error,

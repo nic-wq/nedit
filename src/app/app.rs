@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
 use notify::{Config as NotifyConfig, RecommendedWatcher, RecursiveMode, Watcher};
+use ratatui::layout::Rect;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 
@@ -49,6 +50,8 @@ pub struct App {
     pub target_buffer_idx: Option<usize>,
     pub watcher: Option<RecommendedWatcher>,
     pub fs_event_receiver: Receiver<notify::Result<notify::Event>>,
+    pub explorer_area: Rect,
+    pub editor_area: Rect,
 }
 
 impl App {
@@ -88,8 +91,10 @@ impl App {
         let mut theme_set = ThemeSet::load_defaults();
         let _ = theme_set.add_from_folder(config_dir.join("themes"));
 
+        let config = Config::load();
         let theme_file = config_dir.join("theme.txt");
-        let mut current_theme = "base16-ocean.dark".to_string();
+        let mut current_theme = config.theme.clone();
+        
         if let Ok(saved_theme) = fs::read_to_string(&theme_file) {
             let saved_theme = saved_theme.trim();
             if theme_set.themes.contains_key(saved_theme) {
@@ -121,7 +126,7 @@ impl App {
             fuzzy_idx: 0,
             original_theme: current_theme.clone(),
             fuzzy_themes: Vec::new(),
-            config: Config::load(),
+            config,
             i18n: I18n::load(),
             workspaces: Vec::new(),
             current_workspace: None,
@@ -136,6 +141,8 @@ impl App {
             target_buffer_idx: None,
             watcher,
             fs_event_receiver: rx,
+            explorer_area: Rect::default(),
+            editor_area: Rect::default(),
         };
 
         if let Some(watcher) = &mut app.watcher {

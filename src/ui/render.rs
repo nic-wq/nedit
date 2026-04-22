@@ -56,13 +56,18 @@ pub fn render(f: &mut Frame, app: &mut App) {
         .split(chunks[0]);
 
     if app.show_explorer {
+        app.explorer_area = main_chunks[0];
         draw_explorer(f, app, main_chunks[0], &colors);
+    } else {
+        app.explorer_area = Rect::default();
     }
 
     let editor_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(0)])
         .split(main_chunks[1]);
+
+    app.editor_area = editor_chunks[1];
 
     draw_tab_bar(f, app, editor_chunks[0], &colors);
 
@@ -79,30 +84,12 @@ pub fn render(f: &mut Frame, app: &mut App) {
                 .split(editor_chunks[1]);
 
             if let Some(target_buf) = app.buffers.get_mut(target_idx) {
-                let height = split_chunks[0].height as usize;
                 let width = split_chunks[0].width as usize;
-                if target_buf.cursor_row < target_buf.scroll_row {
-                    target_buf.scroll_row = target_buf.cursor_row;
-                } else if target_buf.cursor_row >= target_buf.scroll_row + height {
-                    target_buf.scroll_row = target_buf
-                        .cursor_row
-                        .saturating_sub(height)
-                        .saturating_add(1);
-                }
                 target_buf.move_cursor(0, 0, width);
             }
 
             if let Some(script_buf) = app.buffers.get_mut(script_idx) {
-                let height = split_chunks[1].height as usize;
                 let width = split_chunks[1].width as usize;
-                if script_buf.cursor_row < script_buf.scroll_row {
-                    script_buf.scroll_row = script_buf.cursor_row;
-                } else if script_buf.cursor_row >= script_buf.scroll_row + height {
-                    script_buf.scroll_row = script_buf
-                        .cursor_row
-                        .saturating_sub(height)
-                        .saturating_add(1);
-                }
                 script_buf.move_cursor(0, 0, width);
             }
 
@@ -134,13 +121,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
         }
     } else if !app.buffers.is_empty() {
         let buffer = &mut app.buffers[app.current_buffer_idx];
-        let height = editor_chunks[1].height as usize;
         let width = editor_chunks[1].width as usize;
-        if buffer.cursor_row < buffer.scroll_row {
-            buffer.scroll_row = buffer.cursor_row;
-        } else if buffer.cursor_row >= buffer.scroll_row + height {
-            buffer.scroll_row = buffer.cursor_row.saturating_sub(height).saturating_add(1);
-        }
         buffer.move_cursor(0, 0, width);
 
         draw_editor(
@@ -204,12 +185,23 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
 }
 
 fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
-    let items: Vec<ListItem> = app
-        .explorer
-        .items
+    if app.explorer.items.is_empty() {
+        let block = Block::default()
+            .title(format!(" {} ", app.i18n.t("explorer")))
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(colors.surface));
+        f.render_widget(block.bg(colors.bg), area);
+        return;
+    }
+    let list_height = area.height.saturating_sub(2) as usize;
+    let scroll_offset = app.explorer.scroll_offset.min(app.explorer.items.len().saturating_sub(1));
+    let visible_items = &app.explorer.items[scroll_offset..((scroll_offset + list_height).min(app.explorer.items.len()))];
+
+    let items: Vec<ListItem> = visible_items
         .iter()
         .enumerate()
         .map(|(i, item)| {
+            let actual_idx = i + scroll_offset;
             let indent = "  ".repeat(item.depth);
             let icon = if item.is_dir {
                 if item.expanded {
@@ -225,7 +217,7 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
                 }
             };
 
-            let style = if i == app.explorer.selected_idx && app.focus == Focus::Explorer {
+            let style = if actual_idx == app.explorer.selected_idx && app.focus == Focus::Explorer {
                 Style::default()
                     .bg(colors.sel)
                     .fg(colors.accent)
@@ -274,11 +266,8 @@ fn draw_editor(
 
     let mut buffer_scroll_row = buffer.scroll_row;
     let height = area.height as usize;
-    if buffer.cursor_row < buffer_scroll_row {
-        buffer_scroll_row = buffer.cursor_row;
-    } else if buffer.cursor_row >= buffer_scroll_row + height {
-        buffer_scroll_row = buffer.cursor_row.saturating_sub(height).saturating_add(1);
-    }
+    let max_scroll = buffer.content.len_lines().saturating_sub(1);
+    buffer_scroll_row = buffer_scroll_row.min(max_scroll);
 
     let theme = app
         .theme_set

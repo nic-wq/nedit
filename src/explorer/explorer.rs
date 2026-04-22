@@ -9,6 +9,7 @@ pub struct FileExplorer {
     pub items: Vec<FileItem>,
     pub selected_idx: usize,
     pub expanded_paths: HashSet<PathBuf>,
+    pub scroll_offset: usize,
 }
 
 impl FileExplorer {
@@ -18,6 +19,7 @@ impl FileExplorer {
             items: Vec::new(),
             selected_idx: 0,
             expanded_paths: HashSet::new(),
+            scroll_offset: 0,
         };
         explorer.refresh();
         explorer
