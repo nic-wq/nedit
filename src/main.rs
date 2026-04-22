@@ -33,6 +33,7 @@ fn main() -> anyhow::Result<()> {
     // Main loop
     let mut tick_counter: u8 = 0;
     loop {
+        app.handle_fs_events();
         terminal.draw(|f| ui::render(f, &mut app))?;
 
         if let Err(e) = input::handle_events(&mut app) {

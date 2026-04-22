@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver};
+use notify::{Watcher, RecommendedWatcher, RecursiveMode, Config as NotifyConfig};
 use crate::buffer::EditorBuffer;
 use crate::explorer::FileExplorer;
 use crate::config::Config;
@@ -87,6 +89,8 @@ pub struct App {
     pub live_script_mode: bool,
     pub live_script_buffer_idx: Option<usize>,
     pub target_buffer_idx: Option<usize>,
+    pub watcher: Option<RecommendedWatcher>,
+    pub fs_event_receiver: Receiver<notify::Result<notify::Event>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -144,10 +148,13 @@ impl App {
             }
         }
 
+        let (tx, rx) = channel();
+        let watcher = RecommendedWatcher::new(tx, NotifyConfig::default()).ok();
+
         let mut app = Self {
             buffers: Vec::new(),
             current_buffer_idx: 0,
-            explorer: FileExplorer::new(current_dir),
+            explorer: FileExplorer::new(current_dir.clone()),
             focus: Focus::Editor,
             show_explorer: false,
             should_quit: false,
@@ -177,7 +184,13 @@ impl App {
             live_script_mode: false,
             live_script_buffer_idx: None,
             target_buffer_idx: None,
+            watcher,
+            fs_event_receiver: rx,
         };
+
+        if let Some(watcher) = &mut app.watcher {
+            let _ = watcher.watch(&current_dir, RecursiveMode::Recursive);
+        }
         
         app.load_workspaces();
 
@@ -373,6 +386,10 @@ impl App {
     }
 
     pub fn set_explorer_root(&mut self, path: PathBuf) {
+        if let Some(watcher) = &mut self.watcher {
+            let _ = watcher.unwatch(&self.explorer.root);
+            let _ = watcher.watch(&path, RecursiveMode::Recursive);
+        }
         self.explorer.root = path;
         self.explorer.selected_idx = 0;
         self.explorer.refresh();
@@ -713,6 +730,26 @@ impl App {
         self.focus = Focus::Editor;
         self.is_welcome = false;
         self.is_fuzzy = false;
+    }
+
+    pub fn handle_fs_events(&mut self) {
+        let mut changed = false;
+        while let Ok(event) = self.fs_event_receiver.try_recv() {
+            if let Ok(event) = event {
+                // Check if the event is relevant (create, remove, rename, etc.)
+                match event.kind {
+                    notify::EventKind::Create(_) | 
+                    notify::EventKind::Remove(_) | 
+                    notify::EventKind::Modify(notify::event::ModifyKind::Name(_)) => {
+                        changed = true;
+                    },
+                    _ => {}
+                }
+            }
+        }
+        if changed {
+            self.explorer.refresh();
+        }
     }
 
 }
