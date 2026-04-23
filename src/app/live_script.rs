@@ -24,7 +24,12 @@ impl App {
 
     pub fn handle_fs_events(&mut self) {
         let mut changed = false;
-        while let Ok(event) = self.fs_event_receiver.try_recv() {
+        let mut processed = 0usize;
+        while processed < 128 {
+            let Ok(event) = self.fs_event_receiver.try_recv() else {
+                break;
+            };
+            processed += 1;
             if let Ok(event) = event {
                 match event.kind {
                     notify::EventKind::Create(_)
@@ -37,6 +42,7 @@ impl App {
             }
         }
         if changed {
+            self.invalidate_file_index();
             self.explorer.refresh();
         }
     }

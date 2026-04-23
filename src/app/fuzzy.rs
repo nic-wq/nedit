@@ -28,7 +28,10 @@ impl App {
             if mode == FuzzyMode::Themes {
                 self.original_theme = self.current_theme.clone();
             }
-            self.collect_all_files();
+
+            if matches!(mode, FuzzyMode::Files | FuzzyMode::Content) {
+                self.ensure_all_files_collected();
+            }
             self.update_fuzzy();
         }
     }
@@ -44,13 +47,39 @@ impl App {
             .join("_")
     }
 
-    pub(crate) fn collect_all_files(&mut self) {
+    fn should_skip_walk_entry(&self, entry: &walkdir::DirEntry) -> bool {
+        let path = entry.path();
+
+        if path == self.explorer.root {
+            return false;
+        }
+
+        let name = entry.file_name().to_string_lossy();
+        if matches!(name.as_ref(), "proc" | "sys" | "dev" | "run") {
+            return true;
+        }
+
+        false
+    }
+
+    pub(crate) fn invalidate_file_index(&mut self) {
+        self.all_files.clear();
+        self.all_files_ready = false;
+    }
+
+    pub(crate) fn ensure_all_files_collected(&mut self) {
+        if self.all_files_ready {
+            return;
+        }
+
         self.all_files = WalkDir::new(&self.explorer.root)
             .into_iter()
+            .filter_entry(|e| !self.should_skip_walk_entry(e))
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
             .map(|e| e.path().to_path_buf())
             .collect();
+        self.all_files_ready = true;
     }
 
     pub fn update_fuzzy(&mut self) {

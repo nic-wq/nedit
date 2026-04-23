@@ -11,6 +11,14 @@ use crate::buffer::EditorBuffer;
 use super::App;
 
 impl App {
+    pub(crate) fn watch_mode_for_path(path: &Path) -> RecursiveMode {
+        if path.parent().is_none() {
+            RecursiveMode::NonRecursive
+        } else {
+            RecursiveMode::Recursive
+        }
+    }
+
     pub fn open_file(&mut self, path: PathBuf) {
         if path.is_dir() {
             self.set_explorer_root(path);
@@ -259,12 +267,12 @@ impl App {
     pub fn set_explorer_root(&mut self, path: PathBuf) {
         if let Some(watcher) = &mut self.watcher {
             let _ = watcher.unwatch(&self.explorer.root);
-            let _ = watcher.watch(&path, RecursiveMode::Recursive);
+            let _ = watcher.watch(&path, Self::watch_mode_for_path(&path));
         }
         self.explorer.root = path;
         self.explorer.selected_idx = 0;
         self.explorer.refresh();
-        self.collect_all_files();
+        self.invalidate_file_index();
     }
 
     pub fn switch_tab_relative(&mut self, delta: isize) {

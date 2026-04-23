@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
-use notify::{Config as NotifyConfig, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config as NotifyConfig, RecommendedWatcher, Watcher};
 use ratatui::layout::Rect;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
@@ -32,6 +32,7 @@ pub struct App {
     pub fuzzy_lines: Vec<(usize, String)>,
     pub fuzzy_global_results: Vec<(PathBuf, usize, String)>,
     pub all_files: Vec<PathBuf>,
+    pub all_files_ready: bool,
     pub fuzzy_idx: usize,
     pub original_theme: String,
     pub fuzzy_themes: Vec<String>,
@@ -123,6 +124,7 @@ impl App {
             fuzzy_lines: Vec::new(),
             fuzzy_global_results: Vec::new(),
             all_files: Vec::new(),
+            all_files_ready: false,
             fuzzy_idx: 0,
             original_theme: current_theme.clone(),
             fuzzy_themes: Vec::new(),
@@ -146,7 +148,7 @@ impl App {
         };
 
         if let Some(watcher) = &mut app.watcher {
-            let _ = watcher.watch(&current_dir, RecursiveMode::Recursive);
+            let _ = watcher.watch(&current_dir, Self::watch_mode_for_path(&current_dir));
         }
 
         app.load_workspaces();
