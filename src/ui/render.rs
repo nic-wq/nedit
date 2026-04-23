@@ -80,31 +80,39 @@ pub fn render(f: &mut Frame, app: &mut App) {
         if target_idx < app.buffers.len() && script_idx < app.buffers.len() {
             let split_chunks = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .constraints([
+                    Constraint::Percentage(50),
+                    Constraint::Length(1),
+                    Constraint::Percentage(50),
+                ])
                 .split(editor_chunks[1]);
+            let target_area = split_chunks[0];
+            let separator_area = split_chunks[1];
+            let script_area = split_chunks[2];
 
             if let Some(target_buf) = app.buffers.get_mut(target_idx) {
-                let width = split_chunks[0].width as usize;
+                let width = target_area.width as usize;
                 target_buf.move_cursor(0, 0, width);
             }
 
             if let Some(script_buf) = app.buffers.get_mut(script_idx) {
-                let width = split_chunks[1].width as usize;
+                let width = script_area.width as usize;
                 script_buf.move_cursor(0, 0, width);
             }
 
             draw_editor(
                 f,
                 app,
-                split_chunks[0],
+                target_area,
                 target_idx,
                 app.current_buffer_idx == target_idx,
                 &colors,
             );
+            draw_split_separator(f, separator_area, &colors);
             draw_editor(
                 f,
                 app,
-                split_chunks[1],
+                script_area,
                 script_idx,
                 app.current_buffer_idx == script_idx,
                 &colors,
@@ -145,6 +153,10 @@ pub fn render(f: &mut Frame, app: &mut App) {
     if app.is_fuzzy {
         draw_fuzzy_finder(f, app, &colors);
     }
+}
+
+fn draw_split_separator(f: &mut Frame, area: Rect, colors: &UIColors) {
+    f.render_widget(Block::default().bg(colors.surface), area);
 }
 
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
