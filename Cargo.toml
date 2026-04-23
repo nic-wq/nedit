@@ -1,6 +1,6 @@
 [package]
 name = "nedit"
-version = "0.4.0-unstable.1"
+version = "0.4.0-unstable.2"
 edition = "2021"
 
 [dependencies]
