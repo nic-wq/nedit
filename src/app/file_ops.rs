@@ -195,16 +195,19 @@ impl App {
     pub fn close_current_buffer(&mut self) {
         if !self.buffers.is_empty() {
             let closing_idx = self.current_buffer_idx;
-            self.buffers.remove(closing_idx);
             if self.live_script_mode {
                 let is_script = Some(closing_idx) == self.live_script_buffer_idx;
                 let is_target = Some(closing_idx) == self.target_buffer_idx;
 
-                if is_script || is_target {
+                if is_target {
+                    self.close_live_script_pair(closing_idx);
+                } else if is_script {
+                    self.buffers.remove(closing_idx);
                     self.live_script_mode = false;
                     self.live_script_buffer_idx = None;
                     self.target_buffer_idx = None;
                 } else {
+                    self.buffers.remove(closing_idx);
                     if let Some(idx) = self.live_script_buffer_idx {
                         if closing_idx < idx {
                             self.live_script_buffer_idx = Some(idx - 1);
@@ -216,6 +219,8 @@ impl App {
                         }
                     }
                 }
+            } else {
+                self.buffers.remove(closing_idx);
             }
 
             if self.buffers.is_empty() {
@@ -225,6 +230,30 @@ impl App {
                 self.current_buffer_idx = self.current_buffer_idx.min(self.buffers.len() - 1);
             }
         }
+    }
+
+    fn close_live_script_pair(&mut self, fallback_idx: usize) {
+        let mut indexes = Vec::new();
+        indexes.push(fallback_idx);
+        if let Some(idx) = self.live_script_buffer_idx {
+            indexes.push(idx);
+        }
+        if let Some(idx) = self.target_buffer_idx {
+            indexes.push(idx);
+        }
+
+        indexes.sort_unstable();
+        indexes.dedup();
+
+        for idx in indexes.into_iter().rev() {
+            if idx < self.buffers.len() {
+                self.buffers.remove(idx);
+            }
+        }
+
+        self.live_script_mode = false;
+        self.live_script_buffer_idx = None;
+        self.target_buffer_idx = None;
     }
 
     pub fn switch_tab(&mut self, idx: usize) {
@@ -388,13 +417,37 @@ impl App {
     }
 
     pub fn close_buffers_for_path(&mut self, removed_path: &Path) {
+        let live_script_indexes: Vec<usize> = [self.live_script_buffer_idx, self.target_buffer_idx]
+            .into_iter()
+            .flatten()
+            .collect();
+        let close_live_script = self.live_script_mode
+            && live_script_indexes.iter().any(|&idx| {
+                self.buffers
+                    .get(idx)
+                    .and_then(|buffer| buffer.path.as_ref())
+                    .map(|path| path.starts_with(removed_path))
+                    .unwrap_or(false)
+            });
+
+        let mut idx = 0;
         self.buffers.retain(|buffer| {
-            buffer
+            let should_remove = buffer
                 .path
                 .as_ref()
-                .map(|path| !path.starts_with(removed_path))
-                .unwrap_or(true)
+                .map(|path| path.starts_with(removed_path))
+                .unwrap_or(false)
+                || (close_live_script && live_script_indexes.contains(&idx));
+            idx += 1;
+            !should_remove
         });
+
+        if close_live_script {
+            self.live_script_mode = false;
+            self.live_script_buffer_idx = None;
+            self.target_buffer_idx = None;
+        }
+
         if self.buffers.is_empty() {
             self.current_buffer_idx = 0;
             self.is_welcome = true;
