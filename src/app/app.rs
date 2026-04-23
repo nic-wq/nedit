@@ -4,7 +4,7 @@ use std::sync::mpsc::{channel, Receiver};
 
 use notify::{Config as NotifyConfig, RecommendedWatcher, Watcher};
 use ratatui::layout::Rect;
-use syntect::highlighting::ThemeSet;
+use syntect::highlighting::{Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
 use crate::buffer::EditorBuffer;
@@ -21,8 +21,9 @@ pub struct App {
     pub focus: Focus,
     pub show_explorer: bool,
     pub should_quit: bool,
-    pub syntax_set: SyntaxSet,
+    pub syntax_set: Option<SyntaxSet>,
     pub theme_set: ThemeSet,
+    pub themes_loaded: bool,
     pub is_welcome: bool,
     pub current_theme: String,
     pub is_fuzzy: bool,
@@ -85,21 +86,24 @@ impl App {
         let _ = fs::create_dir_all(config_dir.join("syntax"));
         let _ = fs::create_dir_all(config_dir.join("themes"));
 
-        let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
-        let _ = builder.add_from_folder(config_dir.join("syntax"), true);
-        let syntax_set = builder.build();
-
-        let mut theme_set = ThemeSet::load_defaults();
-        let _ = theme_set.add_from_folder(config_dir.join("themes"));
-
         let config = Config::load();
         let theme_file = config_dir.join("theme.txt");
         let mut current_theme = config.theme.clone();
-        
+
         if let Ok(saved_theme) = fs::read_to_string(&theme_file) {
             let saved_theme = saved_theme.trim();
-            if theme_set.themes.contains_key(saved_theme) {
+            if !saved_theme.is_empty() {
                 current_theme = saved_theme.to_string();
+            }
+        }
+
+        let mut theme_set = ThemeSet::new();
+        if let Some(theme) = Self::load_theme_by_name(&current_theme, &config_dir) {
+            theme_set.themes.insert(current_theme.clone(), theme);
+        } else {
+            current_theme = default_theme_name();
+            if let Some(theme) = Self::load_theme_by_name(&current_theme, &config_dir) {
+                theme_set.themes.insert(current_theme.clone(), theme);
             }
         }
 
@@ -113,8 +117,9 @@ impl App {
             focus: Focus::Editor,
             show_explorer: false,
             should_quit: false,
-            syntax_set,
+            syntax_set: None,
             theme_set,
+            themes_loaded: false,
             is_welcome: true,
             current_theme: current_theme.clone(),
             is_fuzzy: false,
@@ -164,4 +169,71 @@ impl App {
 
         app
     }
+
+    fn config_dir() -> PathBuf {
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".config/nedit")
+    }
+
+    fn load_theme_by_name(theme_name: &str, config_dir: &std::path::Path) -> Option<Theme> {
+        let custom_theme = config_dir
+            .join("themes")
+            .join(format!("{}.tmTheme", theme_name));
+        if let Ok(theme) = ThemeSet::get_theme(custom_theme) {
+            return Some(theme);
+        }
+
+        ThemeSet::load_defaults().themes.remove(theme_name)
+    }
+
+    pub fn ensure_current_theme_loaded(&mut self) {
+        if self.theme_set.themes.contains_key(&self.current_theme) {
+            return;
+        }
+
+        let config_dir = Self::config_dir();
+        if let Some(theme) = Self::load_theme_by_name(&self.current_theme, &config_dir) {
+            self.theme_set
+                .themes
+                .insert(self.current_theme.clone(), theme);
+            return;
+        }
+
+        self.current_theme = default_theme_name();
+        if let Some(theme) = Self::load_theme_by_name(&self.current_theme, &config_dir) {
+            self.theme_set
+                .themes
+                .insert(self.current_theme.clone(), theme);
+        }
+    }
+
+    pub fn ensure_all_themes_loaded(&mut self) {
+        if self.themes_loaded {
+            return;
+        }
+
+        let config_dir = Self::config_dir();
+        let mut theme_set = ThemeSet::load_defaults();
+        let _ = theme_set.add_from_folder(config_dir.join("themes"));
+        self.theme_set = theme_set;
+        self.themes_loaded = true;
+        self.ensure_current_theme_loaded();
+    }
+
+    pub fn ensure_syntax_set_loaded(&mut self) {
+        if self.syntax_set.is_some() {
+            return;
+        }
+
+        let config_dir = Self::config_dir();
+        let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
+        let _ = builder.add_from_folder(config_dir.join("syntax"), true);
+        self.syntax_set = Some(builder.build());
+    }
+}
+
+fn default_theme_name() -> String {
+    "base16-ocean.dark".to_string()
 }

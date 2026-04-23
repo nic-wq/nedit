@@ -27,6 +27,7 @@ impl App {
 
             if mode == FuzzyMode::Themes {
                 self.original_theme = self.current_theme.clone();
+                self.ensure_all_themes_loaded();
             }
 
             if matches!(mode, FuzzyMode::Files | FuzzyMode::Content) {
@@ -332,6 +333,7 @@ impl App {
         }
 
         if self.fuzzy_mode == FuzzyMode::Themes {
+            self.ensure_all_themes_loaded();
             let themes: Vec<String> = self.theme_set.themes.keys().cloned().collect();
             self.fuzzy_themes = themes
                 .into_iter()

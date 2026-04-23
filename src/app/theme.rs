@@ -2,6 +2,10 @@ use super::App;
 
 impl App {
     pub fn apply_theme(&mut self, theme_name: String) {
+        if !self.theme_set.themes.contains_key(&theme_name) {
+            self.ensure_all_themes_loaded();
+        }
+
         if self.theme_set.themes.contains_key(&theme_name) {
             self.current_theme = theme_name;
         }

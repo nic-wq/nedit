@@ -74,6 +74,9 @@ pub fn render(f: &mut Frame, app: &mut App) {
     if app.is_welcome {
         draw_welcome_screen(f, app, editor_chunks[1], &colors);
     } else if app.live_script_mode {
+        app.ensure_current_theme_loaded();
+        app.ensure_syntax_set_loaded();
+
         let target_idx = app.target_buffer_idx.unwrap_or(0);
         let script_idx = app.live_script_buffer_idx.unwrap_or(0);
 
@@ -128,6 +131,9 @@ pub fn render(f: &mut Frame, app: &mut App) {
             );
         }
     } else if !app.buffers.is_empty() {
+        app.ensure_current_theme_loaded();
+        app.ensure_syntax_set_loaded();
+
         let buffer = &mut app.buffers[app.current_buffer_idx];
         let width = editor_chunks[1].width as usize;
         buffer.move_cursor(0, 0, width);
@@ -281,21 +287,27 @@ fn draw_editor(
     let max_scroll = buffer.content.len_lines().saturating_sub(1);
     buffer_scroll_row = buffer_scroll_row.min(max_scroll);
 
-    let theme = app
+    let theme = match app
         .theme_set
         .themes
         .get(&app.current_theme)
-        .unwrap_or_else(|| &app.theme_set.themes["base16-ocean.dark"]);
+        .or_else(|| app.theme_set.themes.get("base16-ocean.dark"))
+    {
+        Some(theme) => theme,
+        None => return,
+    };
+
+    let syntax_set = match app.syntax_set.as_ref() {
+        Some(syntax_set) => syntax_set,
+        None => return,
+    };
 
     let syntax = buffer
         .path
         .as_ref()
         .and_then(|p| p.extension())
-        .and_then(|e| {
-            app.syntax_set
-                .find_syntax_by_extension(e.to_str().unwrap_or(""))
-        })
-        .unwrap_or_else(|| app.syntax_set.find_syntax_plain_text());
+        .and_then(|e| syntax_set.find_syntax_by_extension(e.to_str().unwrap_or("")))
+        .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
 
     let mut h = HighlightLines::new(syntax, theme);
 
@@ -317,7 +329,7 @@ fn draw_editor(
         spans.push(Span::styled(format!("{:3} ", i + 1), line_num_style));
 
         let ranges: Vec<(syntect::highlighting::Style, &str)> =
-            h.highlight_line(&line_content, &app.syntax_set).unwrap();
+            h.highlight_line(&line_content, syntax_set).unwrap();
         let mut char_offset = 0;
         let mut visual_col = 0;
 
