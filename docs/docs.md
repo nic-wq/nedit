@@ -45,7 +45,8 @@ You can open files or directories directly from your terminal:
   - **Self-Protection**: Scripts cannot modify themselves. Use `Edit Lua Script` to edit a script.
   - **Live Script**: Press `CTRL+P` → **Open Live Script** to create a split-view with an interactive script. Press `F9` to execute. Scripts apply immediately and can only modify the target file (left pane).
     - Switch between target file and script panes with `SHIFT+ALT+RIGHT` / `SHIFT+ALT+LEFT`
-    - Change target files by switching tabs - the script will run on whichever file is currently in the left pane
+    - Change target files by switching tabs - the script will run on whichever file is currently in the left pane.
+    - Closing the main file window (target) will also close the associated Live Script window to prevent orphaned scripts.
 - **Documentation**: Press `CTRL+H` to open documentation. You can choose:
   - General docs (this file)
   - Lua API docs

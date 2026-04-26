@@ -183,6 +183,9 @@ impl App {
             self.set_explorer_root(ws.path.clone());
             self.buffers.clear();
             self.current_buffer_idx = 0;
+            self.live_script_mode = false;
+            self.live_script_buffer_idx = None;
+            self.target_buffer_idx = None;
             for tab_path in ws.tabs {
                 self.open_file(tab_path);
             }
@@ -226,8 +229,20 @@ impl App {
             if self.buffers.is_empty() {
                 self.is_welcome = true;
                 self.current_buffer_idx = 0;
+                self.live_script_mode = false;
+                self.live_script_buffer_idx = None;
+                self.target_buffer_idx = None;
             } else {
                 self.current_buffer_idx = self.current_buffer_idx.min(self.buffers.len() - 1);
+                if self.live_script_mode {
+                    let script_valid = self.live_script_buffer_idx.map(|idx| idx < self.buffers.len()).unwrap_or(false);
+                    let target_valid = self.target_buffer_idx.map(|idx| idx < self.buffers.len()).unwrap_or(false);
+                    if !script_valid || !target_valid {
+                        self.live_script_mode = false;
+                        self.live_script_buffer_idx = None;
+                        self.target_buffer_idx = None;
+                    }
+                }
             }
         }
     }
@@ -451,6 +466,9 @@ impl App {
         if self.buffers.is_empty() {
             self.current_buffer_idx = 0;
             self.is_welcome = true;
+            self.live_script_mode = false;
+            self.live_script_buffer_idx = None;
+            self.target_buffer_idx = None;
         } else {
             self.current_buffer_idx = self.current_buffer_idx.min(self.buffers.len() - 1);
         }
