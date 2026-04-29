@@ -48,4 +48,13 @@ if [ $? -ne 0 ]; then
 fi
 # 4. Set execution permissions
 chmod +x "$BINARY_NAME"
-# 5. Move binary to destination directory (requires superuser privi
+# 5. Move binary to destination directory (requires superuser privileges)
+echo "Installing to $INSTALL_PATH..."
+sudo mv "$BINARY_NAME" "$INSTALL_PATH"
+# 6. Final check
+if [ $? -eq 0 ]; then
+    echo "Installation completed successfully."
+else
+    echo "Error during installation to $INSTALL_PATH."
+    exit 1
+fi
