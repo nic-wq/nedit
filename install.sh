@@ -1,14 +1,11 @@
 #!/bin/bash
-
-# Configurações do repositório e artefato
+# Repository and artifact settings
 REPO="nic-wq/nedit"
 BINARY_NAME="nedit_linux"
 INSTALL_PATH="/usr/local/bin/nedit"
-
-# Inicializa variável para decidir se aceita pre-releases
+# Initialize variable to decide whether to accept pre-releases
 UNSTABLE=false
-
-# 1. Processar argumentos (flags)
+# 1. Process arguments (flags)
 for arg in "$@"; do
     case $arg in
         --unstable)
@@ -17,16 +14,14 @@ for arg in "$@"; do
             ;;
     esac
 done
-
-echo "Buscando versão mais recente..."
-
-# 2. Definir a URL da API do GitHub
-# Se unstable for true, pegamos a primeira release da lista geral (pode ser pre-release)
-# Caso contrário, usamos o endpoint 'latest' que garante ser uma release estável
+echo "Fetching latest version..."
+# 2. Define GitHub API URL
+# If unstable is true, fetch the first release from the general list (may be a pre-release)
+# Otherwise, use the 'latest' endpoint which guarantees a stable release
 if [ "$UNSTABLE" = true ]; then
-    echo "Modo UNSTABLE ativado: Incluindo pre-releases na busca."
+    echo "UNSTABLE mode enabled: Including pre-releases in search."
     API_URL="https://api.github.com/repos/$REPO/releases"
-    # No endpoint de lista, pegamos o primeiro item que contenha o binário desejado
+    # From the list endpoint, grab the first item containing the desired binary
     DOWNLOAD_URL=$(curl -s "$API_URL" | \
                    grep "browser_download_url" | \
                    grep "$BINARY_NAME" | \
@@ -39,33 +34,18 @@ else
                    grep "$BINARY_NAME" | \
                    cut -d '"' -f 4)
 fi
-
-# Valida se a URL foi extraída corretamente
+# Validate whether the URL was extracted correctly
 if [ -z "$DOWNLOAD_URL" ]; then
-    echo "Erro: Não foi possível localizar o arquivo $BINARY_NAME no repositório $REPO."
+    echo "Error: Could not locate $BINARY_NAME in repository $REPO."
     exit 1
 fi
-
-# 3. Baixar o binário
-echo "Baixando de: $DOWNLOAD_URL"
+# 3. Download the binary
+echo "Downloading from: $DOWNLOAD_URL"
 curl -L -o "$BINARY_NAME" "$DOWNLOAD_URL"
-
 if [ $? -ne 0 ]; then
-    echo "Erro durante o download."
+    echo "Error during download."
     exit 1
 fi
-
-# 4. Definir permissões de execução
+# 4. Set execution permissions
 chmod +x "$BINARY_NAME"
-
-# 5. Mover o binário para o diretório de destino (requer privilégios de superusuário)
-echo "Instalando em $INSTALL_PATH..."
-sudo mv "$BINARY_NAME" "$INSTALL_PATH"
-
-# 6. Verificação final
-if [ $? -eq 0 ]; then
-    echo "Instalação concluída com sucesso."
-else
-    echo "Erro durante a instalação em $INSTALL_PATH."
-    exit 1
-fi
+# 5. Move binary to destination directory (requires superuser privi
