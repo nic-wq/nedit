@@ -78,10 +78,7 @@ impl App {
 
     pub fn new(args: &[String]) -> Self {
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let home_dir = std::env::var("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."));
-        let config_dir = home_dir.join(".config/nedit");
+        let config_dir = Self::config_dir();
         let _ = fs::create_dir_all(&config_dir);
         let _ = fs::create_dir_all(config_dir.join("syntax"));
         let _ = fs::create_dir_all(config_dir.join("themes"));
@@ -171,10 +168,9 @@ impl App {
     }
 
     fn config_dir() -> PathBuf {
-        std::env::var("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(".config/nedit")
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("nedit")
     }
 
     fn load_theme_by_name(theme_name: &str, config_dir: &std::path::Path) -> Option<Theme> {
