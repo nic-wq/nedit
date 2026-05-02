@@ -2,4 +2,4 @@ target/
 .agents/
 .issues/
 .tasks/
-tasks/
+.pr
