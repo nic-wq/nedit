@@ -23,10 +23,10 @@ fn default_theme() -> String {
 
 impl Config {
     pub fn load() -> Self {
-        let home_dir = std::env::var("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."));
-        let config_path = home_dir.join(".config/nedit/config.toml");
+        let config_dir = dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("nedit");
+        let config_path = config_dir.join("config.toml");
 
         if let Ok(content) = fs::read_to_string(&config_path) {
             if let Ok(config) = toml::from_str::<Config>(&content) {
