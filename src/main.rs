@@ -6,26 +6,8 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
-#[path = "app/mod.rs"]
-mod app;
-#[path = "buffer/mod.rs"]
-mod buffer;
-#[path = "clipboard/mod.rs"]
-pub mod clipboard;
-#[path = "config/mod.rs"]
-mod config;
-#[path = "explorer/mod.rs"]
-mod explorer;
-#[path = "i18n/mod.rs"]
-mod i18n;
-#[path = "input/mod.rs"]
-mod input;
-#[path = "lua/mod.rs"]
-pub mod lua;
-#[path = "ui/mod.rs"]
-mod ui;
-
-use crate::app::App;
+use nedit::{app, buffer, clipboard, config, explorer, i18n, input, lua, ui};
+use nedit::app::App;
 
 fn main() -> anyhow::Result<()> {
     // Setup terminal
