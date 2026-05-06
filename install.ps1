@@ -19,22 +19,23 @@ if (!(Test-Path $InstallDir)) {
     }
 }
 
-# 2. Fetch Latest Version from GitHub
-Write-Host "Fetching latest release information..."
-try {
+# Initialize variable to decide whether to accept pre-releases
+param([switch]$Unstable)
+
+# 1. Define GitHub API URL
+if ($Unstable) {
+    Write-Host "UNSTABLE mode enabled: Including pre-releases in search." -ForegroundColor Yellow
+    $ApiUrl = "https://api.github.com/repos/$Repo/releases"
+    $ReleaseData = Invoke-RestMethod -Uri $ApiUrl -UseBasicParsing
+    # Get the very first release in the list (most recent, regardless of stable/pre-release status)
+    $LatestRelease = $ReleaseData[0]
+    $Asset = $LatestRelease.assets | Where-Object { $_.name -eq $BinaryPattern } | Select-Object -First 1
+    $Version = $LatestRelease.tag_name
+} else {
     $ApiUrl = "https://api.github.com/repos/$Repo/releases/latest"
     $ReleaseData = Invoke-RestMethod -Uri $ApiUrl -UseBasicParsing
     $Asset = $ReleaseData.assets | Where-Object { $_.name -eq $BinaryPattern } | Select-Object -First 1
-
-    if ($null -eq $Asset) {
-        Write-Host "Error: Could not find '$BinaryPattern' in the latest release of $Repo." -ForegroundColor Red
-        exit 1
-    }
-    $DownloadUrl = $Asset.browser_download_url
     $Version = $ReleaseData.tag_name
-} catch {
-    Write-Host "Error: Failed to connect to GitHub API. Check your internet connection." -ForegroundColor Red
-    exit 1
 }
 
 # 3. Download and Install

@@ -3,7 +3,7 @@ name: Installation Script Validation
 on:
   workflow_dispatch:
   release:
-    types: [published]
+    types: [published, created, edited]
 
 jobs:
   validate-install:
@@ -24,12 +24,10 @@ jobs:
       if: matrix.os == 'windows-latest'
       shell: pwsh
       run: |
-        # Usando a versão local do script para testar as mudanças atuais, 
-        # mas simulando o comportamento de download e PATH.
-        # No futuro, para testar a URL pública, seria 'irm <url> | iex'
-        ./install.ps1
+        # Invoking the local script with -Unstable flag
+        . ./install.ps1 -Unstable
         
-        # O script adiciona ao PATH do usuário, mas no CI precisamos atualizar a sessão atual
+        # The script adds to User PATH, but in CI we need to update the current session
         $InstallDir = Join-Path $env:LOCALAPPDATA "nedit\bin"
         $env:PATH = "$InstallDir;" + $env:PATH
         
@@ -39,10 +37,9 @@ jobs:
     - name: Run Linux Installation Script
       if: matrix.os == 'ubuntu-latest'
       run: |
-        # Mocking sudo for the install script in CI
         chmod +x install.sh
-        # O install.sh original usa 'sudo mv'. Em CI, vamos garantir que funcione.
-        ./install.sh
+        # Running with --unstable flag
+        ./install.sh --unstable
         
         export PATH="$PATH:/usr/local/bin"
         nedit --debug
