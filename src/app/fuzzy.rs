@@ -68,7 +68,7 @@ impl App {
         self.all_files_ready = false;
     }
 
-    pub(crate) fn ensure_all_files_collected(&mut self) {
+    pub fn ensure_all_files_collected(&mut self) {
         if self.all_files_ready {
             return;
         }
