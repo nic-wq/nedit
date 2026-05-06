@@ -7,8 +7,26 @@ impl EditorBuffer {
         self.content.insert_char(char_idx, ch);
 
         if ch == '\n' {
+            let prev_row = self.cursor_row;
+            let prev_line = self.content.line(prev_row);
+            let mut indentation = String::new();
+            for c in prev_line.chars() {
+                if c == ' ' || c == '\t' {
+                    indentation.push(c);
+                } else {
+                    break;
+                }
+            }
+
             self.cursor_row += 1;
             self.cursor_col = 0;
+
+            if !indentation.is_empty() {
+                let new_char_idx = self.content.line_to_char(self.cursor_row);
+                self.content.insert(new_char_idx, &indentation);
+                self.cursor_col = indentation.chars().count();
+            }
+
             self.autocomplete_options.clear();
         } else {
             self.cursor_col += 1;

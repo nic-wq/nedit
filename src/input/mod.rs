@@ -829,8 +829,14 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
             buffer.autocomplete_idx = (buffer.autocomplete_idx + 1) % buffer.autocomplete_options.len();
             return;
         }
+        (KeyCode::Tab, m)
+            if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::NONE =>
+        {
+            app.buffers[current_idx].accept_autocomplete();
+            return;
+        }
         (KeyCode::Right, m)
-            if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::SHIFT =>
+            if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::NONE =>
         {
             app.buffers[current_idx].accept_autocomplete();
             return;

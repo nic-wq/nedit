@@ -316,7 +316,13 @@ fn draw_editor(
     let visible_width = area.width.saturating_sub(5) as usize;
 
     for i in buffer_scroll_row..(buffer_scroll_row + height).min(line_count) {
-        let line_content = buffer.content.line(i).to_string();
+        let mut line_content = buffer.content.line(i).to_string();
+        if line_content.ends_with('\n') {
+            line_content.pop();
+        }
+        if line_content.ends_with('\r') {
+            line_content.pop();
+        }
         let mut spans = Vec::new();
 
         let line_num_style = if i == buffer.cursor_row && is_focused {
@@ -382,7 +388,7 @@ fn draw_editor(
             && !buffer.autocomplete_options.is_empty()
             && !buffer.show_autocomplete_list
         {
-            if let Some(opt) = buffer.autocomplete_options.get(0) {
+            if let Some(opt) = buffer.autocomplete_options.get(buffer.autocomplete_idx) {
                 let prefix = buffer.get_current_word_prefix();
                 if opt.starts_with(&prefix) {
                     let ghost = &opt[prefix.len()..];
