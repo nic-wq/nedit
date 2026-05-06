@@ -386,7 +386,6 @@ fn draw_editor(
 
         if i == buffer.cursor_row
             && !buffer.autocomplete_options.is_empty()
-            && !buffer.show_autocomplete_list
         {
             if let Some(opt) = buffer.autocomplete_options.get(buffer.autocomplete_idx) {
                 let prefix = buffer.get_current_word_prefix();

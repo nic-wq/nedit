@@ -19,6 +19,7 @@ impl EditorBuffer {
 
         self.autocomplete_options = matches.into_iter().map(|(w, _)| w).collect();
         self.autocomplete_idx = 0;
+        self.show_autocomplete_list = !self.autocomplete_options.is_empty();
     }
 
     pub fn get_current_word_prefix(&self) -> String {
