@@ -43,7 +43,7 @@ impl App {
         }
         if changed {
             self.invalidate_file_index();
-            self.explorer.refresh();
+            self.refresh_explorer();
         }
     }
 }

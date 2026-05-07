@@ -93,13 +93,23 @@ impl EditorBuffer {
 
     pub fn collect_all_words(&self) -> HashMap<String, usize> {
         let mut words = HashMap::new();
-        let content_str = self.content.to_string();
-        for word in content_str
-            .split(|c: char| !c.is_alphanumeric() && c != '_')
-            .filter(|w| w.len() > 1)
-        {
-            *words.entry(word.to_string()).or_insert(0) += 1;
+        let mut current_word = String::new();
+
+        for c in self.content.chars() {
+            if c.is_alphanumeric() || c == '_' {
+                current_word.push(c);
+            } else {
+                if current_word.len() > 1 {
+                    *words.entry(current_word.clone()).or_insert(0) += 1;
+                }
+                current_word.clear();
+            }
         }
+
+        if current_word.len() > 1 {
+            *words.entry(current_word).or_insert(0) += 1;
+        }
+
         words
     }
 

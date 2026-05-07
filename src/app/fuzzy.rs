@@ -48,39 +48,76 @@ impl App {
             .join("_")
     }
 
-    fn should_skip_walk_entry(&self, entry: &walkdir::DirEntry) -> bool {
-        let path = entry.path();
-
-        if path == self.explorer.root {
-            return false;
-        }
-
-        let name = entry.file_name().to_string_lossy();
-        if matches!(name.as_ref(), "proc" | "sys" | "dev" | "run") {
-            return true;
-        }
-
-        false
-    }
-
     pub(crate) fn invalidate_file_index(&mut self) {
-        self.all_files.clear();
+        self.all_files = std::sync::Arc::new(Vec::new());
         self.all_files_ready = false;
     }
 
+    pub fn poll_background_tasks(&mut self) {
+        if let Some(rx) = &self.indexed_files_receiver {
+            if let Ok(files) = rx.try_recv() {
+                self.all_files = std::sync::Arc::new(files);
+                self.all_files_ready = true;
+                self.indexed_files_receiver = None;
+                self.update_fuzzy();
+            }
+        }
+        if let Some(rx) = &self.explorer_refresh_receiver {
+            if let Ok((items, max_width)) = rx.try_recv() {
+                self.explorer.items = items;
+                self.explorer.max_item_width = max_width;
+                self.explorer_refresh_receiver = None;
+
+                // Restore selection
+                if let Some(path) = self.pending_explorer_selection.take() {
+                    if let Some(idx) = self.explorer.items.iter().position(|i| i.path == path) {
+                        self.explorer.selected_idx = idx;
+                    }
+                }
+            }
+        }
+        if let Some(rx) = &self.content_search_receiver {
+            let mut latest_results = None;
+            while let Ok((query, results)) = rx.try_recv() {
+                if query == self.fuzzy_query.to_lowercase() {
+                    latest_results = Some(results);
+                }
+            }
+            if let Some(results) = latest_results {
+                self.fuzzy_global_results = results;
+                self.content_search_receiver = None;
+            }
+        }
+    }
+
     pub fn ensure_all_files_collected(&mut self) {
-        if self.all_files_ready {
+        if self.all_files_ready || self.indexed_files_receiver.is_some() {
             return;
         }
 
-        self.all_files = WalkDir::new(&self.explorer.root)
-            .into_iter()
-            .filter_entry(|e| !self.should_skip_walk_entry(e))
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .map(|e| e.path().to_path_buf())
-            .collect();
-        self.all_files_ready = true;
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.indexed_files_receiver = Some(rx);
+
+        let root = self.explorer.root.clone();
+        let explorer_root = self.explorer.root.clone();
+
+        std::thread::spawn(move || {
+            let files: Vec<PathBuf> = WalkDir::new(&root)
+                .into_iter()
+                .filter_entry(|e| {
+                    let path = e.path();
+                    if path == explorer_root {
+                        return true;
+                    }
+                    let name = e.file_name().to_string_lossy();
+                    !matches!(name.as_ref(), "proc" | "sys" | "dev" | "run")
+                })
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+                .map(|e| e.path().to_path_buf())
+                .collect();
+            let _ = tx.send(files);
+        });
     }
 
     pub fn update_fuzzy(&mut self) {
@@ -296,23 +333,37 @@ impl App {
                     .take(20)
                     .collect();
             } else if self.fuzzy_mode == FuzzyMode::Content {
-                let mut count = 0;
-                for path in &self.all_files {
-                    if let Ok(content) = fs::read_to_string(path) {
-                        for (i, line) in content.lines().enumerate() {
-                            if line.to_lowercase().contains(&query) {
-                                self.fuzzy_global_results
-                                    .push((path.clone(), i, line.to_string()));
-                                count += 1;
-                                if count >= 20 {
-                                    break;
+                // Background search with debouncing logic would be better,
+                // but let's at least avoid blocking the main thread.
+                // To avoid thread storm, we check if a search is already in progress.
+                if self.content_search_receiver.is_none() {
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    self.content_search_receiver = Some(rx);
+                    let files = self.all_files.clone();
+                    let query_for_thread = query.clone();
+                    let query_for_search = query.clone();
+
+                    std::thread::spawn(move || {
+                        let mut results = Vec::new();
+                        let mut count = 0;
+                        for path in files.iter() {
+                            if let Ok(content) = fs::read_to_string(path) {
+                                for (i, line) in content.lines().enumerate() {
+                                    if line.to_lowercase().contains(&query_for_search) {
+                                        results.push((path.clone(), i, line.to_string()));
+                                        count += 1;
+                                        if count >= 20 {
+                                            break;
+                                        }
+                                    }
                                 }
                             }
+                            if count >= 20 {
+                                break;
+                            }
                         }
-                    }
-                    if count >= 20 {
-                        break;
-                    }
+                        let _ = tx.send((query_for_thread, results));
+                    });
                 }
             }
         }

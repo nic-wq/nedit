@@ -34,13 +34,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
     };
 
     let explorer_width = if app.show_explorer {
-        let max_len = app
-            .explorer
-            .items
-            .iter()
-            .map(|item| item.depth * 2 + item.name.len() + 10)
-            .max()
-            .unwrap_or(20);
+        let max_len = app.explorer.max_item_width;
         let percent = (max_len as f32 / f.area().width as f32 * 100.0) as u16;
         percent.clamp(20, 45)
     } else {

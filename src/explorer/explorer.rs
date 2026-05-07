@@ -10,24 +10,25 @@ pub struct FileExplorer {
     pub selected_idx: usize,
     pub expanded_paths: HashSet<PathBuf>,
     pub scroll_offset: usize,
+    pub max_item_width: usize,
 }
 
 impl FileExplorer {
     pub fn new(root: PathBuf) -> Self {
-        let mut explorer = Self {
+        Self {
             root,
             items: Vec::new(),
             selected_idx: 0,
             expanded_paths: HashSet::new(),
             scroll_offset: 0,
-        };
-        explorer.refresh();
-        explorer
+            max_item_width: 20,
+        }
     }
 
-    pub fn refresh(&mut self) {
+    pub fn refresh_sync(&mut self) {
         let selected_path = self.items.get(self.selected_idx).map(|i| i.path.clone());
         self.items.clear();
+        self.max_item_width = 20;
         self.load_dir_recursive(&self.root.clone(), 0);
 
         if let Some(path) = selected_path {
@@ -39,7 +40,7 @@ impl FileExplorer {
         }
     }
 
-    fn load_dir_recursive(&mut self, path: &PathBuf, depth: usize) {
+    pub fn load_dir_recursive(&mut self, path: &PathBuf, depth: usize) {
         let mut entries_vec = Vec::new();
         if let Ok(entries) = fs::read_dir(path) {
             for entry in entries.flatten() {
@@ -73,6 +74,12 @@ impl FileExplorer {
         for item in entries_vec {
             let expanded = item.expanded;
             let item_path = item.path.clone();
+
+            let width = item.depth * 2 + item.name.len() + 10;
+            if width > self.max_item_width {
+                self.max_item_width = width;
+            }
+
             self.items.push(item);
             if expanded {
                 self.load_dir_recursive(&item_path, depth + 1);
@@ -105,7 +112,7 @@ impl FileExplorer {
                 } else {
                     self.expanded_paths.remove(&item.path);
                 }
-                self.refresh();
+                self.refresh_sync();
             }
         }
     }
@@ -114,7 +121,7 @@ impl FileExplorer {
         if let Some(parent) = self.root.parent() {
             self.root = parent.to_path_buf();
             self.selected_idx = 0;
-            self.refresh();
+            self.refresh_sync();
         }
     }
 

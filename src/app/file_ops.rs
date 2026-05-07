@@ -284,7 +284,7 @@ impl App {
     pub fn toggle_explorer(&mut self) {
         self.show_explorer = !self.show_explorer;
         if self.show_explorer {
-            self.explorer.refresh();
+            self.refresh_explorer();
             self.focus = Focus::Explorer;
         } else if self.focus == Focus::Explorer {
             self.focus = Focus::Editor;
@@ -315,7 +315,7 @@ impl App {
         }
         self.explorer.root = path;
         self.explorer.selected_idx = 0;
-        self.explorer.refresh();
+        self.refresh_explorer();
         self.invalidate_file_index();
     }
 
@@ -392,7 +392,7 @@ impl App {
             let path = buffer.path.clone();
             match buffer.save() {
                 Ok(()) => {
-                    self.explorer.refresh();
+                    self.refresh_explorer();
                     if let Some(p) = path {
                         self.show_notification(
                             format!("Saved to {}", p.display()),

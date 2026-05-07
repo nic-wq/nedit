@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver};
 
 use notify::{Config as NotifyConfig, RecommendedWatcher, Watcher};
@@ -32,7 +33,7 @@ pub struct App {
     pub fuzzy_results: Vec<PathBuf>,
     pub fuzzy_lines: Vec<(usize, String)>,
     pub fuzzy_global_results: Vec<(PathBuf, usize, String)>,
-    pub all_files: Vec<PathBuf>,
+    pub all_files: Arc<Vec<PathBuf>>,
     pub all_files_ready: bool,
     pub fuzzy_idx: usize,
     pub original_theme: String,
@@ -43,6 +44,7 @@ pub struct App {
     pub current_workspace: Option<String>,
     pub temp_ws_name: Option<String>,
     pub pending_path: Option<PathBuf>,
+    pub pending_explorer_selection: Option<PathBuf>,
     pub move_dir: Option<PathBuf>,
     pub pending_lua_actions: Vec<crate::lua::LuaAction>,
     pub notification: Option<(String, NotificationType)>,
@@ -52,6 +54,9 @@ pub struct App {
     pub target_buffer_idx: Option<usize>,
     pub watcher: Option<RecommendedWatcher>,
     pub fs_event_receiver: Receiver<notify::Result<notify::Event>>,
+    pub indexed_files_receiver: Option<Receiver<Vec<PathBuf>>>,
+    pub explorer_refresh_receiver: Option<Receiver<(Vec<crate::explorer::FileItem>, usize)>>,
+    pub content_search_receiver: Option<Receiver<(String, Vec<(PathBuf, usize, String)>)>>,
     pub explorer_area: Rect,
     pub editor_area: Rect,
 }
@@ -125,7 +130,7 @@ impl App {
             fuzzy_results: Vec::new(),
             fuzzy_lines: Vec::new(),
             fuzzy_global_results: Vec::new(),
-            all_files: Vec::new(),
+            all_files: Arc::new(Vec::new()),
             all_files_ready: false,
             fuzzy_idx: 0,
             original_theme: current_theme.clone(),
@@ -136,6 +141,7 @@ impl App {
             current_workspace: None,
             temp_ws_name: None,
             pending_path: None,
+            pending_explorer_selection: None,
             move_dir: None,
             pending_lua_actions: Vec::new(),
             notification: None,
@@ -145,6 +151,9 @@ impl App {
             target_buffer_idx: None,
             watcher,
             fs_event_receiver: rx,
+            indexed_files_receiver: None,
+            explorer_refresh_receiver: None,
+            content_search_receiver: None,
             explorer_area: Rect::default(),
             editor_area: Rect::default(),
         };
@@ -154,6 +163,7 @@ impl App {
         }
 
         app.load_workspaces();
+        app.refresh_explorer();
 
         for arg in args {
             let path = PathBuf::from(arg);
@@ -227,6 +237,31 @@ impl App {
         let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
         let _ = builder.add_from_folder(config_dir.join("syntax"), true);
         self.syntax_set = Some(builder.build());
+    }
+
+    pub fn refresh_explorer(&mut self) {
+        if self.explorer_refresh_receiver.is_some() {
+            return;
+        }
+
+        self.pending_explorer_selection = self.explorer.items.get(self.explorer.selected_idx).map(|i| i.path.clone());
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.explorer_refresh_receiver = Some(rx);
+
+        let mut explorer_clone = crate::explorer::FileExplorer {
+            root: self.explorer.root.clone(),
+            items: Vec::new(),
+            selected_idx: 0,
+            expanded_paths: self.explorer.expanded_paths.clone(),
+            scroll_offset: 0,
+            max_item_width: 20,
+        };
+
+        std::thread::spawn(move || {
+            explorer_clone.refresh_sync();
+            let _ = tx.send((explorer_clone.items, explorer_clone.max_item_width));
+        });
     }
 }
 
