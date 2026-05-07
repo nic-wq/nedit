@@ -308,7 +308,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     match std::fs::rename(&old_path, &new_path) {
                         Ok(()) => {
                             app.update_buffer_paths(&old_path, &new_path);
-                            app.explorer.refresh();
+                            app.refresh_explorer();
                             app.show_notification(
                                 format!("Moved to {}", new_path.display()),
                                 crate::app::NotificationType::Info,
@@ -476,7 +476,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         match std::fs::rename(&old_path, &new_path) {
                             Ok(()) => {
                                 app.update_buffer_paths(&old_path, &new_path);
-                                app.explorer.refresh();
+                                app.refresh_explorer();
                                 app.show_notification(
                                     format!("Renamed to {}", new_path.display()),
                                     crate::app::NotificationType::Info,
@@ -509,7 +509,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     match result {
                         Ok(()) => {
                             app.close_buffers_for_path(&path);
-                            app.explorer.refresh();
+                            app.refresh_explorer();
                             app.show_notification(
                                 format!("Deleted {}", path.display()),
                                 crate::app::NotificationType::Info,
@@ -617,7 +617,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                                 ),
                                 crate::app::NotificationType::Info,
                             );
-                            app.explorer.refresh();
+                            app.refresh_explorer();
                         }
                         Err(err) => {
                             app.show_notification(
@@ -655,7 +655,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                             format!("Folder created: {}", app.fuzzy_query),
                             crate::app::NotificationType::Info,
                         );
-                        app.explorer.refresh();
+                        app.refresh_explorer();
                     }
                 }
                 app.is_fuzzy = false;
@@ -711,7 +711,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                                 return;
                             }
                         }
-                        app.explorer.refresh();
+                        app.refresh_explorer();
                     }
                     app.is_fuzzy = false;
                 }
@@ -787,12 +787,16 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
                     }
                 } else if item.is_dir {
                     app.explorer.toggle_expand();
+                    app.refresh_explorer();
                 } else {
                     app.open_file(item.path.clone());
                 }
             }
         }
-        KeyCode::Backspace => app.explorer.go_up_root(),
+        KeyCode::Backspace => {
+            app.explorer.go_up_root();
+            app.refresh_explorer();
+        }
         KeyCode::Char('O') if key.modifiers.contains(KeyModifiers::SHIFT) => {
             if let Some(_item) = app.explorer.get_selected() {
                 app.toggle_fuzzy(crate::app::FuzzyMode::FileOptions);
@@ -1097,7 +1101,7 @@ fn apply_lua_actions(app: &mut App, actions: Vec<crate::lua::LuaAction>) {
             }
         }
     }
-    app.explorer.refresh();
+    app.refresh_explorer();
 }
 
 fn handle_run_live_script(app: &mut App) {

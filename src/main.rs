@@ -137,6 +137,7 @@ fn main() -> anyhow::Result<()> {
     let mut tick_counter: u8 = 0;
     loop {
         app.handle_fs_events();
+        app.poll_background_tasks();
         terminal.draw(|f| ui::render(f, &mut app))?;
 
         if let Err(e) = input::handle_events(&mut app) {

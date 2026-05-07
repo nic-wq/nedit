@@ -1,7 +1,7 @@
 fn draw_fuzzy_finder(f: &mut Frame, app: &App) {
     let area = centered_rect(70, 50, f.area());
     f.render_widget(Clear, area);
-    
+
     let title = if app.fuzzy_mode == crate::app::FuzzyMode::Content {
         "   Global Search (Content) "
     } else if app.fuzzy_mode == crate::app::FuzzyMode::Local {
@@ -15,7 +15,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(MOCHA_BLUE))
         .bg(MOCHA_BASE);
-    
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -32,12 +32,12 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App) {
         Span::raw(&app.fuzzy_query),
     ]));
     f.render_widget(input, chunks[0]);
-    
+
     f.render_widget(Block::default().borders(Borders::TOP).border_style(Style::default().fg(MOCHA_SURFACE)), chunks[1]);
 
     let list_height = chunks[2].height as usize;
     let start_idx = app.fuzzy_idx.saturating_sub(list_height / 2);
-    
+
     let items: Vec<ListItem> = if app.fuzzy_mode == crate::app::FuzzyMode::Local {
         let end_idx = (start_idx + list_height).min(app.fuzzy_lines.len());
         app.fuzzy_lines[start_idx..end_idx].iter().enumerate().map(|(idx, (line_num, text))| {
@@ -55,13 +55,13 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App) {
             let i = start_idx + idx;
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             let rel_path = path.strip_prefix(&app.explorer.root).unwrap_or(path).to_string_lossy();
-            
+
             let style = if i == app.fuzzy_idx {
                 Style::default().bg(MOCHA_SELECTED).fg(MOCHA_BLUE).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(MOCHA_TEXT)
             };
-            
+
             let icon = if path.is_dir() { "󰉋 " } else { "󰈔 " };
             ListItem::new(format!(" {} {} ({})", icon, name, rel_path)).style(style)
         }).collect()
