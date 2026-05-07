@@ -77,15 +77,23 @@ impl App {
             }
         }
         if let Some(rx) = &self.content_search_receiver {
+            let mut message_received = false;
             let mut latest_results = None;
             while let Ok((query, results)) = rx.try_recv() {
+                message_received = true;
                 if query == self.fuzzy_query.to_lowercase() {
                     latest_results = Some(results);
                 }
             }
-            if let Some(results) = latest_results {
-                self.fuzzy_global_results = results;
+            if message_received {
                 self.content_search_receiver = None;
+                if let Some(results) = latest_results {
+                    self.fuzzy_global_results = results;
+                } else {
+                    // The query changed while we were searching.
+                    // Trigger a new search for the current query.
+                    self.update_fuzzy();
+                }
             }
         }
     }

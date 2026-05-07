@@ -112,7 +112,6 @@ impl FileExplorer {
                 } else {
                     self.expanded_paths.remove(&item.path);
                 }
-                self.refresh_sync();
             }
         }
     }
@@ -121,7 +120,6 @@ impl FileExplorer {
         if let Some(parent) = self.root.parent() {
             self.root = parent.to_path_buf();
             self.selected_idx = 0;
-            self.refresh_sync();
         }
     }
 

@@ -787,12 +787,16 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
                     }
                 } else if item.is_dir {
                     app.explorer.toggle_expand();
+                    app.refresh_explorer();
                 } else {
                     app.open_file(item.path.clone());
                 }
             }
         }
-        KeyCode::Backspace => app.explorer.go_up_root(),
+        KeyCode::Backspace => {
+            app.explorer.go_up_root();
+            app.refresh_explorer();
+        }
         KeyCode::Char('O') if key.modifiers.contains(KeyModifiers::SHIFT) => {
             if let Some(_item) = app.explorer.get_selected() {
                 app.toggle_fuzzy(crate::app::FuzzyMode::FileOptions);
