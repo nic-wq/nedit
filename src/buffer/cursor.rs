@@ -28,7 +28,10 @@ impl EditorBuffer {
             }
         }
 
-        self.autocomplete_options.clear();
+        if dr != 0 || dc != 0 {
+            self.autocomplete_options.clear();
+            self.show_autocomplete_list = false;
+        }
     }
 
     pub fn move_to_line_start(&mut self) {

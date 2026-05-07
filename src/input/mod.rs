@@ -819,20 +819,6 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
     }
 
     match (key.code, key.modifiers) {
-        (KeyCode::Up, m) if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::NONE => {
-            let buffer = &mut app.buffers[current_idx];
-            if buffer.autocomplete_idx > 0 {
-                buffer.autocomplete_idx -= 1;
-            } else {
-                buffer.autocomplete_idx = buffer.autocomplete_options.len().saturating_sub(1);
-            }
-            return;
-        }
-        (KeyCode::Down, m) if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::NONE => {
-            let buffer = &mut app.buffers[current_idx];
-            buffer.autocomplete_idx = (buffer.autocomplete_idx + 1) % buffer.autocomplete_options.len();
-            return;
-        }
         (KeyCode::Right, m)
             if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::SHIFT =>
         {

@@ -310,7 +310,13 @@ fn draw_editor(
     let visible_width = area.width.saturating_sub(5) as usize;
 
     for i in buffer_scroll_row..(buffer_scroll_row + height).min(line_count) {
-        let line_content = buffer.content.line(i).to_string();
+        let mut line_content = buffer.content.line(i).to_string();
+        if line_content.ends_with('\n') {
+            line_content.pop();
+        }
+        if line_content.ends_with('\r') {
+            line_content.pop();
+        }
         let mut spans = Vec::new();
 
         let line_num_style = if i == buffer.cursor_row && is_focused {
@@ -374,9 +380,8 @@ fn draw_editor(
 
         if i == buffer.cursor_row
             && !buffer.autocomplete_options.is_empty()
-            && !buffer.show_autocomplete_list
         {
-            if let Some(opt) = buffer.autocomplete_options.get(0) {
+            if let Some(opt) = buffer.autocomplete_options.get(buffer.autocomplete_idx) {
                 let prefix = buffer.get_current_word_prefix();
                 if opt.starts_with(&prefix) {
                     let ghost = &opt[prefix.len()..];
@@ -395,64 +400,6 @@ fn draw_editor(
 
     f.render_widget(Paragraph::new(lines).bg(colors.bg), area);
 
-    if is_focused && buffer.show_autocomplete_list && !buffer.autocomplete_options.is_empty() {
-        let list_width = buffer
-            .autocomplete_options
-            .iter()
-            .map(|o| o.len())
-            .max()
-            .unwrap_or(10) as u16
-            + 4;
-        let max_popup_width = area.width.saturating_sub(1).max(1);
-        let list_width = list_width.min(max_popup_width);
-        let list_height = buffer.autocomplete_options.len().min(8) as u16;
-
-        let popup_area = Rect {
-            x: area.x + 4 + buffer.cursor_col as u16,
-            y: area.y + (buffer.cursor_row - buffer_scroll_row) as u16 + 1,
-            width: list_width,
-            height: list_height,
-        };
-
-        let popup_area = Rect {
-            x: popup_area
-                .x
-                .min(area.x + area.width.saturating_sub(popup_area.width)),
-            y: if popup_area.y + popup_area.height > area.y + area.height {
-                popup_area.y.saturating_sub(popup_area.height + 1)
-            } else {
-                popup_area.y
-            },
-            ..popup_area
-        };
-
-        let items: Vec<ListItem> = buffer
-            .autocomplete_options
-            .iter()
-            .enumerate()
-            .map(|(idx, opt)| {
-                let style = if idx == buffer.autocomplete_idx {
-                    Style::default()
-                        .bg(colors.sel)
-                        .fg(colors.accent)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(colors.fg)
-                };
-                ListItem::new(format!(" {}", opt)).style(style)
-            })
-            .collect();
-
-        f.render_widget(Clear, popup_area);
-        f.render_widget(
-            List::new(items).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(colors.accent)),
-            ),
-            popup_area,
-        );
-    }
 
     if is_focused && app.focus == Focus::Editor {
         let cursor_x = area.x + 4 + buffer.cursor_col.saturating_sub(buffer.scroll_col) as u16;
