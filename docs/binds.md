@@ -3,7 +3,7 @@
 ## General
 CTRL+Q Quit
 CTRL+E Toggle Explorer
-CTRL+B Fuzzy Finder (Files)
+CTRL+O Fuzzy Finder (Files)
 CTRL+P Command Palette
 CTRL+F Local Search (Current file)
 CTRL+G Global Search (All files)
@@ -46,7 +46,7 @@ Edit ~/.config/nedit/config.toml:
 ```toml
 quit = "ctrl+q"
 new_file = "ctrl+n"
-open_file = "ctrl+b"
+open_file = "ctrl+o"
 command_palette = "ctrl+p"
 global_search = "ctrl+g"
 local_search = "ctrl+f"

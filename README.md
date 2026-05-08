@@ -1,5 +1,7 @@
 # 📝 nedit
 
+> **🚀 Rolling Release Update:** NEdit has moved to a Rolling Release model. We now offer a **Real-time** channel which provides the latest features and fixes directly from the `main` branch. Check the [Installation](#-installation) section to learn how to switch.
+
 A modern, lightweight terminal text editor written in Rust. Fast, extensible, and packed with features for productive terminal-based editing.
 
 ## ✨ Features
@@ -26,9 +28,31 @@ A modern, lightweight terminal text editor written in Rust. Fast, extensible, an
 
 ### Quick Install (Linux)
 
+**Stable:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nic-wq/nedit/main/install.sh | bash
 ```
+
+**Real-time (Nightly):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/nic-wq/nedit/main/install.sh | bash -s -- --real-time
+```
+
+### Quick Install (Windows)
+
+Open PowerShell and run:
+
+**Stable:**
+```powershell
+iwr https://raw.githubusercontent.com/nic-wq/nedit/main/install.ps1 -useb | iex
+```
+
+**Real-time (Nightly):**
+```powershell
+iex (iwr https://raw.githubusercontent.com/nic-wq/nedit/main/install.ps1 -useb).Content; install-nedit -RealTime
+```
+
+> **Note:** The `--unstable` and `-Unstable` flags are deprecated and have been replaced by the Real-time channel.
 
 ### From Source
 

@@ -41,7 +41,7 @@ impl Config {
         let mut keybinds = HashMap::new();
         keybinds.insert("quit".to_string(), "ctrl+q".to_string());
         keybinds.insert("new_file".to_string(), "ctrl+n".to_string());
-        keybinds.insert("open_file".to_string(), "ctrl+b".to_string());
+        keybinds.insert("open_file".to_string(), "ctrl+o".to_string());
         keybinds.insert("command_palette".to_string(), "ctrl+p".to_string());
         keybinds.insert("global_search".to_string(), "ctrl+g".to_string());
         keybinds.insert("local_search".to_string(), "ctrl+f".to_string());
