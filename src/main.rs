@@ -3,8 +3,14 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
-use std::io;
+use ratatui::{
+    backend::{CrosstermBackend, TestBackend},
+    Terminal,
+};
+use std::collections::HashMap;
+use std::fs;
+use std::io::{self, IsTerminal};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use nedit::app::{App, FuzzyMode};
@@ -25,6 +31,315 @@ fn print_step(name: &str, duration: Duration, detail: impl AsRef<str>) {
     } else {
         println!("{:<34} {}  {}", name, format_duration(duration), detail);
     }
+}
+
+fn print_check(name: &str, ok: bool, detail: impl AsRef<str>) {
+    let status = if ok { "ok" } else { "failed" };
+    let detail = detail.as_ref();
+    if detail.is_empty() {
+        println!("{:<34} {}", name, status);
+    } else {
+        println!("{:<34} {}  {}", name, status, detail);
+    }
+}
+
+fn count_files_in_dir(path: &Path) -> usize {
+    fs::read_dir(path)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|e| e.path().is_file())
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn command_exists(command: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+
+    std::env::split_paths(&path).any(|dir| dir.join(command).is_file())
+}
+
+fn temp_debug_dir() -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "nedit-debug-{}-{}",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ))
+}
+
+fn diagnose_environment() -> anyhow::Result<()> {
+    println!("== Environment ==");
+    print_check(
+        "stdin_tty",
+        io::stdin().is_terminal(),
+        "interactive terminal input",
+    );
+    print_check(
+        "stdout_tty",
+        io::stdout().is_terminal(),
+        "interactive terminal output",
+    );
+    println!(
+        "{:<34} TERM={} COLORTERM={} SHELL={}",
+        "terminal_env",
+        std::env::var("TERM").unwrap_or_else(|_| "unset".to_string()),
+        std::env::var("COLORTERM").unwrap_or_else(|_| "unset".to_string()),
+        std::env::var("SHELL").unwrap_or_else(|_| "unset".to_string())
+    );
+    println!(
+        "{:<34} WAYLAND_DISPLAY={} DISPLAY={}",
+        "display_env",
+        std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "unset".to_string()),
+        std::env::var("DISPLAY").unwrap_or_else(|_| "unset".to_string())
+    );
+
+    let exe = std::env::current_exe()?;
+    let metadata = fs::metadata(&exe)?;
+    println!(
+        "{:<34} profile={} exe={} size={} bytes",
+        "binary",
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
+        exe.display(),
+        metadata.len()
+    );
+
+    print_check(
+        "clipboard_wl_copy",
+        command_exists("wl-copy"),
+        "external Wayland copy helper",
+    );
+    print_check(
+        "clipboard_wl_paste",
+        command_exists("wl-paste"),
+        "external Wayland paste helper",
+    );
+    print_check(
+        "clipboard_xclip",
+        command_exists("xclip"),
+        "external X11 clipboard helper",
+    );
+    println!();
+    Ok(())
+}
+
+fn diagnose_config_files(app: &App) -> anyhow::Result<()> {
+    println!("== Config ==");
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("nedit");
+    let config_file = config_dir.join("config.toml");
+    let theme_file = config_dir.join("theme.txt");
+    let language_file = config_dir.join("language.toml");
+    let workspace_file = config_dir.join("workspaces.toml");
+    let syntax_dir = config_dir.join("syntax");
+    let themes_dir = config_dir.join("themes");
+
+    print_check(
+        "config_dir_exists",
+        config_dir.is_dir(),
+        config_dir.display().to_string(),
+    );
+    print_check(
+        "config_file",
+        config_file.is_file(),
+        config_file.display().to_string(),
+    );
+    print_check(
+        "theme_file",
+        theme_file.is_file(),
+        theme_file.display().to_string(),
+    );
+    print_check(
+        "language_file",
+        language_file.is_file(),
+        language_file.display().to_string(),
+    );
+    print_check(
+        "workspace_file",
+        workspace_file.is_file(),
+        workspace_file.display().to_string(),
+    );
+    println!(
+        "{:<34} syntax_files={} theme_files={}",
+        "custom_assets",
+        count_files_in_dir(&syntax_dir),
+        count_files_in_dir(&themes_dir)
+    );
+
+    let mut reverse: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (action, key) in &app.config.keybinds {
+        reverse
+            .entry(key.as_str())
+            .or_default()
+            .push(action.as_str());
+    }
+    let collisions: Vec<String> = reverse
+        .into_iter()
+        .filter(|(_, actions)| actions.len() > 1)
+        .map(|(key, actions)| format!("{}={}", key, actions.join(",")))
+        .collect();
+    print_check(
+        "keybind_collisions",
+        collisions.is_empty(),
+        if collisions.is_empty() {
+            "none".to_string()
+        } else {
+            collisions.join("; ")
+        },
+    );
+    println!();
+    Ok(())
+}
+
+fn diagnose_filesystem() -> anyhow::Result<()> {
+    println!("== Filesystem ==");
+    let dir = temp_debug_dir();
+    let file = dir.join("sample.txt");
+    let renamed = dir.join("sample-renamed.txt");
+    let start = Instant::now();
+    fs::create_dir_all(&dir)?;
+    fs::write(&file, "nedit diagnostics\n")?;
+    let read_back = fs::read_to_string(&file)?;
+    fs::rename(&file, &renamed)?;
+    fs::remove_file(&renamed)?;
+    fs::remove_dir_all(&dir)?;
+    print_step(
+        "tmp_create_write_read_rename_rm",
+        start.elapsed(),
+        format!("ok={}", read_back == "nedit diagnostics\n"),
+    );
+    if read_back != "nedit diagnostics\n" {
+        anyhow::bail!("Temporary filesystem roundtrip failed");
+    }
+    println!();
+    Ok(())
+}
+
+fn diagnose_watcher() -> anyhow::Result<()> {
+    println!("== Watcher ==");
+    let dir = temp_debug_dir();
+    fs::create_dir_all(&dir)?;
+
+    let start = Instant::now();
+    let mut app = App::new(&[dir.to_string_lossy().to_string()]);
+    wait_for_background_tasks(&mut app);
+    fs::write(dir.join("watch-created.txt"), "watch\n")?;
+
+    let mut saw_refresh = false;
+    for _ in 0..50 {
+        app.handle_fs_events();
+        if app.explorer_refresh_receiver.is_some() {
+            saw_refresh = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    wait_for_background_tasks(&mut app);
+    fs::remove_dir_all(&dir)?;
+
+    print_check(
+        "notify_create_event",
+        saw_refresh,
+        format!("elapsed={}", format_duration(start.elapsed())),
+    );
+    if !saw_refresh {
+        anyhow::bail!("Filesystem watcher did not observe a create event");
+    }
+    println!();
+    Ok(())
+}
+
+fn diagnose_buffer_core() -> anyhow::Result<()> {
+    println!("== Buffer ==");
+    let start = Instant::now();
+    let mut buffer = nedit::buffer::EditorBuffer::new();
+    for ch in "hello".chars() {
+        buffer.insert_char(ch);
+    }
+    buffer.insert_char('\n');
+    for ch in "world".chars() {
+        buffer.insert_char(ch);
+    }
+    buffer.move_cursor(-1, 0, 80);
+    buffer.move_to_line_end();
+    buffer.delete_backspace();
+    buffer.undo();
+    buffer.redo();
+    let words = buffer.collect_all_words();
+    let ok = buffer.content.len_lines() >= 1 && words.contains_key("world");
+    print_step(
+        "edit_cursor_history_words",
+        start.elapsed(),
+        format!(
+            "ok={} lines={} words={}",
+            ok,
+            buffer.content.len_lines(),
+            words.len()
+        ),
+    );
+    if !ok {
+        anyhow::bail!("Buffer editing smoke test failed");
+    }
+    println!();
+    Ok(())
+}
+
+fn diagnose_render(app: &mut App) -> anyhow::Result<()> {
+    println!("== Render ==");
+    let start = Instant::now();
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.draw(|f| ui::render(f, app))?;
+    print_step("ratatui_test_render", start.elapsed(), "100x30");
+    let background_wait = wait_for_background_tasks(app);
+    print_step(
+        "render_background_wait",
+        background_wait,
+        format!("syntax_loaded={}", app.syntax_set.is_some()),
+    );
+    println!();
+    Ok(())
+}
+
+fn diagnose_lua_filesystem() -> anyhow::Result<()> {
+    println!("== Lua ==");
+    let dir = temp_debug_dir();
+    fs::create_dir_all(&dir)?;
+    fs::write(dir.join("input.txt"), "lua input")?;
+    let script = r#"
+        local content = nedit.read_file("input.txt")
+        nedit.create_file("created.txt", content .. " ok")
+        nedit.write_selection(content)
+    "#;
+    let ctx = crate::lua::LuaContext {
+        current_file: String::new(),
+        current_content: String::new(),
+        current_selection: String::new(),
+        current_dir: dir.clone(),
+        is_live_script: false,
+    };
+
+    let start = Instant::now();
+    let actions = lua::run_script(script, ctx, &None).map_err(|e| anyhow::anyhow!(e))?;
+    fs::remove_dir_all(&dir)?;
+    let ok = actions.len() == 2;
+    print_step(
+        "lua_file_api",
+        start.elapsed(),
+        format!("ok={} actions={}", ok, actions.len()),
+    );
+    if !ok {
+        anyhow::bail!("Lua filesystem API smoke test failed");
+    }
+    println!();
+    Ok(())
 }
 
 fn wait_for_background_tasks(app: &mut App) -> Duration {
@@ -62,6 +377,9 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     );
     println!();
 
+    diagnose_environment()?;
+
+    println!("== App Startup ==");
     let app_start = Instant::now();
     let mut app = App::new(args);
     print_step(
@@ -101,7 +419,15 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
         app.workspaces.len(),
         app.current_workspace.as_deref().unwrap_or("none")
     );
+    println!();
 
+    diagnose_config_files(&app)?;
+    diagnose_filesystem()?;
+    diagnose_watcher()?;
+    diagnose_buffer_core()?;
+    diagnose_render(&mut app)?;
+
+    println!("== Path Handling ==");
     let dir_start = Instant::now();
     let temp_dir = std::env::temp_dir().canonicalize()?;
     let app_with_dir = App::new(&[temp_dir.to_string_lossy().to_string()]);
@@ -113,7 +439,9 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     if app_with_dir.explorer.root.canonicalize()? != temp_dir {
         anyhow::bail!("Directory initialization failed");
     }
+    println!();
 
+    println!("== Lua Basic ==");
     let lua_start = Instant::now();
     let test_script = "nedit.write_selection('diagnostics')";
     let lua_ctx = crate::lua::LuaContext {
@@ -138,7 +466,10 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
             anyhow::bail!("Lua engine error: {}", e);
         }
     }
+    println!();
+    diagnose_lua_filesystem()?;
 
+    println!("== File Open ==");
     let open_start = Instant::now();
     app.open_file(std::path::PathBuf::from("test.rs"));
     print_step(
@@ -146,11 +477,14 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
         open_start.elapsed(),
         format!("buffers={}", app.buffers.len()),
     );
+    println!();
 
+    println!("== Syntax And Themes ==");
+    let mut syntax_app = App::new(args);
     let syntax_start = Instant::now();
-    app.ensure_syntax_set_loaded();
+    syntax_app.ensure_syntax_set_loaded();
     print_step("syntax_load_sync", syntax_start.elapsed(), "");
-    if let Some(syntax_set) = &app.syntax_set {
+    if let Some(syntax_set) = &syntax_app.syntax_set {
         let syntax = syntax_set.find_syntax_by_extension("rs");
         if syntax.is_none() {
             anyhow::bail!("Syntax set incomplete");
@@ -166,7 +500,9 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
         theme_start.elapsed(),
         format!("themes={}", app.theme_set.themes.len()),
     );
+    println!();
 
+    println!("== Search ==");
     let index_start = Instant::now();
     app.toggle_fuzzy(FuzzyMode::Files);
     let kick_index_duration = index_start.elapsed();
