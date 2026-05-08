@@ -28,6 +28,7 @@ impl App {
                     self.current_buffer_idx = i;
                     self.focus = Focus::Editor;
                     self.is_welcome = false;
+                    self.ensure_syntax_for_path_loading(Some(path.as_path()));
                     if self.live_script_mode
                         && i != self.live_script_buffer_idx.unwrap_or(usize::MAX)
                     {
@@ -44,6 +45,7 @@ impl App {
                 self.current_buffer_idx = self.buffers.len() - 1;
                 self.focus = Focus::Editor;
                 self.is_welcome = false;
+                self.ensure_syntax_for_path_loading(Some(path.as_path()));
                 if self.live_script_mode {
                     self.target_buffer_idx = Some(self.current_buffer_idx);
                 }
@@ -379,6 +381,8 @@ impl App {
         self.focus = Focus::Editor;
         self.is_welcome = false;
         self.is_fuzzy = false;
+        let path = self.buffers[self.current_buffer_idx].path.clone();
+        self.ensure_syntax_for_path_loading(path.as_deref());
     }
 
     pub fn save_current_buffer(&mut self) {

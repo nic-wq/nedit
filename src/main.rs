@@ -297,12 +297,20 @@ fn diagnose_render(app: &mut App) -> anyhow::Result<()> {
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend)?;
     terminal.draw(|f| ui::render(f, app))?;
-    print_step("ratatui_test_render", start.elapsed(), "100x30");
+    print_step(
+        "ratatui_test_render",
+        start.elapsed(),
+        "100x30 plain-text first",
+    );
     let background_wait = wait_for_background_tasks(app);
     print_step(
         "render_background_wait",
         background_wait,
-        format!("syntax_loaded={}", app.syntax_set.is_some()),
+        format!(
+            "syntax_loaded={} syntax_pending={}",
+            app.syntax_set.is_some(),
+            app.syntax_set_receiver.is_some()
+        ),
     );
     println!();
     Ok(())
@@ -343,11 +351,15 @@ fn diagnose_lua_filesystem() -> anyhow::Result<()> {
 }
 
 fn wait_for_background_tasks(app: &mut App) -> Duration {
+    wait_for_background_tasks_inner(app, false)
+}
+
+fn wait_for_background_tasks_inner(app: &mut App, include_syntax: bool) -> Duration {
     let start = Instant::now();
     while app.explorer_refresh_receiver.is_some()
         || app.indexed_files_receiver.is_some()
         || app.content_search_receiver.is_some()
-        || app.syntax_set_receiver.is_some()
+        || (include_syntax && app.syntax_set_receiver.is_some())
     {
         app.poll_background_tasks();
         std::thread::sleep(Duration::from_millis(1));
@@ -383,7 +395,7 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     let app_start = Instant::now();
     let mut app = App::new(args);
     print_step(
-        "app_new",
+        "app_new_plain_text_ready",
         app_start.elapsed(),
         format!(
             "root={} buffers={} workspace={}",
@@ -395,9 +407,14 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
 
     let explorer_wait = wait_for_background_tasks(&mut app);
     print_step(
-        "background_after_startup",
+        "startup_background_wait",
         explorer_wait,
-        format!("explorer_items={}", app.explorer.items.len()),
+        format!(
+            "explorer_items={} syntax_loaded={} syntax_pending={}",
+            app.explorer.items.len(),
+            app.syntax_set.is_some(),
+            app.syntax_set_receiver.is_some()
+        ),
     );
 
     let config_ok = !app.config.theme.is_empty();
@@ -480,17 +497,20 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     println!();
 
     println!("== Syntax And Themes ==");
-    let mut syntax_app = App::new(args);
     let syntax_start = Instant::now();
-    syntax_app.ensure_syntax_set_loaded();
-    print_step("syntax_load_sync", syntax_start.elapsed(), "");
-    if let Some(syntax_set) = &syntax_app.syntax_set {
-        let syntax = syntax_set.find_syntax_by_extension("rs");
-        if syntax.is_none() {
-            anyhow::bail!("Syntax set incomplete");
-        }
-    } else {
-        anyhow::bail!("Syntax set failed to load");
+    let (syntax_set, syntax_source) = App::load_syntax_set_for_diagnostics();
+    print_step(
+        "syntax_fast_load",
+        syntax_start.elapsed(),
+        format!(
+            "source={} syntaxes={}",
+            syntax_source,
+            syntax_set.syntaxes().len()
+        ),
+    );
+    let syntax = syntax_set.find_syntax_by_extension("rs");
+    if syntax.is_none() {
+        anyhow::bail!("Syntax set incomplete");
     }
 
     let theme_start = Instant::now();

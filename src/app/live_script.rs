@@ -20,6 +20,7 @@ impl App {
         self.focus = Focus::Editor;
         self.is_welcome = false;
         self.is_fuzzy = false;
+        self.ensure_syntax_set_loading();
     }
 
     pub fn handle_fs_events(&mut self) {

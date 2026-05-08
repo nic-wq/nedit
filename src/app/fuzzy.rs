@@ -55,8 +55,20 @@ impl App {
 
     pub fn poll_background_tasks(&mut self) {
         if let Some(rx) = &self.syntax_set_receiver {
-            if let Ok(syntax_set) = rx.try_recv() {
-                self.syntax_set = Some(syntax_set);
+            let mut disconnected = false;
+            loop {
+                match rx.try_recv() {
+                    Ok(syntax_set) => {
+                        self.syntax_set = Some(syntax_set);
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        disconnected = true;
+                        break;
+                    }
+                }
+            }
+            if disconnected {
                 self.syntax_set_receiver = None;
             }
         }

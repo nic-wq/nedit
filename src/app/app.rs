@@ -1,7 +1,8 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use notify::{Config as NotifyConfig, RecommendedWatcher, Watcher};
 use ratatui::layout::Rect;
@@ -236,13 +237,30 @@ impl App {
         }
 
         let config_dir = Self::config_dir();
-        let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
-        let _ = builder.add_from_folder(config_dir.join("syntax"), true);
-        self.syntax_set = Some(builder.build());
+        self.syntax_set = Some(Self::load_cached_or_default_syntax_set(&config_dir).0);
     }
 
     pub fn ensure_syntax_set_loading(&mut self) {
-        if self.syntax_set.is_some() || self.syntax_set_receiver.is_some() {
+        self.start_syntax_set_loading(None);
+    }
+
+    pub fn ensure_syntax_for_path_loading(&mut self, path: Option<&Path>) {
+        let extension = path
+            .and_then(|path| path.extension())
+            .and_then(|extension| extension.to_str())
+            .map(str::to_string);
+
+        if let (Some(syntax_set), Some(extension)) = (&self.syntax_set, extension.as_deref()) {
+            if syntax_set.find_syntax_by_extension(extension).is_some() {
+                return;
+            }
+        }
+
+        self.start_syntax_set_loading(extension);
+    }
+
+    fn start_syntax_set_loading(&mut self, requested_extension: Option<String>) {
+        if self.syntax_set_receiver.is_some() {
             return;
         }
 
@@ -251,10 +269,128 @@ impl App {
         self.syntax_set_receiver = Some(rx);
 
         std::thread::spawn(move || {
-            let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
-            let _ = builder.add_from_folder(config_dir.join("syntax"), true);
-            let _ = tx.send(builder.build());
+            let defaults = Self::load_default_syntax_set();
+            let needs_custom = requested_extension
+                .as_deref()
+                .map(|extension| defaults.find_syntax_by_extension(extension).is_none())
+                .unwrap_or(false);
+            let _ = tx.send(defaults.clone());
+
+            if !needs_custom {
+                return;
+            }
+
+            if let Some(cached) = Self::load_cached_custom_syntax_set(&config_dir) {
+                let _ = tx.send(cached);
+                return;
+            }
+
+            if !Self::has_custom_syntax_files(&config_dir.join("syntax")) {
+                return;
+            }
+
+            let custom = Self::build_custom_syntax_set(defaults, &config_dir);
+            let _ = tx.send(custom);
         });
+    }
+
+    pub fn load_syntax_set_for_diagnostics() -> (SyntaxSet, &'static str) {
+        let config_dir = Self::config_dir();
+        Self::load_cached_or_default_syntax_set(&config_dir)
+    }
+
+    fn load_default_syntax_set() -> SyntaxSet {
+        SyntaxSet::load_defaults_nonewlines()
+    }
+
+    fn load_cached_or_default_syntax_set(config_dir: &Path) -> (SyntaxSet, &'static str) {
+        if let Some(cached) = Self::load_cached_custom_syntax_set(config_dir) {
+            return (cached, "custom-cache");
+        }
+
+        let defaults = Self::load_default_syntax_set();
+        if Self::has_custom_syntax_files(&config_dir.join("syntax")) {
+            (defaults, "defaults-custom-cache-missing")
+        } else {
+            (defaults, "defaults")
+        }
+    }
+
+    fn load_cached_custom_syntax_set(config_dir: &Path) -> Option<SyntaxSet> {
+        let cache_dir = config_dir.join("cache");
+        let cache_file = cache_dir.join("syntax_nonewlines.packdump");
+        let stamp_file = cache_dir.join("syntax_nonewlines.stamp");
+        let current_stamp = Self::custom_syntax_stamp(&config_dir.join("syntax"))?;
+        let cached_stamp = fs::read_to_string(stamp_file).ok()?;
+
+        if cached_stamp != current_stamp {
+            return None;
+        }
+
+        syntect::dumps::from_uncompressed_dump_file(cache_file).ok()
+    }
+
+    fn build_custom_syntax_set(defaults: SyntaxSet, config_dir: &Path) -> SyntaxSet {
+        let syntax_dir = config_dir.join("syntax");
+        let mut builder = defaults.into_builder();
+        let _ = builder.add_from_folder(&syntax_dir, false);
+        let syntax_set = builder.build();
+        Self::write_custom_syntax_cache(config_dir, &syntax_set);
+        syntax_set
+    }
+
+    fn write_custom_syntax_cache(config_dir: &Path, syntax_set: &SyntaxSet) {
+        let Some(stamp) = Self::custom_syntax_stamp(&config_dir.join("syntax")) else {
+            return;
+        };
+
+        let cache_dir = config_dir.join("cache");
+        if fs::create_dir_all(&cache_dir).is_err() {
+            return;
+        }
+
+        let cache_file = cache_dir.join("syntax_nonewlines.packdump");
+        let stamp_file = cache_dir.join("syntax_nonewlines.stamp");
+        if syntect::dumps::dump_to_uncompressed_file(syntax_set, &cache_file).is_ok() {
+            let _ = fs::write(stamp_file, stamp);
+        }
+    }
+
+    fn has_custom_syntax_files(syntax_dir: &Path) -> bool {
+        Self::custom_syntax_stamp(syntax_dir).is_some()
+    }
+
+    fn custom_syntax_stamp(syntax_dir: &Path) -> Option<String> {
+        let mut entries = Vec::new();
+        let read_dir = fs::read_dir(syntax_dir).ok()?;
+
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("sublime-syntax") {
+                continue;
+            }
+
+            let metadata = entry.metadata().ok()?;
+            let modified = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| format!("{}.{}", duration.as_secs(), duration.subsec_nanos()))
+                .unwrap_or_else(|| "unknown".to_string());
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_string();
+            entries.push(format!("{}:{}:{}", name, metadata.len(), modified));
+        }
+
+        if entries.is_empty() {
+            return None;
+        }
+
+        entries.sort();
+        Some(format!("v1-nonewlines\n{}", entries.join("\n")))
     }
 
     pub(crate) fn should_skip_dir_name(name: &str) -> bool {

@@ -69,10 +69,13 @@ pub fn render(f: &mut Frame, app: &mut App) {
         draw_welcome_screen(f, app, editor_chunks[1], &colors);
     } else if app.live_script_mode {
         app.ensure_current_theme_loaded();
-        app.ensure_syntax_set_loading();
 
         let target_idx = app.target_buffer_idx.unwrap_or(0);
         let script_idx = app.live_script_buffer_idx.unwrap_or(0);
+        let target_path = app.buffers.get(target_idx).and_then(|b| b.path.clone());
+        let script_path = app.buffers.get(script_idx).and_then(|b| b.path.clone());
+        app.ensure_syntax_for_path_loading(target_path.as_deref());
+        app.ensure_syntax_for_path_loading(script_path.as_deref());
 
         if target_idx < app.buffers.len() && script_idx < app.buffers.len() {
             let split_chunks = Layout::default()
@@ -126,7 +129,11 @@ pub fn render(f: &mut Frame, app: &mut App) {
         }
     } else if !app.buffers.is_empty() {
         app.ensure_current_theme_loaded();
-        app.ensure_syntax_set_loading();
+        let current_path = app
+            .buffers
+            .get(app.current_buffer_idx)
+            .and_then(|b| b.path.clone());
+        app.ensure_syntax_for_path_loading(current_path.as_deref());
 
         let buffer = &mut app.buffers[app.current_buffer_idx];
         let width = editor_chunks[1].width as usize;
