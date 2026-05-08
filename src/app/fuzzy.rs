@@ -54,6 +54,13 @@ impl App {
     }
 
     pub fn poll_background_tasks(&mut self) {
+        if let Some(rx) = &self.syntax_set_receiver {
+            if let Ok(syntax_set) = rx.try_recv() {
+                self.syntax_set = Some(syntax_set);
+                self.syntax_set_receiver = None;
+            }
+        }
+
         if let Some(rx) = &self.indexed_files_receiver {
             if let Ok(files) = rx.try_recv() {
                 self.all_files = std::sync::Arc::new(files);
@@ -118,7 +125,7 @@ impl App {
                         return true;
                     }
                     let name = e.file_name().to_string_lossy();
-                    !matches!(name.as_ref(), "proc" | "sys" | "dev" | "run")
+                    !Self::should_skip_dir_name(name.as_ref())
                 })
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::Arc;
 
 use notify::{Config as NotifyConfig, RecommendedWatcher, Watcher};
 use ratatui::layout::Rect;
@@ -54,6 +54,7 @@ pub struct App {
     pub target_buffer_idx: Option<usize>,
     pub watcher: Option<RecommendedWatcher>,
     pub fs_event_receiver: Receiver<notify::Result<notify::Event>>,
+    pub syntax_set_receiver: Option<Receiver<SyntaxSet>>,
     pub indexed_files_receiver: Option<Receiver<Vec<PathBuf>>>,
     pub explorer_refresh_receiver: Option<Receiver<(Vec<crate::explorer::FileItem>, usize)>>,
     pub content_search_receiver: Option<Receiver<(String, Vec<(PathBuf, usize, String)>)>>,
@@ -151,6 +152,7 @@ impl App {
             target_buffer_idx: None,
             watcher,
             fs_event_receiver: rx,
+            syntax_set_receiver: None,
             indexed_files_receiver: None,
             explorer_refresh_receiver: None,
             content_search_receiver: None,
@@ -239,12 +241,53 @@ impl App {
         self.syntax_set = Some(builder.build());
     }
 
+    pub fn ensure_syntax_set_loading(&mut self) {
+        if self.syntax_set.is_some() || self.syntax_set_receiver.is_some() {
+            return;
+        }
+
+        let config_dir = Self::config_dir();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.syntax_set_receiver = Some(rx);
+
+        std::thread::spawn(move || {
+            let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
+            let _ = builder.add_from_folder(config_dir.join("syntax"), true);
+            let _ = tx.send(builder.build());
+        });
+    }
+
+    pub(crate) fn should_skip_dir_name(name: &str) -> bool {
+        matches!(
+            name,
+            ".git"
+                | ".hg"
+                | ".svn"
+                | "target"
+                | "node_modules"
+                | "dist"
+                | "build"
+                | ".cache"
+                | ".next"
+                | ".nuxt"
+                | "vendor"
+                | "proc"
+                | "sys"
+                | "dev"
+                | "run"
+        )
+    }
+
     pub fn refresh_explorer(&mut self) {
         if self.explorer_refresh_receiver.is_some() {
             return;
         }
 
-        self.pending_explorer_selection = self.explorer.items.get(self.explorer.selected_idx).map(|i| i.path.clone());
+        self.pending_explorer_selection = self
+            .explorer
+            .items
+            .get(self.explorer.selected_idx)
+            .map(|i| i.path.clone());
 
         let (tx, rx) = std::sync::mpsc::channel();
         self.explorer_refresh_receiver = Some(rx);

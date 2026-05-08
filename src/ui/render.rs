@@ -69,7 +69,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
         draw_welcome_screen(f, app, editor_chunks[1], &colors);
     } else if app.live_script_mode {
         app.ensure_current_theme_loaded();
-        app.ensure_syntax_set_loaded();
+        app.ensure_syntax_set_loading();
 
         let target_idx = app.target_buffer_idx.unwrap_or(0);
         let script_idx = app.live_script_buffer_idx.unwrap_or(0);
@@ -126,7 +126,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
         }
     } else if !app.buffers.is_empty() {
         app.ensure_current_theme_loaded();
-        app.ensure_syntax_set_loaded();
+        app.ensure_syntax_set_loading();
 
         let buffer = &mut app.buffers[app.current_buffer_idx];
         let width = editor_chunks[1].width as usize;
@@ -206,8 +206,12 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         return;
     }
     let list_height = area.height.saturating_sub(2) as usize;
-    let scroll_offset = app.explorer.scroll_offset.min(app.explorer.items.len().saturating_sub(1));
-    let visible_items = &app.explorer.items[scroll_offset..((scroll_offset + list_height).min(app.explorer.items.len()))];
+    let scroll_offset = app
+        .explorer
+        .scroll_offset
+        .min(app.explorer.items.len().saturating_sub(1));
+    let visible_items = &app.explorer.items
+        [scroll_offset..((scroll_offset + list_height).min(app.explorer.items.len()))];
 
     let items: Vec<ListItem> = visible_items
         .iter()
@@ -291,19 +295,17 @@ fn draw_editor(
         None => return,
     };
 
-    let syntax_set = match app.syntax_set.as_ref() {
-        Some(syntax_set) => syntax_set,
-        None => return,
-    };
+    let syntax_set = app.syntax_set.as_ref();
+    let mut highlighter = syntax_set.map(|syntax_set| {
+        let syntax = buffer
+            .path
+            .as_ref()
+            .and_then(|p| p.extension())
+            .and_then(|e| syntax_set.find_syntax_by_extension(e.to_str().unwrap_or("")))
+            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
 
-    let syntax = buffer
-        .path
-        .as_ref()
-        .and_then(|p| p.extension())
-        .and_then(|e| syntax_set.find_syntax_by_extension(e.to_str().unwrap_or("")))
-        .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
-
-    let mut h = HighlightLines::new(syntax, theme);
+        HighlightLines::new(syntax, theme)
+    });
 
     let line_count = buffer.content.len_lines();
     let mut lines = Vec::new();
@@ -328,13 +330,26 @@ fn draw_editor(
         };
         spans.push(Span::styled(format!("{:3} ", i + 1), line_num_style));
 
-        let ranges: Vec<(syntect::highlighting::Style, &str)> =
-            h.highlight_line(&line_content, syntax_set).unwrap();
+        let ranges: Vec<(Color, &str)> =
+            if let (Some(highlighter), Some(syntax_set)) = (highlighter.as_mut(), syntax_set) {
+                highlighter
+                    .highlight_line(&line_content, syntax_set)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(s, text)| {
+                        (
+                            Color::Rgb(s.foreground.r, s.foreground.g, s.foreground.b),
+                            text,
+                        )
+                    })
+                    .collect()
+            } else {
+                vec![(colors.fg, line_content.as_str())]
+            };
         let mut char_offset = 0;
         let mut visual_col = 0;
 
-        for (s, text) in ranges {
-            let fg = Color::Rgb(s.foreground.r, s.foreground.g, s.foreground.b);
+        for (fg, text) in ranges {
             for c in text.chars() {
                 if visual_col >= buffer.scroll_col && visual_col < buffer.scroll_col + visible_width
                 {
@@ -378,9 +393,7 @@ fn draw_editor(
             }
         }
 
-        if i == buffer.cursor_row
-            && !buffer.autocomplete_options.is_empty()
-        {
+        if i == buffer.cursor_row && !buffer.autocomplete_options.is_empty() {
             if let Some(opt) = buffer.autocomplete_options.get(buffer.autocomplete_idx) {
                 let prefix = buffer.get_current_word_prefix();
                 if opt.starts_with(&prefix) {
@@ -399,7 +412,6 @@ fn draw_editor(
     }
 
     f.render_widget(Paragraph::new(lines).bg(colors.bg), area);
-
 
     if is_focused && app.focus == Focus::Editor {
         let cursor_x = area.x + 4 + buffer.cursor_col.saturating_sub(buffer.scroll_col) as u16;
@@ -655,9 +667,15 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             .unwrap_or_default();
         Paragraph::new(Line::from(vec![
             Span::styled(" 󰆴 ", Style::default().fg(colors.error)),
-            Span::styled("Confirm Delete: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Confirm Delete: ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(path_str),
-            Span::styled(" (Enter: Confirm, Esc: Cancel)", Style::default().fg(colors.surface)),
+            Span::styled(
+                " (Enter: Confirm, Esc: Cancel)",
+                Style::default().fg(colors.surface),
+            ),
         ]))
     } else {
         Paragraph::new(Line::from(vec![

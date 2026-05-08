@@ -11,12 +11,8 @@ use crate::buffer::EditorBuffer;
 use super::App;
 
 impl App {
-    pub(crate) fn watch_mode_for_path(path: &Path) -> RecursiveMode {
-        if path.parent().is_none() {
-            RecursiveMode::NonRecursive
-        } else {
-            RecursiveMode::Recursive
-        }
+    pub(crate) fn watch_mode_for_path(_path: &Path) -> RecursiveMode {
+        RecursiveMode::NonRecursive
     }
 
     pub fn open_file(&mut self, path: PathBuf) {
@@ -235,8 +231,14 @@ impl App {
             } else {
                 self.current_buffer_idx = self.current_buffer_idx.min(self.buffers.len() - 1);
                 if self.live_script_mode {
-                    let script_valid = self.live_script_buffer_idx.map(|idx| idx < self.buffers.len()).unwrap_or(false);
-                    let target_valid = self.target_buffer_idx.map(|idx| idx < self.buffers.len()).unwrap_or(false);
+                    let script_valid = self
+                        .live_script_buffer_idx
+                        .map(|idx| idx < self.buffers.len())
+                        .unwrap_or(false);
+                    let target_valid = self
+                        .target_buffer_idx
+                        .map(|idx| idx < self.buffers.len())
+                        .unwrap_or(false);
                     if !script_valid || !target_valid {
                         self.live_script_mode = false;
                         self.live_script_buffer_idx = None;
