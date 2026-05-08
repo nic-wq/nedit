@@ -45,3 +45,42 @@ jobs:
         name: ${{ matrix.artifact_name }}
         path: |
           target/release/${{ matrix.asset_name }}
+
+  release:
+    name: Nightly Release
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nedit-linux
+          path: ./linux
+
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nedit-windows
+          path: ./windows
+
+      - name: Prepare Binaries
+        run: |
+          mv ./linux/nedit ./nedit_linux
+          mv ./windows/nedit.exe ./nedit_windows.exe
+          chmod +x ./nedit_linux
+
+      - name: Release Nightly
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly Build
+          body: "Automated Real-time build. Contains the latest commits from the main branch. Use at your own risk."
+          prerelease: true
+          files: |
+            nedit_linux
+            nedit_windows.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

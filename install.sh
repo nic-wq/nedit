@@ -3,40 +3,43 @@
 REPO="nic-wq/nedit"
 BINARY_NAME="nedit_linux"
 INSTALL_PATH="/usr/local/bin/nedit"
-# Initialize variable to decide whether to accept pre-releases
-UNSTABLE=false
+
+# Initialize variables
+REAL_TIME=false
+
 # 1. Process arguments (flags)
 for arg in "$@"; do
     case $arg in
+        --real-time)
+            REAL_TIME=true
+            shift
+            ;;
         --unstable)
-            UNSTABLE=true
+            echo "Warning: --unstable is deprecated. Redirecting to --real-time channel."
+            REAL_TIME=true
             shift
             ;;
     esac
 done
-echo "Fetching latest version..."
-# 2. Define GitHub API URL
-# If unstable is true, fetch the first release from the general list (may be a pre-release)
-# Otherwise, use the 'latest' endpoint which guarantees a stable release
-if [ "$UNSTABLE" = true ]; then
-    echo "UNSTABLE mode enabled: Including pre-releases in search."
-    API_URL="https://api.github.com/repos/$REPO/releases"
-    # From the list endpoint, grab the first item containing the desired binary
-    DOWNLOAD_URL=$(curl -s "$API_URL" | \
-                   grep "browser_download_url" | \
-                   grep "$BINARY_NAME" | \
-                   head -n 1 | \
-                   cut -d '"' -f 4)
+
+echo "Fetching NEdit..."
+
+# 2. Define Download URL
+if [ "$REAL_TIME" = true ]; then
+    echo "Installing NEdit Real-time (Bleeding Edge)..."
+    DOWNLOAD_URL="https://github.com/$REPO/releases/download/nightly/nedit_linux"
 else
+    echo "Fetching latest stable version..."
     API_URL="https://api.github.com/repos/$REPO/releases/latest"
     DOWNLOAD_URL=$(curl -s "$API_URL" | \
                    grep "browser_download_url" | \
                    grep "$BINARY_NAME" | \
                    cut -d '"' -f 4)
 fi
+
 # Validate whether the URL was extracted correctly
 if [ -z "$DOWNLOAD_URL" ]; then
-    echo "Error: Could not locate $BINARY_NAME in repository $REPO."
+    echo "Error: Could not locate $BINARY_NAME. Please check your internet connection or repository $REPO."
     exit 1
 fi
 # 3. Download the binary
