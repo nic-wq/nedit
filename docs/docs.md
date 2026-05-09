@@ -15,7 +15,7 @@ You can open files or directories directly from your terminal:
 ### General
 - `CTRL + Q` : Quit
 - `CTRL + E` : Toggle Explorer
-- `CTRL + B` : Fuzzy Finder (Files)
+- `CTRL + O` : Fuzzy Finder (Files)
 - `CTRL + P` : Command Palette
 - `CTRL + F` : Local Search (Current file)
 - `CTRL + G` : Global Search (All files)
@@ -51,6 +51,7 @@ You can open files or directories directly from your terminal:
   - General docs (this file)
   - Lua API docs
   - Keyboard shortcuts
+- **Dynamic Search**: Global search (`CTRL+G`), File Finder (`CTRL+O`), and Local Search (`CTRL+F`) now support dynamic result loading. Instead of a fixed limit, more results are searched and displayed automatically as you scroll down the result list.
 - **Global Config**: All settings in `~/.config/nedit/`.
 - **Dynamic Themes**: Switch themes in real-time.
 - **Translation**: 100% controlled by `language.toml`.

@@ -61,6 +61,7 @@ pub struct App {
     pub content_search_receiver: Option<Receiver<(String, Vec<(PathBuf, usize, String)>)>>,
     pub explorer_area: Rect,
     pub editor_area: Rect,
+    pub fuzzy_limit: usize,
 }
 
 impl App {
@@ -159,6 +160,7 @@ impl App {
             content_search_receiver: None,
             explorer_area: Rect::default(),
             editor_area: Rect::default(),
+            fuzzy_limit: 20,
         };
 
         if let Some(watcher) = &mut app.watcher {

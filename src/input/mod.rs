@@ -364,6 +364,9 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         app.apply_theme(theme.clone());
                     }
                 }
+                if app.fuzzy_idx + 5 >= max && max >= app.fuzzy_limit {
+                    app.load_more_fuzzy();
+                }
             }
         }
         KeyCode::Enter => {
@@ -392,7 +395,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                             app.fuzzy_mode = crate::app::FuzzyMode::Move;
                             app.move_dir = item.path.parent().map(|p| p.to_path_buf());
                             app.fuzzy_query.clear();
-                            app.update_fuzzy();
+                            app.update_fuzzy(true);
                         }
                         "Delete" => {
                             app.fuzzy_mode = crate::app::FuzzyMode::DeleteConfirm;
@@ -536,11 +539,11 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                             .map(|p| p.to_path_buf())
                         {
                             app.move_dir = Some(parent);
-                            app.update_fuzzy();
+                            app.update_fuzzy(true);
                         }
                     } else if path.is_dir() {
                         app.move_dir = Some(path);
-                        app.update_fuzzy();
+                        app.update_fuzzy(true);
                     }
                 }
                 return;
@@ -747,11 +750,11 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char(c) => {
             app.fuzzy_query.push(c);
-            app.update_fuzzy();
+            app.update_fuzzy(true);
         }
         KeyCode::Backspace => {
             app.fuzzy_query.pop();
-            app.update_fuzzy();
+            app.update_fuzzy(true);
         }
         _ => {}
     }

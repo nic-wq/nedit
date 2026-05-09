@@ -13,6 +13,7 @@ impl App {
             self.is_fuzzy = true;
             self.fuzzy_mode = mode;
             self.fuzzy_query.clear();
+            self.fuzzy_limit = 20;
 
             if mode == FuzzyMode::SaveAs && !self.buffers.is_empty() {
                 let content = self.buffers[self.current_buffer_idx].content.to_string();
@@ -33,7 +34,7 @@ impl App {
             if matches!(mode, FuzzyMode::Files | FuzzyMode::Content) {
                 self.ensure_all_files_collected();
             }
-            self.update_fuzzy();
+            self.update_fuzzy(true);
         }
     }
 
@@ -78,7 +79,7 @@ impl App {
                 self.all_files = std::sync::Arc::new(files);
                 self.all_files_ready = true;
                 self.indexed_files_receiver = None;
-                self.update_fuzzy();
+                self.update_fuzzy(true);
             }
         }
         if let Some(rx) = &self.explorer_refresh_receiver {
@@ -111,7 +112,7 @@ impl App {
                 } else {
                     // The query changed while we were searching.
                     // Trigger a new search for the current query.
-                    self.update_fuzzy();
+                    self.update_fuzzy(true);
                 }
             }
         }
@@ -147,10 +148,18 @@ impl App {
         });
     }
 
-    pub fn update_fuzzy(&mut self) {
+    pub fn load_more_fuzzy(&mut self) {
+        self.fuzzy_limit += 50;
+        self.update_fuzzy(false);
+    }
+
+    pub fn update_fuzzy(&mut self, reset_idx: bool) {
         let query = self.fuzzy_query.to_lowercase();
         if query.is_empty() && self.fuzzy_mode == FuzzyMode::Content {
             self.fuzzy_results = Vec::new();
+            if reset_idx {
+                self.fuzzy_idx = 0;
+            }
             return;
         }
 
@@ -184,7 +193,9 @@ impl App {
                 .filter(|c| query.is_empty() || c.to_lowercase().contains(&query))
                 .map(PathBuf::from)
                 .collect();
-            self.fuzzy_idx = 0;
+            if reset_idx {
+                self.fuzzy_idx = 0;
+            }
             return;
         }
 
@@ -203,7 +214,9 @@ impl App {
                 .filter(|name| query.is_empty() || name.to_lowercase().contains(&query))
                 .map(PathBuf::from)
                 .collect();
-            self.fuzzy_idx = 0;
+            if reset_idx {
+                self.fuzzy_idx = 0;
+            }
             return;
         }
 
@@ -357,7 +370,7 @@ impl App {
                         curr.is_none()
                     })
                     .cloned()
-                    .take(20)
+                    .take(self.fuzzy_limit)
                     .collect();
             } else if self.fuzzy_mode == FuzzyMode::Content {
                 // Background search with debouncing logic would be better,
@@ -370,6 +383,7 @@ impl App {
                     let query_for_thread = query.clone();
                     let query_for_search = query.clone();
 
+                    let limit = self.fuzzy_limit;
                     std::thread::spawn(move || {
                         let mut results = Vec::new();
                         let mut count = 0;
@@ -379,13 +393,13 @@ impl App {
                                     if line.to_lowercase().contains(&query_for_search) {
                                         results.push((path.clone(), i, line.to_string()));
                                         count += 1;
-                                        if count >= 20 {
+                                        if count >= limit {
                                             break;
                                         }
                                     }
                                 }
                             }
-                            if count >= 20 {
+                            if count >= limit {
                                 break;
                             }
                         }
@@ -403,7 +417,7 @@ impl App {
                     if query.is_empty() || line.to_lowercase().contains(&query) {
                         self.fuzzy_lines.push((i, line));
                     }
-                    if self.fuzzy_lines.len() >= 20 {
+                    if self.fuzzy_lines.len() >= self.fuzzy_limit {
                         break;
                     }
                 }
@@ -419,10 +433,14 @@ impl App {
                 .collect();
         }
 
-        self.fuzzy_idx = 0;
+        if reset_idx {
+            self.fuzzy_idx = 0;
+        }
 
         if self.fuzzy_mode == FuzzyMode::Themes && !self.fuzzy_themes.is_empty() {
-            self.current_theme = self.fuzzy_themes[0].clone();
+            if self.fuzzy_idx < self.fuzzy_themes.len() {
+                self.current_theme = self.fuzzy_themes[self.fuzzy_idx].clone();
+            }
         }
     }
 }

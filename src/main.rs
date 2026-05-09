@@ -541,7 +541,7 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     let content_start = Instant::now();
     app.fuzzy_mode = FuzzyMode::Content;
     app.fuzzy_query = "fn".to_string();
-    app.update_fuzzy();
+    app.update_fuzzy(true);
     let content_kick = content_start.elapsed();
     let content_wait = wait_for_background_tasks(&mut app);
     print_step("content_search_kick", content_kick, "");
