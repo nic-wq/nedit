@@ -992,6 +992,7 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
             return true;
         }
         "Open Live Script" => app.open_live_script(),
+        "Undo Last Script" => app.undo_last_script(),
         "Quit" => app.should_quit = true,
         "Undo" => {
             if let Some(buf) = app.buffers.get_mut(app.current_buffer_idx) {
@@ -1043,6 +1044,8 @@ fn apply_lua_actions(app: &mut App, actions: Vec<crate::lua::LuaAction>) {
         app.current_buffer_idx
     };
 
+    let mut reverts = Vec::new();
+
     for action in actions {
         match action {
             crate::lua::LuaAction::WriteSelection(text) => {
@@ -1054,6 +1057,11 @@ fn apply_lua_actions(app: &mut App, actions: Vec<crate::lua::LuaAction>) {
                         );
                         continue;
                     }
+                    reverts.push(crate::lua::RevertAction::RestoreBufferContent {
+                        buffer_idx: target_idx,
+                        content: buf.content.to_string(),
+                        cursor: (buf.cursor_row, buf.cursor_col),
+                    });
                     buf.delete_selection();
                     for c in text.chars() {
                         buf.insert_char(c);
@@ -1073,22 +1081,49 @@ fn apply_lua_actions(app: &mut App, actions: Vec<crate::lua::LuaAction>) {
                     }
                 }
                 if let Some(buf) = app.buffers.get_mut(target_idx) {
+                    reverts.push(crate::lua::RevertAction::RestoreBufferContent {
+                        buffer_idx: target_idx,
+                        content: buf.content.to_string(),
+                        cursor: (buf.cursor_row, buf.cursor_col),
+                    });
                     buf.content = ropey::Rope::from_str(&text);
                     buf.cursor_row = 0;
                     buf.cursor_col = 0;
                 }
             }
             crate::lua::LuaAction::WriteFile(path, text) => {
+                let prev_content = std::fs::read_to_string(&path).ok();
+                reverts.push(crate::lua::RevertAction::RestoreFile {
+                    path: path.clone(),
+                    content: prev_content,
+                });
                 let _ = std::fs::write(&path, text);
             }
             crate::lua::LuaAction::CreateFile(path, text) => {
+                let prev_content = std::fs::read_to_string(&path).ok();
+                reverts.push(crate::lua::RevertAction::RestoreFile {
+                    path: path.clone(),
+                    content: prev_content,
+                });
                 let _ = std::fs::write(&path, text);
             }
             crate::lua::LuaAction::DeleteFile(path) => {
-                let _ = std::fs::remove_file(&path);
+                let prev_content = std::fs::read_to_string(&path).ok();
+                if let Some(content) = prev_content {
+                    reverts.push(crate::lua::RevertAction::RestoreFile {
+                        path: path.clone(),
+                        content: Some(content),
+                    });
+                    let _ = std::fs::remove_file(&path);
+                }
             }
         }
     }
+
+    if !reverts.is_empty() {
+        app.last_script_undo = Some(crate::lua::ScriptUndo { actions: reverts });
+    }
+
     app.refresh_explorer();
 }
 

@@ -179,6 +179,7 @@ impl App {
                 "Edit Lua Script",
                 "Delete Lua Script",
                 "Open Live Script",
+                "Undo Last Script",
                 "Quit",
                 "Undo",
                 "Redo",

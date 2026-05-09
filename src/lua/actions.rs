@@ -20,3 +20,21 @@ impl LuaAction {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub enum RevertAction {
+    RestoreBufferContent {
+        buffer_idx: usize,
+        content: String,
+        cursor: (usize, usize),
+    },
+    RestoreFile {
+        path: PathBuf,
+        content: Option<String>, // None means delete the file (if it was created by script)
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct ScriptUndo {
+    pub actions: Vec<RevertAction>,
+}

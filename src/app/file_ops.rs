@@ -494,4 +494,51 @@ impl App {
             }
         }
     }
+
+    pub fn undo_last_script(&mut self) {
+        let Some(undo) = self.last_script_undo.take() else {
+            self.show_notification(
+                "No script action to undo".to_string(),
+                NotificationType::Info,
+            );
+            return;
+        };
+
+        for revert in undo.actions.into_iter().rev() {
+            match revert {
+                crate::lua::RevertAction::RestoreBufferContent {
+                    buffer_idx,
+                    content: old_content,
+                    cursor,
+                } => {
+                    if let Some(buf) = self.buffers.get_mut(buffer_idx) {
+                        buf.content = ropey::Rope::from_str(&old_content);
+                        buf.cursor_row = cursor.0;
+                        buf.cursor_col = cursor.1;
+                        buf.selection_start = None;
+                    }
+                }
+                crate::lua::RevertAction::RestoreFile { path, content: old_content } => {
+                    if let Some(actual_content) = old_content {
+                        let _ = std::fs::write(&path, &actual_content);
+                        // Update any open buffers with this path
+                        for buf in &mut self.buffers {
+                            if buf.path.as_ref() == Some(&path) {
+                                buf.content = ropey::Rope::from_str(&actual_content);
+                                buf.modified = false;
+                            }
+                        }
+                    } else {
+                        let _ = std::fs::remove_file(&path);
+                        self.close_buffers_for_path(&path);
+                    }
+                }
+            }
+        }
+        self.show_notification(
+            "Last script action undone".to_string(),
+            NotificationType::Info,
+        );
+        self.refresh_explorer();
+    }
 }

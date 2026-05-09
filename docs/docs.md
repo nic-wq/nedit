@@ -40,6 +40,7 @@ You can open files or directories directly from your terminal:
 ### Features
 - **Workspaces**: Save your open tabs and root directory. Access via `CTRL+ALT+W`. Use `CTRL+X` in the menu to delete. The current workspace is displayed in the bottom-right corner of the status bar.
 - **Lua Scripts**: Automate the editor! Any `.lua` file in `~/.config/nedit/scripts/` is automatically a script. Name your script file descriptively (e.g. `REFACTOR_CLASS.lua`). Optionally, add `-- My Display Name` as the **first line** to show a friendly name in the menu instead of the filename. Run via `CTRL+P` → **Run Lua Script**.
+  - **Undo Last Script**: Did a script do something unexpected? Use `CTRL+P` → **Undo Last Script** to revert all changes made by the last script execution (including file writes, creations, and deletions).
   - **Edit Script**: Use `CTRL+P` → **Edit Lua Script** to open and edit a script file.
   - **Delete Script**: Use `CTRL+P` → **Delete Lua Script** to remove a script.
   - **Self-Protection**: Scripts cannot modify themselves. Use `Edit Lua Script` to edit a script.

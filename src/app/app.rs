@@ -61,6 +61,7 @@ pub struct App {
     pub explorer_area: Rect,
     pub editor_area: Rect,
     pub fuzzy_limit: usize,
+    pub last_script_undo: Option<crate::lua::ScriptUndo>,
 }
 
 impl App {
@@ -159,6 +160,7 @@ impl App {
             explorer_area: Rect::default(),
             editor_area: Rect::default(),
             fuzzy_limit: 20,
+            last_script_undo: None,
         };
 
         if let Some(watcher) = &mut app.watcher {

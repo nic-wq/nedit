@@ -850,6 +850,8 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                                 "Run Lua Script" => "󰐊 ",
                                 "Edit Lua Script" => "󰏫 ",
                                 "Delete Lua Script" => "󰆴 ",
+                                "Open Live Script" => "󰢱 ",
+                                "Undo Last Script" => "󰕌 ",
                                 "Quit" => "󰈆 ",
                                 "Undo" => "󰕌 ",
                                 "Redo" => "󰕍 ",
