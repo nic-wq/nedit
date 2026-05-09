@@ -20,7 +20,6 @@ pub enum FuzzyMode {
     CommandPalette,
     Move,
     RunScript,
-    ScriptConfirm,
     EditScript,
     DeleteScript,
     DocSelect,

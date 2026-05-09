@@ -351,7 +351,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::CommandPalette => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::Move => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::RunScript => app.fuzzy_results.len(),
-                crate::app::FuzzyMode::ScriptConfirm => app.pending_lua_actions.len(),
                 crate::app::FuzzyMode::EditScript => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::DeleteScript => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::DocSelect => app.fuzzy_results.len(),
@@ -551,33 +550,38 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 if let Some(script_path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
                     match std::fs::read_to_string(&script_path) {
                         Ok(script) => {
-                            let cur_buf = &app.buffers[app.current_buffer_idx];
-                            let ctx = crate::lua::LuaContext {
-                                current_file: cur_buf
-                                    .path
-                                    .as_ref()
-                                    .map(|p| p.to_string_lossy().to_string())
-                                    .unwrap_or_default(),
-                                current_content: cur_buf.content.to_string(),
-                                current_selection: cur_buf.get_selected_text().unwrap_or_default(),
-                                current_dir: app.explorer.root.clone(),
-                                is_live_script: false,
+                            let (ctx, cur_path) = if let Some(cur_buf) = app.buffers.get(app.current_buffer_idx) {
+                                (crate::lua::LuaContext {
+                                    current_file: cur_buf
+                                        .path
+                                        .as_ref()
+                                        .map(|p| p.to_string_lossy().to_string())
+                                        .unwrap_or_default(),
+                                    current_content: cur_buf.content.to_string(),
+                                    current_selection: cur_buf.get_selected_text().unwrap_or_default(),
+                                    current_dir: app.explorer.root.clone(),
+                                    is_live_script: false,
+                                }, &cur_buf.path)
+                            } else {
+                                (crate::lua::LuaContext {
+                                    current_file: String::new(),
+                                    current_content: String::new(),
+                                    current_selection: String::new(),
+                                    current_dir: app.explorer.root.clone(),
+                                    is_live_script: false,
+                                }, &None)
                             };
-                            match crate::lua::run_script(&script, ctx, &cur_buf.path) {
+                            match crate::lua::run_script(&script, ctx, cur_path) {
                                 Ok(actions) => {
                                     if actions.is_empty() {
                                         app.show_notification(
                                             "Script did not perform any action".to_string(),
                                             crate::app::NotificationType::Info,
                                         );
-                                        app.is_fuzzy = false;
-                                        return;
+                                    } else {
+                                        apply_lua_actions(app, actions);
                                     }
-                                    app.pending_lua_actions = actions;
-                                    app.is_fuzzy = true;
-                                    app.fuzzy_mode = crate::app::FuzzyMode::ScriptConfirm;
-                                    app.fuzzy_query.clear();
-                                    app.fuzzy_idx = 0;
+                                    app.is_fuzzy = false;
                                 }
                                 Err(err) => {
                                     let mut err_buf = crate::buffer::EditorBuffer::new();
@@ -661,11 +665,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         app.refresh_explorer();
                     }
                 }
-                app.is_fuzzy = false;
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::ScriptConfirm {
-                let actions = std::mem::take(&mut app.pending_lua_actions);
-                apply_lua_actions(app, actions);
                 app.is_fuzzy = false;
                 return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::SaveAs {

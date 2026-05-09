@@ -614,7 +614,6 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
         FuzzyMode::RunScript => format!(" 󰢱  Run Lua Script "),
-        FuzzyMode::ScriptConfirm => format!(" 󰢱  Confirm Actions (Enter to Apply, Esc to Cancel) "),
         FuzzyMode::EditScript => format!(" 󰝎  Edit Lua Script "),
         FuzzyMode::DeleteScript => format!(" 󰆴  Delete Lua Script "),
         FuzzyMode::DocSelect => format!(" 󰈔  Select Documentation "),
@@ -776,31 +775,6 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                             "  "
                         };
                         ListItem::new(format!(" {} {}", indicator, theme_name)).style(style)
-                    })
-                    .collect()
-            }
-        } else if app.fuzzy_mode == FuzzyMode::ScriptConfirm {
-            let actions = &app.pending_lua_actions;
-            if actions.is_empty() {
-                vec![ListItem::new(" (No actions — script ran with no changes)")
-                    .style(Style::default().fg(colors.surface))]
-            } else {
-                let safe_start = start_idx.min(actions.len().saturating_sub(1));
-                let end_idx = (safe_start + list_height).min(actions.len());
-                actions[safe_start..end_idx]
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, action)| {
-                        let i = safe_start + idx;
-                        let style = if i == app.fuzzy_idx {
-                            Style::default()
-                                .bg(colors.sel)
-                                .fg(colors.accent)
-                                .add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(colors.fg)
-                        };
-                        ListItem::new(format!(" 󰢱  {}", action.description())).style(style)
                     })
                     .collect()
             }
