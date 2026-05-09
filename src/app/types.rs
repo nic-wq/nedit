@@ -24,6 +24,8 @@ pub enum FuzzyMode {
     DeleteScript,
     DocSelect,
     NewFolder,
+    ScriptMenu,
+    ScriptInput,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

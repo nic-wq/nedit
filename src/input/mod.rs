@@ -355,6 +355,8 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::DeleteScript => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::DocSelect => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::NewFolder => 0,
+                crate::app::FuzzyMode::ScriptMenu => app.fuzzy_results.len(),
+                crate::app::FuzzyMode::ScriptInput => 0,
             };
             if max > 0 && app.fuzzy_idx < max - 1 {
                 app.fuzzy_idx += 1;
@@ -571,28 +573,8 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                                     is_live_script: false,
                                 }, &None)
                             };
-                            match crate::lua::run_script(&script, ctx, cur_path) {
-                                Ok(actions) => {
-                                    if actions.is_empty() {
-                                        app.show_notification(
-                                            "Script did not perform any action".to_string(),
-                                            crate::app::NotificationType::Info,
-                                        );
-                                    } else {
-                                        apply_lua_actions(app, actions);
-                                    }
-                                    app.is_fuzzy = false;
-                                }
-                                Err(err) => {
-                                    let mut err_buf = crate::buffer::EditorBuffer::new();
-                                    err_buf.content =
-                                        ropey::Rope::from_str(&format!("Lua Error:\n{}", err));
-                                    err_buf.is_read_only = true;
-                                    app.buffers.push(err_buf);
-                                    app.current_buffer_idx = app.buffers.len() - 1;
-                                    app.is_fuzzy = false;
-                                }
-                            }
+                            app.start_script(script, ctx, cur_path.clone());
+                            app.is_fuzzy = false;
                         }
                         Err(err) => {
                             let mut err_buf = crate::buffer::EditorBuffer::new();
@@ -635,6 +617,20 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     }
                     app.is_fuzzy = false;
                 }
+                return;
+            } else if app.fuzzy_mode == crate::app::FuzzyMode::ScriptInput {
+                let response = app.fuzzy_query.clone();
+                if let Some(tx) = &app.script_response_tx {
+                    let _ = tx.send(crate::lua::ScriptResponse::Prompt(response));
+                }
+                app.is_fuzzy = false;
+                return;
+            } else if app.fuzzy_mode == crate::app::FuzzyMode::ScriptMenu {
+                let response = app.fuzzy_results.get(app.fuzzy_idx).map(|p| p.to_string_lossy().to_string());
+                if let Some(tx) = &app.script_response_tx {
+                    let _ = tx.send(crate::lua::ScriptResponse::Menu(response));
+                }
+                app.is_fuzzy = false;
                 return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::DocSelect {
                 if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx) {
@@ -1033,99 +1029,6 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
     false
 }
 
-fn apply_lua_actions(app: &mut App, actions: Vec<crate::lua::LuaAction>) {
-    if actions.is_empty() {
-        return;
-    }
-
-    let target_idx = if app.live_script_mode {
-        app.target_buffer_idx.unwrap_or(app.current_buffer_idx)
-    } else {
-        app.current_buffer_idx
-    };
-
-    let mut reverts = Vec::new();
-
-    for action in actions {
-        match action {
-            crate::lua::LuaAction::WriteSelection(text) => {
-                if let Some(buf) = app.buffers.get_mut(target_idx) {
-                    if buf.selection_start.is_none() {
-                        app.show_notification(
-                            "Error: write_selection requires selected text.".to_string(),
-                            crate::app::NotificationType::Error,
-                        );
-                        continue;
-                    }
-                    reverts.push(crate::lua::RevertAction::RestoreBufferContent {
-                        buffer_idx: target_idx,
-                        content: buf.content.to_string(),
-                        cursor: (buf.cursor_row, buf.cursor_col),
-                    });
-                    buf.delete_selection();
-                    for c in text.chars() {
-                        buf.insert_char(c);
-                    }
-                }
-            }
-            crate::lua::LuaAction::WriteCurrentFile(text) => {
-                if app.live_script_mode {
-                    if let Some(target_buf) = app.buffers.get(target_idx) {
-                        if target_buf.path.is_none() {
-                            app.show_notification(
-                                "Error: target file has no path".to_string(),
-                                crate::app::NotificationType::Error,
-                            );
-                            continue;
-                        }
-                    }
-                }
-                if let Some(buf) = app.buffers.get_mut(target_idx) {
-                    reverts.push(crate::lua::RevertAction::RestoreBufferContent {
-                        buffer_idx: target_idx,
-                        content: buf.content.to_string(),
-                        cursor: (buf.cursor_row, buf.cursor_col),
-                    });
-                    buf.content = ropey::Rope::from_str(&text);
-                    buf.cursor_row = 0;
-                    buf.cursor_col = 0;
-                }
-            }
-            crate::lua::LuaAction::WriteFile(path, text) => {
-                let prev_content = std::fs::read_to_string(&path).ok();
-                reverts.push(crate::lua::RevertAction::RestoreFile {
-                    path: path.clone(),
-                    content: prev_content,
-                });
-                let _ = std::fs::write(&path, text);
-            }
-            crate::lua::LuaAction::CreateFile(path, text) => {
-                let prev_content = std::fs::read_to_string(&path).ok();
-                reverts.push(crate::lua::RevertAction::RestoreFile {
-                    path: path.clone(),
-                    content: prev_content,
-                });
-                let _ = std::fs::write(&path, text);
-            }
-            crate::lua::LuaAction::DeleteFile(path) => {
-                let prev_content = std::fs::read_to_string(&path).ok();
-                if let Some(content) = prev_content {
-                    reverts.push(crate::lua::RevertAction::RestoreFile {
-                        path: path.clone(),
-                        content: Some(content),
-                    });
-                    let _ = std::fs::remove_file(&path);
-                }
-            }
-        }
-    }
-
-    if !reverts.is_empty() {
-        app.last_script_undo = Some(crate::lua::ScriptUndo { actions: reverts });
-    }
-
-    app.refresh_explorer();
-}
 
 fn handle_run_live_script(app: &mut App) {
     if !app.live_script_mode {
@@ -1157,7 +1060,7 @@ fn handle_run_live_script(app: &mut App) {
 
     let target_path = target_buf.path.clone();
 
-    match crate::lua::run_script(&script, ctx, &target_path) {
+    match crate::lua::run_script_no_interactive(&script, ctx, &target_path) {
         Ok(actions) => {
             if actions.is_empty() {
                 app.show_notification(
@@ -1166,7 +1069,7 @@ fn handle_run_live_script(app: &mut App) {
                 );
                 return;
             }
-            apply_lua_actions(app, actions);
+            app.apply_lua_actions(actions);
             app.show_notification(
                 "Script executed successfully".to_string(),
                 crate::app::NotificationType::Info,

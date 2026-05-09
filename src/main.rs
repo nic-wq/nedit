@@ -335,7 +335,7 @@ fn diagnose_lua_filesystem() -> anyhow::Result<()> {
     };
 
     let start = Instant::now();
-    let actions = lua::run_script(script, ctx, &None).map_err(|e| anyhow::anyhow!(e))?;
+    let actions = lua::run_script_no_interactive(script, ctx, &None).map_err(|e| anyhow::anyhow!(e))?;
     fs::remove_dir_all(&dir)?;
     let ok = actions.len() == 2;
     print_step(
@@ -468,7 +468,7 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
         current_dir: std::env::current_dir()?,
         is_live_script: false,
     };
-    match lua::run_script(test_script, lua_ctx, &None) {
+    match lua::run_script_no_interactive(test_script, lua_ctx, &None) {
         Ok(actions) => {
             print_step(
                 "lua_smoke",
@@ -586,6 +586,7 @@ fn main() -> anyhow::Result<()> {
     loop {
         app.handle_fs_events();
         app.poll_background_tasks();
+        app.poll_script_messages();
         terminal.draw(|f| ui::render(f, &mut app))?;
 
         if let Err(e) = input::handle_events(&mut app) {

@@ -1,4 +1,5 @@
 mod app;
+mod scripting;
 mod file_ops;
 mod fuzzy;
 mod live_script;

@@ -2,6 +2,6 @@ mod actions;
 mod context;
 mod lua;
 
-pub use actions::{LuaAction, RevertAction, ScriptUndo};
+pub use actions::{LuaAction, RevertAction, ScriptUndo, ScriptRequest, ScriptResponse};
 pub use context::LuaContext;
-pub use lua::run_script;
+pub use lua::{run_script, run_script_no_interactive};

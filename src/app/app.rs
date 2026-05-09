@@ -62,6 +62,10 @@ pub struct App {
     pub editor_area: Rect,
     pub fuzzy_limit: usize,
     pub last_script_undo: Option<crate::lua::ScriptUndo>,
+    pub script_request: Option<crate::lua::ScriptRequest>,
+    pub script_response_tx: Option<std::sync::mpsc::Sender<crate::lua::ScriptResponse>>,
+    pub script_request_rx: Option<std::sync::mpsc::Receiver<crate::lua::ScriptRequest>>,
+    pub script_action_rx: Option<std::sync::mpsc::Receiver<Vec<crate::lua::LuaAction>>>,
 }
 
 impl App {
@@ -161,6 +165,10 @@ impl App {
             editor_area: Rect::default(),
             fuzzy_limit: 20,
             last_script_undo: None,
+            script_request: None,
+            script_response_tx: None,
+            script_request_rx: None,
+            script_action_rx: None,
         };
 
         if let Some(watcher) = &mut app.watcher {

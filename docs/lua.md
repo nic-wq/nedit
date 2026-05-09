@@ -135,6 +135,26 @@ local files = nedit.list_dir()
 local files = nedit.list_dir("src")
 ```
 
+### nedit.prompt(title, default?)
+
+Shows an input box with a title and an optional default value. Blocks the script until the user submits.
+
+```lua
+local name = nedit.prompt("What is your name?", "Anonymous")
+nedit.write_selection("Hello " .. name)
+```
+
+### nedit.menu(title, options)
+
+Shows a selectable menu with a title and a list of options. Blocks the script until the user selects an option or cancels. Returns the selected string or `nil` if cancelled.
+
+```lua
+local choice = nedit.menu("Pick a language", {"Rust", "Lua", "Python"})
+if choice then
+    nedit.write_selection("You picked: " .. choice)
+end
+```
+
 ## Command Palette Commands
 
 ### Regular Scripts
