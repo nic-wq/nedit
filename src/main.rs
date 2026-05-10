@@ -335,7 +335,8 @@ fn diagnose_lua_filesystem() -> anyhow::Result<()> {
     };
 
     let start = Instant::now();
-    let actions = lua::run_script_no_interactive(script, ctx, &None).map_err(|e| anyhow::anyhow!(e))?;
+    let actions =
+        lua::run_script_no_interactive(script, ctx, &None).map_err(|e| anyhow::anyhow!(e))?;
     fs::remove_dir_all(&dir)?;
     let ok = actions.len() == 2;
     print_step(

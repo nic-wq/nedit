@@ -518,7 +518,10 @@ impl App {
                         buf.selection_start = None;
                     }
                 }
-                crate::lua::RevertAction::RestoreFile { path, content: old_content } => {
+                crate::lua::RevertAction::RestoreFile {
+                    path,
+                    content: old_content,
+                } => {
                     if let Some(actual_content) = old_content {
                         let _ = std::fs::write(&path, &actual_content);
                         // Update any open buffers with this path

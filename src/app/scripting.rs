@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, mpsc::channel};
+use std::sync::{mpsc::channel, Arc, Mutex};
 use std::thread;
 
 use super::App;
@@ -17,12 +17,16 @@ impl App {
 
         let req_tx_clone = req_tx.clone();
         let res_rx = Arc::new(Mutex::new(res_rx));
-        
+
         thread::spawn(move || {
             let res_rx_clone = res_rx.clone();
             let request_handler = Arc::new(move |req: ScriptRequest| {
                 let _ = req_tx_clone.send(req);
-                res_rx_clone.lock().unwrap().recv().unwrap_or(ScriptResponse::Prompt(String::new()))
+                res_rx_clone
+                    .lock()
+                    .unwrap()
+                    .recv()
+                    .unwrap_or(ScriptResponse::Prompt(String::new()))
             });
 
             match run_script(&script, ctx, &path, request_handler) {
@@ -30,7 +34,7 @@ impl App {
                     let _ = act_tx.send(actions);
                 }
                 Err(_err) => {
-                    // Send error as a notification action? 
+                    // Send error as a notification action?
                     // For now just print to stderr or something, but better to show in UI.
                     // We can add a LuaAction::ShowError.
                 }
@@ -46,7 +50,10 @@ impl App {
                         self.fuzzy_query = default;
                         self.fuzzy_mode = crate::app::FuzzyMode::ScriptInput;
                         self.is_fuzzy = true;
-                        self.script_request = Some(ScriptRequest::Prompt { title, default: String::new() });
+                        self.script_request = Some(ScriptRequest::Prompt {
+                            title,
+                            default: String::new(),
+                        });
                     }
                     ScriptRequest::Menu { title, options } => {
                         self.fuzzy_results = options.iter().map(PathBuf::from).collect();

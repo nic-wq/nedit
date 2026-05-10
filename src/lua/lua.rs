@@ -188,7 +188,8 @@ pub fn run_script(
         Ok(final_actions)
     }
 
-    let actions = inner(script, ctx.clone(), current_buffer_path, request_handler).map_err(|e| e.to_string())?;
+    let actions = inner(script, ctx.clone(), current_buffer_path, request_handler)
+        .map_err(|e| e.to_string())?;
 
     if ctx.is_live_script {
         let target_path = current_buffer_path

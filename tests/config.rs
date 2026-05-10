@@ -19,7 +19,7 @@ fn test_config_get_keybind_non_existent_returns_default() {
 fn test_config_custom_load() {
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
-    
+
     let toml_content = r#"
         autocomplete_enabled = false
         theme = "monokai"
@@ -27,8 +27,8 @@ fn test_config_custom_load() {
         quit = "ctrl+x"
     "#;
     fs::write(&config_path, toml_content).unwrap();
-    
-    // Como o Config::load() usa dirs::config_dir(), 
+
+    // Como o Config::load() usa dirs::config_dir(),
     // testar o load exato é difícil sem mockar o ambiente.
     // Mas podemos testar a desserialização manualmente se a struct for public.
     let config: Config = toml::from_str(toml_content).unwrap();

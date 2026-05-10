@@ -10,7 +10,7 @@ fn test_bin_sem_args() {
     let output = run_bin(&[]);
     // Se o app falha por falta de TTY, o status code não será 0.
     // Mas seguimos o padrão solicitado.
-    assert!(!output.status.success() || output.status.success()); 
+    assert!(!output.status.success() || output.status.success());
 }
 
 #[test]

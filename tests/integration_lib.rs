@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use nedit::config::Config;
     use nedit::buffer::EditorBuffer;
+    use nedit::config::Config;
 
     #[test]
     fn test_config_default_load() {
@@ -15,7 +15,7 @@ mod tests {
     fn test_buffer_creation_happy_path() {
         // Arrange & Act
         let buffer = EditorBuffer::new();
-        
+
         // Assert
         assert_eq!(buffer.content.to_string(), "");
         assert!(!buffer.modified);

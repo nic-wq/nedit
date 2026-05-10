@@ -31,19 +31,31 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             }
         }
         MouseEventKind::Down(button) if button == event::MouseButton::Left => {
-            if app.editor_area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+            if app
+                .editor_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
                 app.focus = Focus::Editor;
                 let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
                 let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
                 if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
                     let target_row = buffer.scroll_row + rel_row;
-                    let target_col = buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
-                    buffer.cursor_row = target_row.min(buffer.content.len_lines().saturating_sub(1));
-                    let line_len = buffer.content.line(buffer.cursor_row).len_chars().saturating_sub(1);
+                    let target_col =
+                        buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
+                    buffer.cursor_row =
+                        target_row.min(buffer.content.len_lines().saturating_sub(1));
+                    let line_len = buffer
+                        .content
+                        .line(buffer.cursor_row)
+                        .len_chars()
+                        .saturating_sub(1);
                     buffer.cursor_col = target_col.min(line_len);
                     buffer.selection_start = None;
                 }
-            } else if app.explorer_area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+            } else if app
+                .explorer_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
                 app.focus = Focus::Explorer;
                 let rel_row = mouse.row.saturating_sub(app.explorer_area.y) as usize;
                 let target_idx = app.explorer.scroll_offset + rel_row;
@@ -53,7 +65,10 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             }
         }
         MouseEventKind::Drag(button) if button == event::MouseButton::Left => {
-            if app.editor_area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+            if app
+                .editor_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
                 let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
                 let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
                 if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
@@ -61,9 +76,15 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                         buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
                     }
                     let target_row = buffer.scroll_row + rel_row;
-                    let target_col = buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
-                    buffer.cursor_row = target_row.min(buffer.content.len_lines().saturating_sub(1));
-                    let line_len = buffer.content.line(buffer.cursor_row).len_chars().saturating_sub(1);
+                    let target_col =
+                        buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
+                    buffer.cursor_row =
+                        target_row.min(buffer.content.len_lines().saturating_sub(1));
+                    let line_len = buffer
+                        .content
+                        .line(buffer.cursor_row)
+                        .len_chars()
+                        .saturating_sub(1);
                     buffer.cursor_col = target_col.min(line_len);
                 }
             }
@@ -303,7 +324,9 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Tab => {
             if app.fuzzy_mode == crate::app::FuzzyMode::Move {
-                if let (Some(old_path), Some(new_dir)) = (app.pending_path.take(), app.move_dir.take()) {
+                if let (Some(old_path), Some(new_dir)) =
+                    (app.pending_path.take(), app.move_dir.take())
+                {
                     let new_path = new_dir.join(old_path.file_name().unwrap());
                     match std::fs::rename(&old_path, &new_path) {
                         Ok(()) => {
@@ -552,27 +575,36 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 if let Some(script_path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
                     match std::fs::read_to_string(&script_path) {
                         Ok(script) => {
-                            let (ctx, cur_path) = if let Some(cur_buf) = app.buffers.get(app.current_buffer_idx) {
-                                (crate::lua::LuaContext {
-                                    current_file: cur_buf
-                                        .path
-                                        .as_ref()
-                                        .map(|p| p.to_string_lossy().to_string())
-                                        .unwrap_or_default(),
-                                    current_content: cur_buf.content.to_string(),
-                                    current_selection: cur_buf.get_selected_text().unwrap_or_default(),
-                                    current_dir: app.explorer.root.clone(),
-                                    is_live_script: false,
-                                }, &cur_buf.path)
-                            } else {
-                                (crate::lua::LuaContext {
-                                    current_file: String::new(),
-                                    current_content: String::new(),
-                                    current_selection: String::new(),
-                                    current_dir: app.explorer.root.clone(),
-                                    is_live_script: false,
-                                }, &None)
-                            };
+                            let (ctx, cur_path) =
+                                if let Some(cur_buf) = app.buffers.get(app.current_buffer_idx) {
+                                    (
+                                        crate::lua::LuaContext {
+                                            current_file: cur_buf
+                                                .path
+                                                .as_ref()
+                                                .map(|p| p.to_string_lossy().to_string())
+                                                .unwrap_or_default(),
+                                            current_content: cur_buf.content.to_string(),
+                                            current_selection: cur_buf
+                                                .get_selected_text()
+                                                .unwrap_or_default(),
+                                            current_dir: app.explorer.root.clone(),
+                                            is_live_script: false,
+                                        },
+                                        &cur_buf.path,
+                                    )
+                                } else {
+                                    (
+                                        crate::lua::LuaContext {
+                                            current_file: String::new(),
+                                            current_content: String::new(),
+                                            current_selection: String::new(),
+                                            current_dir: app.explorer.root.clone(),
+                                            is_live_script: false,
+                                        },
+                                        &None,
+                                    )
+                                };
                             app.start_script(script, ctx, cur_path.clone());
                             app.is_fuzzy = false;
                         }
@@ -626,7 +658,10 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 app.is_fuzzy = false;
                 return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::ScriptMenu {
-                let response = app.fuzzy_results.get(app.fuzzy_idx).map(|p| p.to_string_lossy().to_string());
+                let response = app
+                    .fuzzy_results
+                    .get(app.fuzzy_idx)
+                    .map(|p| p.to_string_lossy().to_string());
                 if let Some(tx) = &app.script_response_tx {
                     let _ = tx.send(crate::lua::ScriptResponse::Menu(response));
                 }
@@ -763,17 +798,27 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
             if app.explorer.selected_idx < app.explorer.scroll_offset {
                 app.explorer.scroll_offset = app.explorer.selected_idx;
             }
-            if app.explorer.selected_idx == app.explorer.items.len().saturating_sub(1) { // Wrapped to bottom
-                app.explorer.scroll_offset = app.explorer.selected_idx.saturating_sub(height).saturating_add(1);
+            if app.explorer.selected_idx == app.explorer.items.len().saturating_sub(1) {
+                // Wrapped to bottom
+                app.explorer.scroll_offset = app
+                    .explorer
+                    .selected_idx
+                    .saturating_sub(height)
+                    .saturating_add(1);
             }
         }
         KeyCode::Down => {
             app.explorer.next();
             let height = app.explorer_area.height.saturating_sub(2) as usize;
             if app.explorer.selected_idx >= app.explorer.scroll_offset + height {
-                app.explorer.scroll_offset = app.explorer.selected_idx.saturating_sub(height).saturating_add(1);
+                app.explorer.scroll_offset = app
+                    .explorer
+                    .selected_idx
+                    .saturating_sub(height)
+                    .saturating_add(1);
             }
-            if app.explorer.selected_idx == 0 { // Wrapped
+            if app.explorer.selected_idx == 0 {
+                // Wrapped
                 app.explorer.scroll_offset = 0;
             }
         }
@@ -818,7 +863,8 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
 
     match (key.code, key.modifiers) {
         (KeyCode::Right, m)
-            if !app.buffers[current_idx].autocomplete_options.is_empty() && m == KeyModifiers::SHIFT =>
+            if !app.buffers[current_idx].autocomplete_options.is_empty()
+                && m == KeyModifiers::SHIFT =>
         {
             app.buffers[current_idx].accept_autocomplete();
             return;
@@ -907,8 +953,12 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
         _ if app.config.matches(key, "save") && !app.buffers[current_idx].is_read_only => {
             app.save_current_buffer();
         }
-        _ if app.config.matches(key, "undo") && !app.buffers[current_idx].is_read_only => app.buffers[current_idx].undo(),
-        _ if app.config.matches(key, "redo") && !app.buffers[current_idx].is_read_only => app.buffers[current_idx].redo(),
+        _ if app.config.matches(key, "undo") && !app.buffers[current_idx].is_read_only => {
+            app.buffers[current_idx].undo()
+        }
+        _ if app.config.matches(key, "redo") && !app.buffers[current_idx].is_read_only => {
+            app.buffers[current_idx].redo()
+        }
         _ if app.config.matches(key, "copy") => {
             app.buffers[current_idx].copy();
         }
@@ -970,7 +1020,13 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let scripts_dir = home_dir.join(".config/nedit/scripts");
             let _ = std::fs::create_dir_all(&scripts_dir);
-            let name = format!("script_{}.lua", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+            let name = format!(
+                "script_{}.lua",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            );
             let path = scripts_dir.join(name);
             let _ = std::fs::write(&path, "-- New Lua Script\n");
             app.open_file(path);
@@ -1028,7 +1084,6 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
     }
     false
 }
-
 
 fn handle_run_live_script(app: &mut App) {
     if !app.live_script_mode {
