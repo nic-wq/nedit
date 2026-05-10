@@ -1,32 +1,32 @@
 mod common;
 
 use common::run_bin;
-use std::process::Command;
 
 #[test]
-fn test_bin_sem_args() {
-    // Note: Since nedit is a TUI, it likely fails without a real TTY.
-    // This test verifies the exit behavior in this scenario.
+fn test_bin_without_args() {
+    // Nota: Como o nedit é uma TUI, ele provavelmente falha sem um TTY real.
+    // Este teste verifica o comportamento de saída neste cenário.
     let output = run_bin(&[]);
 
-    // If the app fails due to lack of TTY, the status code will not be 0.
-    // But we follow the requested pattern.
+    // Se o aplicativo falhar devido à falta de TTY, o código de status não será 0.
+    // Mas seguimos o padrão solicitado.
     assert!(!output.status.success() || output.status.success()); 
     assert!(!output.status.success() || output.status.success());
+}
 
 #[test]
-fn test_bin_com_arquivo_novo() {
+fn test_bin_with_new_file() {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_nedit"));
     cmd.arg("test_new_file.txt");
-    let output = cmd.output().expect("Failed to execute");
-    // Just ensuring the process was triggered
+    let output = cmd.output().expect("Falha ao executar");
+    // Apenas garantindo que o processo foi acionado
     assert!(output.status.code().is_some() || !output.status.success());
 }
 
 #[test]
-fn test_bin_com_diretorio() {
+fn test_bin_with_directory() {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_nedit"));
     cmd.arg(".");
-    let output = cmd.output().expect("Failed to execute");
+    let output = cmd.output().expect("Falha ao executar");
     assert!(output.status.code().is_some() || !output.status.success());
 }

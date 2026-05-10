@@ -14,13 +14,13 @@ fn test_app_initialization() {
 fn test_app_notifications() {
     let mut app = App::new(&[]);
 
-    app.show_notification("Test Msg".to_string(), NotificationType::Info);
+    app.show_notification("Msg de Teste".to_string(), NotificationType::Info);
 
     if let Some((msg, ntype)) = &app.notification {
-        assert_eq!(msg, "Test Msg");
+        assert_eq!(msg, "Msg de Teste");
         assert!(matches!(ntype, NotificationType::Info));
     } else {
-        panic!("Notification should be set");
+        panic!("A notificação deve estar definida");
     }
 
     app.clear_notification();
@@ -30,7 +30,7 @@ fn test_app_notifications() {
 #[test]
 fn test_app_notification_tick() {
     let mut app = App::new(&[]);
-    app.show_notification("Tick Test".to_string(), NotificationType::Info);
+    app.show_notification("Teste de Tick".to_string(), NotificationType::Info);
     for _ in 0..5 {
         assert!(app.notification.is_some());
         app.tick_notification();
