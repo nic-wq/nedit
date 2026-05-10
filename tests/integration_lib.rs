@@ -5,7 +5,7 @@ mod tests {
 
     #[test]
     fn test_config_default_load() {
-        // Happy path: garantindo que o config default carrega sem pânico
+        // Happy path: ensuring the default config loads without panic
         let config = Config::default();
         assert!(config.autocomplete_enabled);
         assert_eq!(config.get_keybind("quit"), "ctrl+q");
@@ -25,7 +25,7 @@ mod tests {
     #[test]
     fn test_buffer_line_width_calculation() {
         let mut buffer = EditorBuffer::new();
-        // Caso feliz com 1 linha
+        // Happy path with 1 line
         assert_eq!(buffer.line_number_width(), 3); // "1".len() + 2
 
         // Adicionando muitas linhas

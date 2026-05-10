@@ -32,7 +32,7 @@ fn test_app_notification_tick() {
     let mut app = App::new(&[]);
     app.show_notification("Tick Test".to_string(), NotificationType::Info);
     
-    // Timer inicial é 5
+    // Initial timer is 5
     for _ in 0..5 {
         assert!(app.notification.is_some());
         app.tick_notification();

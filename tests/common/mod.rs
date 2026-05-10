@@ -1,25 +1,25 @@
 use std::process::{Command, Output};
 use tempfile::TempDir;
 
-/// Retorna um diretório temporário para testes que lidam com arquivos
+/// Returns a temporary directory for tests dealing with files
 pub fn tmp_dir() -> TempDir {
-    tempfile::tempdir().expect("Falha ao criar diretório temporário")
+    tempfile::tempdir().expect("Failed to create temporary directory")
 }
 
-/// Fixture: caminho para o binário do projeto
+/// Fixture: path to the project binary
 pub fn bin_path() -> &'static str {
     env!("CARGO_BIN_EXE_nedit")
 }
 
-/// Executa o binário e retorna o Output
+/// Executes the binary and returns the Output
 pub fn run_bin(args: &[&str]) -> Output {
     Command::new(bin_path())
         .args(args)
         .output()
-        .expect("Falha ao executar o binário")
+        .expect("Failed to execute the binary")
 }
 
-/// Executa o binário e retorna (stdout, stderr, exit_code)
+/// Executes the binary and returns (stdout, stderr, exit_code)
 pub fn exec_bin(args: &[&str]) -> (String, String, i32) {
     let output = run_bin(args);
     (
