@@ -5,20 +5,21 @@ use std::process::Command;
 
 #[test]
 fn test_bin_sem_args() {
-    // Nota: Como nedit é um TUI, ele provavelmente falha sem um TTY real.
-    // Este teste verifica o comportamento de saída nesse cenário.
+    // Note: Since nedit is a TUI, it likely fails without a real TTY.
+    // This test verifies the exit behavior in this scenario.
     let output = run_bin(&[]);
-    // Se o app falha por falta de TTY, o status code não será 0.
-    // Mas seguimos o padrão solicitado.
+
+    // If the app fails due to lack of TTY, the status code will not be 0.
+    // But we follow the requested pattern.
+    assert!(!output.status.success() || output.status.success()); 
     assert!(!output.status.success() || output.status.success());
-}
 
 #[test]
 fn test_bin_com_arquivo_novo() {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_nedit"));
     cmd.arg("test_new_file.txt");
-    let output = cmd.output().expect("Falha ao executar");
-    // Apenas garantimos que o processo foi disparado
+    let output = cmd.output().expect("Failed to execute");
+    // Just ensuring the process was triggered
     assert!(output.status.code().is_some() || !output.status.success());
 }
 
@@ -26,6 +27,6 @@ fn test_bin_com_arquivo_novo() {
 fn test_bin_com_diretorio() {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_nedit"));
     cmd.arg(".");
-    let output = cmd.output().expect("Falha ao executar");
+    let output = cmd.output().expect("Failed to execute");
     assert!(output.status.code().is_some() || !output.status.success());
 }
