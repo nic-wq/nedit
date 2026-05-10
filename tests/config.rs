@@ -19,7 +19,7 @@ fn test_config_get_keybind_non_existent_returns_default() {
 fn test_config_custom_load() {
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
-    
+
     let toml_content = r#"
         autocomplete_enabled = false
         theme = "monokai"

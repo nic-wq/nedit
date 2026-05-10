@@ -1,12 +1,11 @@
 use arboard::Clipboard;
-use std::sync::Mutex;
 use once_cell::sync::Lazy;
-use std::process::Command;
 use std::io::Write;
+use std::process::Command;
+use std::sync::Mutex;
 
-static CLIPBOARD: Lazy<Option<Mutex<Clipboard>>> = Lazy::new(|| {
-    Clipboard::new().ok().map(Mutex::new)
-});
+static CLIPBOARD: Lazy<Option<Mutex<Clipboard>>> =
+    Lazy::new(|| Clipboard::new().ok().map(Mutex::new));
 
 pub fn copy(text: &str) {
     let mut success = false;
@@ -36,7 +35,7 @@ pub fn paste() -> Option<String> {
     if cfg!(target_os = "linux") {
         return paste_from_shell_clipboard();
     }
-    
+
     None
 }
 
@@ -44,7 +43,7 @@ fn copy_to_shell_clipboard(text: &str) -> bool {
     // Try wl-copy (Wayland)
     if let Ok(mut child) = Command::new("wl-copy")
         .stdin(std::process::Stdio::piped())
-        .spawn() 
+        .spawn()
     {
         if let Some(mut stdin) = child.stdin.take() {
             let _ = stdin.write_all(text.as_bytes());
@@ -61,7 +60,7 @@ fn copy_to_shell_clipboard(text: &str) -> bool {
         .arg("-selection")
         .arg("clipboard")
         .stdin(std::process::Stdio::piped())
-        .spawn() 
+        .spawn()
     {
         if let Some(mut stdin) = child.stdin.take() {
             let _ = stdin.write_all(text.as_bytes());
@@ -78,10 +77,7 @@ fn copy_to_shell_clipboard(text: &str) -> bool {
 
 fn paste_from_shell_clipboard() -> Option<String> {
     // Try wl-paste (Wayland)
-    if let Ok(output) = Command::new("wl-paste")
-        .arg("--no-newline")
-        .output() 
-    {
+    if let Ok(output) = Command::new("wl-paste").arg("--no-newline").output() {
         if output.status.success() {
             return Some(String::from_utf8_lossy(&output.stdout).to_string());
         }
@@ -92,7 +88,7 @@ fn paste_from_shell_clipboard() -> Option<String> {
         .arg("-selection")
         .arg("clipboard")
         .arg("-o")
-        .output() 
+        .output()
     {
         if output.status.success() {
             return Some(String::from_utf8_lossy(&output.stdout).to_string());

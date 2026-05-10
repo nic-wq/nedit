@@ -47,7 +47,6 @@ pub struct App {
     pub pending_path: Option<PathBuf>,
     pub pending_explorer_selection: Option<PathBuf>,
     pub move_dir: Option<PathBuf>,
-    pub pending_lua_actions: Vec<crate::lua::LuaAction>,
     pub notification: Option<(String, NotificationType)>,
     pub notification_timer: u8,
     pub live_script_mode: bool,
@@ -62,6 +61,11 @@ pub struct App {
     pub explorer_area: Rect,
     pub editor_area: Rect,
     pub fuzzy_limit: usize,
+    pub last_script_undo: Option<crate::lua::ScriptUndo>,
+    pub script_request: Option<crate::lua::ScriptRequest>,
+    pub script_response_tx: Option<std::sync::mpsc::Sender<crate::lua::ScriptResponse>>,
+    pub script_request_rx: Option<std::sync::mpsc::Receiver<crate::lua::ScriptRequest>>,
+    pub script_action_rx: Option<std::sync::mpsc::Receiver<Vec<crate::lua::LuaAction>>>,
 }
 
 impl App {
@@ -146,7 +150,6 @@ impl App {
             pending_path: None,
             pending_explorer_selection: None,
             move_dir: None,
-            pending_lua_actions: Vec::new(),
             notification: None,
             notification_timer: 0,
             live_script_mode: false,
@@ -161,6 +164,11 @@ impl App {
             explorer_area: Rect::default(),
             editor_area: Rect::default(),
             fuzzy_limit: 20,
+            last_script_undo: None,
+            script_request: None,
+            script_response_tx: None,
+            script_request_rx: None,
+            script_action_rx: None,
         };
 
         if let Some(watcher) = &mut app.watcher {

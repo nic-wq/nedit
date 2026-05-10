@@ -6,7 +6,7 @@ fn test_buffer_from_non_existent_path() {
     // Edge case: file that does not exist should create an empty buffer with the set path
     let path = PathBuf::from("this_file_really_should_not_exist_12345.txt");
     let buffer = EditorBuffer::from_path(path.clone()).unwrap();
-    
+
     assert_eq!(buffer.content.to_string(), "");
     assert_eq!(buffer.path, Some(path));
 }
@@ -37,7 +37,7 @@ fn test_buffer_char_to_line_col() {
 fn test_buffer_collect_words() {
     let mut buffer = EditorBuffer::new();
     buffer.content = ropey::Rope::from_str("hello world hello rust_test");
-    
+
     let words = buffer.collect_all_words();
     assert_eq!(words.get("hello"), Some(&2));
     assert_eq!(words.get("world"), Some(&1));

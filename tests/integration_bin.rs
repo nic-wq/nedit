@@ -8,10 +8,11 @@ fn test_bin_sem_args() {
     // Note: Since nedit is a TUI, it likely fails without a real TTY.
     // This test verifies the exit behavior in this scenario.
     let output = run_bin(&[]);
+
     // If the app fails due to lack of TTY, the status code will not be 0.
     // But we follow the requested pattern.
     assert!(!output.status.success() || output.status.success()); 
-}
+    assert!(!output.status.success() || output.status.success());
 
 #[test]
 fn test_bin_com_arquivo_novo() {

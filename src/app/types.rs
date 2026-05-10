@@ -20,11 +20,12 @@ pub enum FuzzyMode {
     CommandPalette,
     Move,
     RunScript,
-    ScriptConfirm,
     EditScript,
     DeleteScript,
     DocSelect,
     NewFolder,
+    ScriptMenu,
+    ScriptInput,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
