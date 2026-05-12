@@ -1,4 +1,4 @@
-mod config;
+mod inner;
 mod keybinds;
 
-pub use config::Config;
+pub use inner::Config;

@@ -1,3 +1,3 @@
-mod i18n;
+mod inner;
 
-pub use i18n::I18n;
+pub use inner::I18n;

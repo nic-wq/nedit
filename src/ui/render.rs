@@ -613,11 +613,11 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::WorkspaceAddPath => format!(" 󰆓  {} ", app.i18n.t("add_workspace_path")),
         FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
-        FuzzyMode::RunScript => format!(" 󰢱  Run Lua Script "),
-        FuzzyMode::EditScript => format!(" 󰝎  Edit Lua Script "),
-        FuzzyMode::DeleteScript => format!(" 󰆴  Delete Lua Script "),
-        FuzzyMode::DocSelect => format!(" 󰈔  Select Documentation "),
-        FuzzyMode::NewFolder => format!(" 󰉋  New Folder Name "),
+        FuzzyMode::RunScript => " 󰢱  Run Lua Script ".to_string(),
+        FuzzyMode::EditScript => " 󰝎  Edit Lua Script ".to_string(),
+        FuzzyMode::DeleteScript => " 󰆴  Delete Lua Script ".to_string(),
+        FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
+        FuzzyMode::NewFolder => " 󰉋  New Folder Name ".to_string(),
         FuzzyMode::ScriptMenu => {
             if let Some(crate::lua::ScriptRequest::Menu { title, .. }) = &app.script_request {
                 format!(" 󰘳  {} ", title)
@@ -824,8 +824,8 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                             if let Ok(content) = std::fs::read_to_string(path) {
                                 if let Some(first) = content.lines().next() {
                                     let trimmed = first.trim();
-                                    if trimmed.starts_with("-- ") {
-                                        trimmed[3..].trim().to_string()
+                                    if let Some(stripped) = trimmed.strip_prefix("-- ") {
+                                        stripped.trim().to_string()
                                     } else {
                                         stem
                                     }

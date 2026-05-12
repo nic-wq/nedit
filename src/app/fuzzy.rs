@@ -19,8 +19,8 @@ impl App {
                 let content = self.buffers[self.current_buffer_idx].content.to_string();
                 if let Some(first_line) = content.lines().next() {
                     let trimmed = first_line.trim();
-                    if trimmed.starts_with("-- Name: ") {
-                        let name = trimmed[9..].trim();
+                    if let Some(stripped) = trimmed.strip_prefix("-- Name: ") {
+                        let name = stripped.trim();
                         self.fuzzy_query = self.slugify(name);
                     }
                 }
@@ -245,8 +245,8 @@ impl App {
                         let name = if let Ok(content) = fs::read_to_string(entry.path()) {
                             if let Some(first_line) = content.lines().next() {
                                 let trimmed = first_line.trim();
-                                if trimmed.starts_with("-- ") {
-                                    trimmed[3..].trim().to_string()
+                                if let Some(stripped) = trimmed.strip_prefix("-- ") {
+                                    stripped.trim().to_string()
                                 } else {
                                     stem.clone()
                                 }
@@ -289,8 +289,8 @@ impl App {
                         let name = if let Ok(content) = fs::read_to_string(entry.path()) {
                             if let Some(first_line) = content.lines().next() {
                                 let trimmed = first_line.trim();
-                                if trimmed.starts_with("-- ") {
-                                    trimmed[3..].trim().to_string()
+                                if let Some(stripped) = trimmed.strip_prefix("-- ") {
+                                    stripped.trim().to_string()
                                 } else {
                                     stem.clone()
                                 }
@@ -370,8 +370,8 @@ impl App {
                         }
                         curr.is_none()
                     })
-                    .cloned()
                     .take(self.fuzzy_limit)
+                    .cloned()
                     .collect();
             } else if self.fuzzy_mode == FuzzyMode::Content {
                 // Background search with debouncing logic would be better,
@@ -438,10 +438,11 @@ impl App {
             self.fuzzy_idx = 0;
         }
 
-        if self.fuzzy_mode == FuzzyMode::Themes && !self.fuzzy_themes.is_empty() {
-            if self.fuzzy_idx < self.fuzzy_themes.len() {
-                self.current_theme = self.fuzzy_themes[self.fuzzy_idx].clone();
-            }
+        if self.fuzzy_mode == FuzzyMode::Themes
+            && !self.fuzzy_themes.is_empty()
+            && self.fuzzy_idx < self.fuzzy_themes.len()
+        {
+            self.current_theme = self.fuzzy_themes[self.fuzzy_idx].clone();
         }
     }
 }

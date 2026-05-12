@@ -1,5 +1,5 @@
-mod explorer;
+mod inner;
 mod items;
 
-pub use explorer::*;
+pub use inner::*;
 pub use items::FileItem;

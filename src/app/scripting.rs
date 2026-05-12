@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::{mpsc::channel, Arc, Mutex};
 use std::thread;
 
-use super::App;
+use super::inner::App;
 use crate::lua::{run_script, LuaContext, ScriptRequest, ScriptResponse};
 
 impl App {

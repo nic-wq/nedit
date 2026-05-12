@@ -1,3 +1,3 @@
-mod clipboard;
+mod inner;
 
-pub use clipboard::*;
+pub use inner::*;

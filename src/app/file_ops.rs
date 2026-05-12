@@ -8,7 +8,7 @@ use crate::app::{
 };
 use crate::buffer::EditorBuffer;
 
-use super::App;
+use super::inner::App;
 
 impl App {
     pub(crate) fn watch_mode_for_path(_path: &Path) -> RecursiveMode {

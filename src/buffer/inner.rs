@@ -22,8 +22,8 @@ pub struct EditorBuffer {
     pub show_autocomplete_list: bool,
 }
 
-impl EditorBuffer {
-    pub fn new() -> Self {
+impl Default for EditorBuffer {
+    fn default() -> Self {
         let content = Rope::from_str("");
         Self {
             content: content.clone(),
@@ -41,6 +41,12 @@ impl EditorBuffer {
             autocomplete_idx: 0,
             show_autocomplete_list: false,
         }
+    }
+}
+
+impl EditorBuffer {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn from_path(path: PathBuf) -> anyhow::Result<Self> {

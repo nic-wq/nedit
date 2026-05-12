@@ -2,6 +2,7 @@ use std::process::{Command, Output};
 use tempfile::TempDir;
 
 /// Returns a temporary directory for tests dealing with files
+#[allow(dead_code)]
 pub fn tmp_dir() -> TempDir {
     tempfile::tempdir().expect("Failed to create temporary directory")
 }
@@ -20,6 +21,7 @@ pub fn run_bin(args: &[&str]) -> Output {
 }
 
 /// Executes the binary and returns (stdout, stderr, exit_code)
+#[allow(dead_code)]
 pub fn exec_bin(args: &[&str]) -> (String, String, i32) {
     let output = run_bin(args);
     (

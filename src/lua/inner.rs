@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use mlua::Lua;
 
-use super::{LuaAction, LuaContext, ScriptRequest, ScriptResponse};
+use crate::lua::{LuaAction, LuaContext, ScriptRequest, ScriptResponse};
 
 pub fn run_script(
     script: &str,

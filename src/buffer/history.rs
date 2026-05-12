@@ -1,4 +1,4 @@
-use super::EditorBuffer;
+use super::inner::EditorBuffer;
 
 impl EditorBuffer {
     pub fn undo(&mut self) {

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
-use super::FileItem;
+use super::items::FileItem;
 
 pub struct FileExplorer {
     pub root: PathBuf,

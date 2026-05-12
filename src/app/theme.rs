@@ -1,4 +1,4 @@
-use super::App;
+use super::inner::App;
 
 impl App {
     pub fn apply_theme(&mut self, theme_name: String) {

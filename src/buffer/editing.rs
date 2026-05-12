@@ -1,4 +1,4 @@
-use super::EditorBuffer;
+use super::inner::EditorBuffer;
 
 impl EditorBuffer {
     pub fn insert_char(&mut self, ch: char) {

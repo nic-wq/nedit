@@ -21,23 +21,8 @@ fn default_theme() -> String {
     "base16-ocean.dark".to_string()
 }
 
-impl Config {
-    pub fn load() -> Self {
-        let config_dir = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("nedit");
-        let config_path = config_dir.join("config.toml");
-
-        if let Ok(content) = fs::read_to_string(&config_path) {
-            if let Ok(config) = toml::from_str::<Config>(&content) {
-                return config;
-            }
-        }
-
-        Self::default()
-    }
-
-    pub fn default() -> Self {
+impl Default for Config {
+    fn default() -> Self {
         let mut keybinds = HashMap::new();
         keybinds.insert("quit".to_string(), "ctrl+q".to_string());
         keybinds.insert("new_file".to_string(), "ctrl+n".to_string());
@@ -70,6 +55,23 @@ impl Config {
             keybinds,
             theme: default_theme(),
         }
+    }
+}
+
+impl Config {
+    pub fn load() -> Self {
+        let config_dir = dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("nedit");
+        let config_path = config_dir.join("config.toml");
+
+        if let Ok(content) = fs::read_to_string(&config_path) {
+            if let Ok(config) = toml::from_str::<Config>(&content) {
+                return config;
+            }
+        }
+
+        Self::default()
     }
 
     pub fn get_keybind(&self, action: &str) -> String {

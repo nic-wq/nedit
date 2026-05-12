@@ -14,8 +14,9 @@ use crate::config::Config;
 use crate::explorer::FileExplorer;
 use crate::i18n::I18n;
 
-use super::{Focus, NotificationType};
+use crate::app::types::{Focus, NotificationType};
 
+pub type ContentSearchResult = (String, Vec<(PathBuf, usize, String)>);
 pub struct App {
     pub buffers: Vec<EditorBuffer>,
     pub current_buffer_idx: usize,
@@ -57,7 +58,7 @@ pub struct App {
     pub syntax_set_receiver: Option<Receiver<SyntaxSet>>,
     pub indexed_files_receiver: Option<Receiver<Vec<PathBuf>>>,
     pub explorer_refresh_receiver: Option<Receiver<(Vec<crate::explorer::FileItem>, usize)>>,
-    pub content_search_receiver: Option<Receiver<(String, Vec<(PathBuf, usize, String)>)>>,
+    pub content_search_receiver: Option<Receiver<ContentSearchResult>>,
     pub explorer_area: Rect,
     pub editor_area: Rect,
     pub fuzzy_limit: usize,

@@ -30,7 +30,7 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 buffer.scroll_row = buffer.scroll_row.saturating_add(3);
             }
         }
-        MouseEventKind::Down(button) if button == event::MouseButton::Left => {
+        MouseEventKind::Down(event::MouseButton::Left) => {
             if app
                 .editor_area
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
@@ -64,7 +64,7 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 }
             }
         }
-        MouseEventKind::Drag(button) if button == event::MouseButton::Left => {
+        MouseEventKind::Drag(event::MouseButton::Left) => {
             if app
                 .editor_area
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
@@ -210,8 +210,7 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
     }
 
     let can_switch_tabs = !app.live_script_mode
-        || (app.live_script_mode
-            && app.current_buffer_idx != app.live_script_buffer_idx.unwrap_or(usize::MAX));
+        || app.current_buffer_idx != app.live_script_buffer_idx.unwrap_or(usize::MAX);
 
     if can_switch_tabs {
         match (key.code, key.modifiers) {
@@ -233,7 +232,7 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
                 app.switch_tab_relative(1);
                 return;
             }
-            (KeyCode::Char(c), KeyModifiers::ALT) if c.is_digit(10) => {
+            (KeyCode::Char(c), KeyModifiers::ALT) if c.is_ascii_digit() => {
                 let idx = c.to_digit(10).unwrap() as usize;
                 if idx > 0 {
                     app.switch_tab(idx - 1);
@@ -555,7 +554,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::Move {
                 if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    if path == std::path::PathBuf::from("..") {
+                    if path.as_os_str() == ".." {
                         if let Some(parent) = app
                             .move_dir
                             .as_ref()
