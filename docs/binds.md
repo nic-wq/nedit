@@ -1,76 +1,60 @@
-# Keyboard Shortcuts
+# ⌨️ Keyboard Shortcuts Reference
 
-## General
-CTRL+Q Quit
-CTRL+E Toggle Explorer
-CTRL+O Fuzzy Finder (Files)
-CTRL+P Command Palette
-CTRL+F Local Search (Current file)
-CTRL+G Global Search (All files)
-CTRL+H Open Documentation
-CTRL+N New File / New Folder
-CTRL+S Save File
-CTRL+W Close Tab
-CTRL+Z Undo
-CTRL+Y Redo
-CTRL+A Select All
-CTRL+L Select Current Line
-CTRL+C Copy
-CTRL+V Paste
-CTRL+X Cut
-CTRL+ALT+T Theme Selection
-CTRL+ALT+W Workspaces Menu
-SHIFT+TAB Toggle Focus
+NEdit is designed for maximum efficiency through keyboard shortcuts. Below is a categorized list of default keybindings.
 
-## Live Script (Split View)
-F9 Execute Live Script (applies immediately to target file)
-SHIFT+ALT+RIGHT Switch to next pane (script ↔ target file)
-SHIFT+ALT+LEFT Switch to previous pane (script ↔ target file)
-CTRL+TAB Navigate between target file tabs (left pane updates automatically)
+## 🧭 Navigation & View
+- `CTRL+E` : **Toggle Explorer** - Show or hide the file sidebar.
+- `SHIFT+TAB` : **Toggle Focus** - Switch between the Editor and the Explorer.
+- `CTRL+O` : **Fuzzy Finder** - Search for and open files by name.
+- `CTRL+G` : **Global Search** - Search for text across the entire workspace.
+- `CTRL+F` : **Local Search** - Search for text within the current file.
+- `CTRL+H` : **Open Help** - Access the documentation menu.
+- `CTRL+TAB` : **Next Tab** - Cycle through open file buffers.
+- `SHIFT+CTRL+TAB` : **Previous Tab** - Cycle backwards through open file buffers.
 
-## Explorer
-Enter Open file / Toggle directory
-Backspace Go to parent directory
-CTRL+ENTER Set as root
-SHIFT+O File Options
+## ✍️ Editing
+- `CTRL+S` : **Save File** - Persist current buffer to disk.
+- `CTRL+Z` : **Undo** - Revert the last text change.
+- `CTRL+Y` : **Redo** - Reapply the last undone change.
+- `CTRL+A` : **Select All** - Highlight all text in the current buffer.
+- `CTRL+L` : **Select Line** - Highlight the current line.
+- `CTRL+C` : **Copy** - Copy selection to system clipboard.
+- `CTRL+V` : **Paste** - Paste from system clipboard.
+- `CTRL+X` : **Cut** - Remove selection and copy to clipboard.
+- `CTRL+N` : **New File** - Create a new empty buffer.
 
-## Command Palette
-Save, New File, Open File, Close Tab, Toggle Explorer, Global Search, Local Search, Switch Theme, Workspaces, Open Lua Script, Run Lua Script, Edit Lua Script, Delete Lua Script, Open Help, Quit, Undo, Redo, Copy, Paste, Cut, Select All
+## 📁 Explorer Operations
+- `ENTER` : **Open / Toggle** - Open a file or expand/collapse a directory.
+- `BACKSPACE` : **Up Directory** - Navigate to the parent directory.
+- `CTRL+ENTER` : **Set Root** - Make the selected directory the workspace root.
+- `SHIFT+O` : **File Options** - Open menu for renaming, moving, or deleting files.
+- `CTRL+N` : **New Folder** - Create a new directory (when explorer is focused).
+
+## 🔧 System & Tools
+- `CTRL+P` : **Command Palette** - Search and execute any editor command.
+- `CTRL+Q` : **Quit** - Exit NEdit.
+- `CTRL+ALT+T` : **Theme Selection** - Choose a new UI/Syntax theme.
+- `CTRL+ALT+W` : **Workspaces** - Switch between saved project sessions.
+- `CTRL+W` : **Close Tab** - Close the currently active buffer.
+
+## 📜 Lua Scripting
+- `CTRL+P` → **Run Lua Script** : Execute a standalone script.
+- `CTRL+P` → **Open Live Script** : Start a split-view interactive script session.
+- `F9` : **Execute Live Script** - Run the live script (right pane) on the target (left pane).
+- `SHIFT+ALT+RIGHT` : **Focus Script** - Move focus to the script pane in Live Mode.
+- `SHIFT+ALT+LEFT` : **Focus Target** - Move focus back to the target file.
 
 ---
 
-## Custom Keybinds
+## ⚙️ Customizing Keybinds
 
-Edit ~/.config/nedit/config.toml:
+You can override any of these in `~/.config/nedit/config.toml`. Use the internal action names:
 
 ```toml
+[keybinds]
 quit = "ctrl+q"
-new_file = "ctrl+n"
-open_file = "ctrl+o"
-command_palette = "ctrl+p"
-global_search = "ctrl+g"
-local_search = "ctrl+f"
 save = "ctrl+s"
-toggle_explorer = "ctrl+e"
-theme_select = "ctrl+alt+t"
-toggle_focus = "shift+backtab"
-close_tab = "ctrl+w"
-undo = "ctrl+z"
-redo = "ctrl+y"
-copy = "ctrl+c"
-paste = "ctrl+v"
-cut = "ctrl+x"
-select_all = "ctrl+a"
-select_line = "ctrl+l"
-open_help = "ctrl+h"
-run_live_script = "f9"
-live_script_next = "shift+alt+right"
-live_script_prev = "shift+alt+left"
+# Add your custom overrides here
 ```
 
-Note: 
-- `new_file` creates file in editor or folder in explorer
-- `run_live_script` executes the Live Script and applies changes immediately to the target file
-- `live_script_next` / `live_script_prev` toggle focus between the target file and script panes in Live Script mode
-
-Modifiers: ctrl, alt, shift, backtab, tab, esc, enter, up, down, left, right
+Modifiers supported: `ctrl`, `alt`, `shift`, `backtab`, `tab`, `esc`, `enter`, `up`, `down`, `left`, `right`.

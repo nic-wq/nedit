@@ -1,59 +1,68 @@
 # NEdit Documentation
+
 > [!NOTE]
-> The shortcuts listed below are based on NEdit's default. You can customize them by creating a `~/.config/nedit/config.toml` file.
+> The shortcuts listed below are based on NEdit's default settings. You can customize them by editing `~/.config/nedit/config.toml`.
 
-Welcome to NEdit, a modern, fast, and beautiful terminal editor.
+Welcome to NEdit, a modern, fast, and feature-rich terminal editor designed for developers who value speed and extensibility.
 
-## Command Line Usage
-You can open files or directories directly from your terminal:
+## 🚀 Getting Started
+
+### Command Line Usage
+Open files or directories directly from your terminal:
 - `nedit .` : Open NEdit in the current directory.
 - `nedit file.txt` : Open a specific file.
 - `sudo nedit /etc/hosts` : Edit system files with root permissions.
 
-## Keyboard Shortcuts
+## 🧠 Core Features in Depth
 
-### General
-- `CTRL + Q` : Quit
-- `CTRL + E` : Toggle Explorer
-- `CTRL + O` : Fuzzy Finder (Files)
-- `CTRL + P` : Command Palette
-- `CTRL + F` : Local Search (Current file)
-- `CTRL + G` : Global Search (All files)
-- `CTRL+ALT+T` : Theme Selection
-- `CTRL+ALT+W` : Workspaces Menu
-- `CTRL + H` : Open Documentation Menu
-- `CTRL + N` : New File (in editor) / New Folder (in explorer)
-- `SHIFT+TAB` : Toggle Focus (Editor <-> Explorer)
+### 📂 Workspaces
+Workspaces allow you to save your entire editing session and return to it later. A workspace captures:
+- The current **root directory**.
+- All **open tabs** and their cursor positions.
+- The **active tab**.
 
-### Editor
-- `CTRL + S` : Save File
-- `CTRL + Z` : Undo
-- `CTRL + Y` : Redo
-- `CTRL + L` : Select Current Line
-- `CTRL + A` : Select All
+**Management:**
+- `CTRL+ALT+W` : Opens the Workspace menu.
+- `ENTER` : Load a selected workspace.
+- `CTRL+X` : Delete a workspace from the menu.
+- The active workspace name is always visible in the bottom-right corner of the status bar.
 
-### Explorer
-- `SHIFT + O` : File Options (Rename/Move/Delete)
-- `CTRL + Enter` : Set selected directory as root
-- `Backspace` : Go to parent directory
+### 🔍 Dynamic Search & Discovery
+NEdit features a non-blocking, asynchronous search system that keeps the UI responsive even in large codebases.
 
-### Features
-- **Workspaces**: Save your open tabs and root directory. Access via `CTRL+ALT+W`. Use `CTRL+X` in the menu to delete. The current workspace is displayed in the bottom-right corner of the status bar.
-- **Lua Scripts**: Automate the editor! Any `.lua` file in `~/.config/nedit/scripts/` is automatically a script. Run via `CTRL+P` → **Run Lua Script**.
-  - **Interactive Scripts**: Scripts can now prompt for user input (`nedit.prompt`) or show a selection menu (`nedit.menu`) to perform more complex automation.
-  - **Undo Last Script**: Did a script do something unexpected? Use `CTRL+P` → **Undo Last Script** to revert all changes made by the last script execution (including file writes, creations, and deletions).
-  - **Edit Script**: Use `CTRL+P` → **Edit Lua Script** to open and edit a script file.
-  - **Delete Script**: Use `CTRL+P` → **Delete Lua Script** to remove a script.
-  - **Self-Protection**: Scripts cannot modify themselves. Use `Edit Lua Script` to edit a script.
-  - **Live Script**: Press `CTRL+P` → **Open Live Script** to create a split-view with an interactive script. Press `F9` to execute. Scripts apply immediately and can only modify the target file (left pane).
-    - Switch between target file and script panes with `SHIFT+ALT+RIGHT` / `SHIFT+ALT+LEFT`
-    - Change target files by switching tabs - the script will run on whichever file is currently in the left pane.
-    - Closing the main file window (target) will also close the associated Live Script window to prevent orphaned scripts.
-- **Documentation**: Press `CTRL+H` to open documentation. You can choose:
-  - General docs (this file)
-  - Lua API docs
-  - Keyboard shortcuts
-- **Dynamic Search**: Global search (`CTRL+G`), File Finder (`CTRL+O`), and Local Search (`CTRL+F`) now support dynamic result loading. Instead of a fixed limit, more results are searched and displayed automatically as you scroll down the result list.
-- **Global Config**: All settings in `~/.config/nedit/`.
-- **Dynamic Themes**: Switch themes in real-time.
-- **Translation**: 100% controlled by `language.toml`.
+- **Fuzzy Finder (`CTRL+O`)**: Quickly find and open files by typing part of their name.
+- **Global Search (`CTRL+G`)**: Search for content across all files in the current workspace.
+- **Local Search (`CTRL+F`)**: Find text within the current buffer.
+
+**Dynamic Loading:** Instead of loading all results at once, NEdit uses "scroll-based discovery." As you scroll down the result list, more files are searched and added to the view dynamically.
+
+### 🎨 Theme System
+NEdit supports real-time theme switching. Themes are powered by `syntect` and utilize the `.tmTheme` or `.sublime-syntax` formats.
+- `CTRL+ALT+T` : Open the theme selector.
+- The editor applies the new theme immediately across all open buffers and the UI.
+- Your last selected theme is persisted in `~/.config/nedit/theme.txt`.
+
+### 🛠️ The Command Palette
+The Command Palette (`CTRL+P`) is the central nervous system of NEdit. It provides access to almost every function in the editor through a searchable interface.
+- Quickly run Lua scripts.
+- Perform file operations (New, Open, Save).
+- Switch themes or workspaces.
+- Access the help menu.
+
+## 🔧 Automation & Scripting
+
+### Lua Scripts
+Automate complex tasks using Lua 5.4. Scripts reside in `~/.config/nedit/scripts/`.
+- **Interactive Automation**: Scripts can prompt for user input (`nedit.prompt`) or show a selection menu (`nedit.menu`).
+- **Undo Integration**: Every script execution is atomic. Use `CTRL+P` → **Undo Last Script** to revert all changes (including file deletions or creations) made by a script.
+- **Security**: Scripts are prevented from modifying themselves to ensure stability.
+
+### Live Scripts
+For real-time script development, use **Live Script** mode (`CTRL+P` → **Open Live Script**).
+- **Split View**: Opens a dual-pane view with your target file on the left and the script on the right.
+- **Immediate Execution**: Press `F9` to run the script against the target file instantly.
+- **Scoped Modification**: Live scripts are restricted to modifying *only* the target file for safety.
+
+## 📚 Further Reading
+- [Lua API Documentation](lua.md) - Detailed guide on writing scripts.
+- [Keyboard Shortcuts](binds.md) - Complete list of default keybinds.
