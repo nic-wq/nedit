@@ -27,7 +27,7 @@ fn test_config_custom_load() {
         quit = "ctrl+x"
     "#;
     fs::write(&config_path, toml_content).unwrap();
-    
+
     // Since Config::load() uses dirs::config_dir(),
     // testing the exact load is difficult without mocking the environment.
     // But we can test deserialization manually if the struct is public.
