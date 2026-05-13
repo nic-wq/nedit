@@ -1,188 +1,130 @@
-# Lua Scripts API
+# Lua Scripts API Reference
 
-Lua scripts in `~/.config/nedit/scripts/` allow you to automate the editor.
+NEdit's Lua integration allows you to extend the editor's functionality using Lua 5.4. Whether you want to perform complex text transformations, manage files, or create interactive tools, the Lua API provides the necessary hooks.
 
-There are two ways to use Lua scripts:
-1. **Regular Scripts**: Run via Command Palette (`CTRL+P` → **Run Lua Script**). Can modify any file.
-2. **Live Scripts**: Persistent split-view script panel that continuously interacts with one file. Press `CTRL+P` → **Open Live Script** or add a new `.lua` script and open it in Live Script mode.
+## 🚀 Getting Started
 
-## Script Name
+1.  **Create your script directory**: If it doesn't exist, create `~/.config/nedit/scripts/`.
+2.  **Write a script**: Create a `.lua` file. Start it with a name comment for the Command Palette.
+    ```lua
+    -- Name: My First Script
+    nedit.write_selection("Hello from Lua!")
+    ```
+3.  **Run it**: In NEdit, press `CTRL+P`, type "Run Lua Script", and select your script.
 
-Use `-- Name` on the **first line** to show a friendly name in the Command Palette:
+## 🛠️ Core API
+
+### `nedit.current_file()`
+Returns the absolute path of the currently active file as a string. Returns an empty string if no file is open.
+
+### `nedit.current_content()`
+Returns the entire content of the current buffer as a string.
+
+### `nedit.selection()`
+Returns the currently selected text. If no text is selected, returns an empty string.
+
+### `nedit.read_file(path)`
+Reads the content of a file at the given `path` (relative to the current workspace root). Returns the content as a string, or an empty string if the file doesn't exist.
+
+### `nedit.list_dir(path?)`
+Lists files and directories in the specified `path`. If `path` is omitted, lists the current workspace root. Returns a table (array) of strings.
+
+---
+
+## ✍️ Modification API
+
+> [!IMPORTANT]
+> All modifications made by a script are tracked as a single atomic operation. You can undo all of them at once using **Undo Last Script** in the Command Palette.
+
+### `nedit.write_selection(text)`
+Replaces the currently selected text with the provided `text`. Does nothing if no text is selected.
+
+### `nedit.write_current_file(text)`
+Replaces the entire content of the current buffer with the provided `text`.
+
+### `nedit.write_file(path, text)`
+Writes `text` to the file at `path`. If the file doesn't exist, it is created.
+
+### `nedit.create_file(path, text)`
+Creates a new file at `path` with the initial `text`.
+
+### `nedit.delete_file(path)`
+Deletes the file at the specified `path`.
+
+---
+
+## 💬 Interactive API
+
+Interactive functions block the script execution until the user provides input.
+
+### `nedit.prompt(title, default?)`
+Displays an input box to the user.
+- **Parameters**:
+  - `title`: The message to display (e.g., "Enter new filename").
+  - `default`: (Optional) The initial value in the input box.
+- **Returns**: The string entered by the user, or `nil` if the user cancelled (ESC).
 
 ```lua
--- Remove Extra Spaces
--- description: Removes unnecessary whitespace
-
-local content = nedit.current_content()
-local cleaned = content:gsub("%s+", " ")
-nedit.write_current_file(cleaned)
-```
-
-## Live Script Mode
-
-Live Script is a powerful feature for interactive script development. It opens a split-view with your target file on the left and the script on the right.
-
-### Key Features
-- **Immediate Execution**: Press `F9` to run the script instantly on the current left-pane file
-- **File Safety**: Live scripts can **only modify the file being worked on** (left pane). Attempts to modify other files will be rejected.
-- **Switch Views**: Use `SHIFT+ALT+RIGHT` / `SHIFT+ALT+LEFT` to switch between the target file and the script
-- **Tab Navigation**: Switch between different target files while keeping the script active. The script will run against whichever file is on the left.
-- **Auto-Update Target**: When you open or switch to a file in the left pane, it automatically becomes the Live Script target
-
-### Example Live Script
-
-```lua
--- Name: Transform Selection to Uppercase
--- Converts selected text to uppercase in real-time
-
-local sel = nedit.selection()
-if sel ~= "" then
-    nedit.write_selection(sel:upper())
+local name = nedit.prompt("What is your name?", "Developer")
+if name then
+    nedit.write_selection("Hello, " .. name)
 end
 ```
 
-### Live Script Restrictions
-
-For safety, Live Scripts have the following restrictions:
-- Cannot use `nedit.write_file()`, `nedit.create_file()`, or `nedit.delete_file()` on files other than the target
-- Can use `nedit.write_selection()` and `nedit.write_current_file()` only on the target file
-- If the script tries to violate these restrictions, an error message will be shown
-
-## API Reference
-
-### nedit.current_file()
-
-Returns the path of the current file.
+### `nedit.menu(title, options)`
+Displays a searchable selection menu.
+- **Parameters**:
+  - `title`: The title of the menu.
+  - `options`: A table (array) of strings to choose from.
+- **Returns**: The selected string, or `nil` if the user cancelled (ESC).
 
 ```lua
-local path = nedit.current_file()
-```
-
-### nedit.current_content()
-
-Returns the entire content of the current file.
-
-```lua
-local content = nedit.current_content()
-```
-
-### nedit.selection()
-
-Returns the selected text. Requires text to be selected!
-
-```lua
-local sel = nedit.selection()
-```
-
-### nedit.write_selection(text)
-
-Replaces the **selected** text with the provided text. Requires selection!
-
-```lua
-local sel = nedit.selection()
-nedit.write_selection(sel:upper())
-```
-
-### nedit.write_current_file(text)
-
-Replaces the entire content of the current file.
-
-```lua
-local content = nedit.current_content()
-local cleaned = content:gsub("%s+", " ")
-nedit.write_current_file(cleaned)
-```
-
-### nedit.write_file(path, text)
-
-Writes text to a specific file (relative to the current directory).
-
-```lua
-nedit.write_file("output.txt", "Hello World")
-```
-
-### nedit.create_file(path, text)
-
-Creates a new file with the specified content.
-
-```lua
-nedit.create_file("new_file.txt", "Content here")
-```
-
-### nedit.delete_file(path)
-
-Deletes a file.
-
-```lua
-nedit.delete_file("old_file.txt")
-```
-
-### nedit.read_file(path)
-
-Reads the content of a file.
-
-```lua
-local content = nedit.read_file("data.json")
-```
-
-### nedit.list_dir(path?)
-
-Lists files in a directory. If path is nil, lists the current directory.
-
-```lua
-local files = nedit.list_dir()
-local files = nedit.list_dir("src")
-```
-
-### nedit.prompt(title, default?)
-
-Shows an input box with a title and an optional default value. Blocks the script until the user submits.
-
-```lua
-local name = nedit.prompt("What is your name?", "Anonymous")
-nedit.write_selection("Hello " .. name)
-```
-
-### nedit.menu(title, options)
-
-Shows a selectable menu with a title and a list of options. Blocks the script until the user selects an option or cancels. Returns the selected string or `nil` if cancelled.
-
-```lua
-local choice = nedit.menu("Pick a language", {"Rust", "Lua", "Python"})
+local languages = {"Rust", "Lua", "Go", "Python"}
+local choice = nedit.menu("Select a Language", languages)
 if choice then
-    nedit.write_selection("You picked: " .. choice)
+    nedit.write_selection("Selected: " .. choice)
 end
 ```
 
-## Command Palette Commands
+---
 
-### Regular Scripts
-- **Run Lua Script**: Executes a script and shows a confirmation dialog with actions
-- **Edit Lua Script**: Opens a script for editing
-- **Delete Lua Script**: Removes a script
-- **Open Lua Script**: Creates and opens a new script
+## ⚡ Live Script Mode
 
-### Live Scripts
-- **Open Live Script**: Creates a split-view with a live script on the right. Press `F9` to execute. Scripts apply immediately with restrictions to target file only.
-- Use keyboard shortcuts to switch between target file and script:
-  - `SHIFT+ALT+RIGHT` : Switch to next pane (from target to script or vice versa)
-  - `SHIFT+ALT+LEFT` : Switch to previous pane
+Live scripts are designed for rapid prototyping.
+- **Execution**: Press `F9` to run.
+- **Scope**: Can only modify the "target file" (the file in the left pane of the split-view).
+- **Auto-Targeting**: Switching tabs in the left pane automatically updates the target of the live script.
 
-## Self-Protection
+---
 
-Scripts **cannot modify themselves**. If a script tries to modify its own file, an error will be shown. Use **Edit Lua Script** to edit scripts.
+## 🌟 Comprehensive Example: "Project Note Creator"
 
-## Complete Example
+This script demonstrates using prompts, menus, and file operations together.
 
 ```lua
--- upper_selection
--- description: Converts selection to uppercase
+-- Name: Create Project Note
+-- Description: Prompts for a category and note content, then creates a file.
 
-local sel = nedit.selection()
-if sel and sel ~= "" then
-    nedit.write_selection(sel:upper())
-else
-    error("Select text first")
+local categories = {"Todo", "Bug", "Idea", "Meeting"}
+local category = nedit.menu("Select Note Category", categories)
+
+if not category then
+    return -- User cancelled
 end
+
+local title = nedit.prompt("Note Title", "my_note")
+if not title or title == "" then
+    return
+end
+
+local content = nedit.prompt("Enter note content")
+if not content then
+    return
+end
+
+local filename = string.lower(category) .. "_" .. title .. ".md"
+local full_content = "# " .. category .. ": " .. title .. "\n\n" .. content .. "\n"
+
+nedit.create_file(filename, full_content)
+nedit.write_selection("Created note: " .. filename)
 ```

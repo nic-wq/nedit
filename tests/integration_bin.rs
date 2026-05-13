@@ -1,7 +1,6 @@
 mod common;
 
 use common::run_bin;
-use std::process::Command;
 
 #[test]
 fn test_bin_sem_args() {
@@ -13,6 +12,7 @@ fn test_bin_sem_args() {
     // But we follow the requested pattern.
     assert!(!output.status.success() || output.status.success()); 
     assert!(!output.status.success() || output.status.success());
+}
 
 #[test]
 fn test_bin_com_arquivo_novo() {
