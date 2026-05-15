@@ -326,6 +326,23 @@ fn draw_editor(
         if line_content.ends_with('\r') {
             line_content.pop();
         }
+
+        let selected_text = buffer.get_selected_text();
+        let mut match_ranges = Vec::new();
+        if let Some(ref word) = selected_text {
+            if !word.trim().is_empty() && word.len() < 100 {
+                let word_chars: Vec<char> = word.chars().collect();
+                let line_chars: Vec<char> = line_content.chars().collect();
+                if !word_chars.is_empty() && line_chars.len() >= word_chars.len() {
+                    for i in 0..=(line_chars.len() - word_chars.len()) {
+                        if line_chars[i..i + word_chars.len()] == word_chars[..] {
+                            match_ranges.push(i..i + word_chars.len());
+                        }
+                    }
+                }
+            }
+        }
+
         let mut spans = Vec::new();
 
         let line_num_style = if i == buffer.cursor_row && is_focused {
@@ -384,6 +401,20 @@ fn draw_editor(
 
                         if is_selected {
                             style = style.bg(colors.sel);
+                        } else {
+                            let is_match = match_ranges
+                                .iter()
+                                .any(|range| char_offset >= range.start && char_offset < range.end);
+                            if is_match {
+                                style = style.bg(colors.surface);
+                            }
+                        }
+                    } else {
+                        let is_match = match_ranges
+                            .iter()
+                            .any(|range| char_offset >= range.start && char_offset < range.end);
+                        if is_match {
+                            style = style.bg(colors.surface);
                         }
                     }
 

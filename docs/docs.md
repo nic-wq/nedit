@@ -31,7 +31,7 @@ You can open files or directories directly from your terminal:
 - `CTRL + Y` : Redo
 - `CTRL + L` : Select Current Line
 - `CTRL + A` : Select All
-- **Mouse**: Double-click a word to select it.
+- **Mouse**: Double-click a word to select it. Selecting a word (or any text) will automatically highlight all other occurrences in the current file.
 
 ### Explorer
 - `SHIFT + O` : File Options (Rename/Move/Delete)
