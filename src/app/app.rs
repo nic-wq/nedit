@@ -68,6 +68,7 @@ pub struct App {
     pub script_action_rx: Option<std::sync::mpsc::Receiver<Vec<crate::lua::LuaAction>>>,
     pub last_click_time: std::time::Instant,
     pub last_click_pos: (u16, u16),
+    pub icon_registry: crate::ui::icons::IconRegistry,
 }
 
 impl App {
@@ -173,6 +174,7 @@ impl App {
             script_action_rx: None,
             last_click_time: std::time::Instant::now(),
             last_click_pos: (0, 0),
+            icon_registry: crate::ui::icons::IconRegistry::load(),
         };
 
         if let Some(watcher) = &mut app.watcher {

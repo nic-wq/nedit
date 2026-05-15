@@ -196,7 +196,13 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             Style::default().fg(colors.fg)
         };
 
-        spans.push(Span::styled(format!(" {} {} ", name, modified), style));
+        let icon = if let Some(path) = &buffer.path {
+            app.icon_registry.get_icon(path, false, false)
+        } else {
+            "󰈔 "
+        };
+
+        spans.push(Span::styled(format!(" {} {} {} ", icon, name, modified), style));
         spans.push(Span::raw(" "));
     }
 
@@ -226,19 +232,7 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         .map(|(i, item)| {
             let actual_idx = i + scroll_offset;
             let indent = "  ".repeat(item.depth);
-            let icon = if item.is_dir {
-                if item.expanded {
-                    "󰉖 "
-                } else {
-                    "󰉋 "
-                }
-            } else {
-                match item.path.extension().and_then(|e| e.to_str()) {
-                    Some("rs") => " ",
-                    Some("md") => " ",
-                    _ => "󰈔 ",
-                }
-            };
+            let icon = app.icon_registry.get_icon(&item.path, item.is_dir, item.expanded);
 
             let style = if actual_idx == app.explorer.selected_idx && app.focus == Focus::Explorer {
                 Style::default()
@@ -881,52 +875,13 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                             Style::default().fg(colors.fg)
                         };
                         let icon = match app.fuzzy_mode {
-                            FuzzyMode::CommandPalette => match name.as_str() {
-                                "Save" => "󰆓 ",
-                                "New File" => "󰝒 ",
-                                "Open File" => "󰈞 ",
-                                "Close Tab" => "󰅖 ",
-                                "Toggle Explorer" => "󰙅 ",
-                                "Global Search" => "󰈗 ",
-                                "Local Search" => "󰩊 ",
-                                "Switch Theme" => "󰔎 ",
-                                "Workspaces" => "󰉋 ",
-                                "Open Lua Script" => "󰢱 ",
-                                "Run Lua Script" => "󰐊 ",
-                                "Edit Lua Script" => "󰏫 ",
-                                "Delete Lua Script" => "󰆴 ",
-                                "Open Live Script" => "󰢱 ",
-                                "Undo Last Script" => "󰕌 ",
-                                "Quit" => "󰈆 ",
-                                "Undo" => "󰕌 ",
-                                "Redo" => "󰕍 ",
-                                "Copy" => "󰆏 ",
-                                "Paste" => "󰆑 ",
-                                "Cut" => "󰆐 ",
-                                "Select All" => "󰒅 ",
-                                "Open Help" => "󰘥 ",
-                                _ => "󰘳 ",
-                            },
-                            FuzzyMode::FileOptions => match name.as_str() {
-                                "Rename" => "󰏫 ",
-                                "Move" => "󰪹 ",
-                                "Delete" => "󰆴 ",
-                                _ => "󰘳 ",
-                            },
-                            FuzzyMode::Workspaces => match name.as_str() {
-                                "Exit Workspace" => "󰈆 ",
-                                "New Workspace..." => "󰉋 ",
-                                _ => "󰉋 ",
-                            },
+                            FuzzyMode::CommandPalette
+                            | FuzzyMode::FileOptions
+                            | FuzzyMode::Workspaces => app.icon_registry.get_command_icon(&name),
                             FuzzyMode::RunScript => "󰢱 ",
                             FuzzyMode::EditScript => "󰏫 ",
                             FuzzyMode::DeleteScript => "󰆴 ",
-                            FuzzyMode::DocSelect => match name.as_str() {
-                                "docs.md" => "󰘥 ",
-                                "lua.md" => "󰢱 ",
-                                "binds.md" => "󰘳 ",
-                                _ => "󰈔 ",
-                            },
+                            FuzzyMode::DocSelect => app.icon_registry.get_icon(path, false, false),
                             FuzzyMode::ScriptMenu => "󰘳 ",
                             _ => "  ",
                         };
@@ -957,11 +912,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                     } else {
                         Style::default().fg(colors.fg)
                     };
-                    let icon = if path.is_dir() {
-                        "\u{f016b} "
-                    } else {
-                        "\u{f0214} "
-                    };
+                    let icon = app.icon_registry.get_icon(path, path.is_dir(), false);
                     ListItem::new(format!(" {} {} ({})", icon, name, rel_path)).style(style)
                 })
                 .collect()

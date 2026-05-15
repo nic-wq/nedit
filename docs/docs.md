@@ -58,3 +58,16 @@ You can open files or directories directly from your terminal:
 - **Global Config**: All settings in `~/.config/nedit/`.
 - **Dynamic Themes**: Switch themes in real-time.
 - **Translation**: 100% controlled by `language.toml`.
+- **Icon System**: NEdit now features a centralized icon system powered by Nerd Fonts. Files and folders are displayed with specific icons based on their type, extension, or filename, making navigation more intuitive. Icons are visible in the File Explorer, Fuzzy Finder, and even in the Tab Bar.
+  - **Customization**: You can add your own icons by creating `.toml` files in `~/.config/nedit/icons/`.
+    Example `custom.toml`:
+    ```toml
+    [extensions]
+    custom = "" # Matches .custom files
+    
+    [files]
+    "secrets.txt" = "󰔡" # Matches specific filename
+    
+    [commands]
+    "Save" = "󰆓" # Change icons for commands in menus
+    ```
