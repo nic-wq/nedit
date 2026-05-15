@@ -51,6 +51,16 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                         .saturating_sub(1);
                     buffer.cursor_col = target_col.min(line_len);
                     buffer.selection_start = None;
+
+                    let is_double_click = app.last_click_pos == (mouse.column, mouse.row)
+                        && app.last_click_time.elapsed().as_millis() < 500;
+
+                    app.last_click_pos = (mouse.column, mouse.row);
+                    app.last_click_time = std::time::Instant::now();
+
+                    if is_double_click {
+                        buffer.select_word();
+                    }
                 }
             } else if app
                 .explorer_area

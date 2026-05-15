@@ -31,6 +31,7 @@ You can open files or directories directly from your terminal:
 - `CTRL + Y` : Redo
 - `CTRL + L` : Select Current Line
 - `CTRL + A` : Select All
+- **Mouse**: Double-click a word to select it.
 
 ### Explorer
 - `SHIFT + O` : File Options (Rename/Move/Delete)

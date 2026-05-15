@@ -66,6 +66,8 @@ pub struct App {
     pub script_response_tx: Option<std::sync::mpsc::Sender<crate::lua::ScriptResponse>>,
     pub script_request_rx: Option<std::sync::mpsc::Receiver<crate::lua::ScriptRequest>>,
     pub script_action_rx: Option<std::sync::mpsc::Receiver<Vec<crate::lua::LuaAction>>>,
+    pub last_click_time: std::time::Instant,
+    pub last_click_pos: (u16, u16),
 }
 
 impl App {
@@ -169,6 +171,8 @@ impl App {
             script_response_tx: None,
             script_request_rx: None,
             script_action_rx: None,
+            last_click_time: std::time::Instant::now(),
+            last_click_pos: (0, 0),
         };
 
         if let Some(watcher) = &mut app.watcher {

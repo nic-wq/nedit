@@ -60,4 +60,45 @@ impl EditorBuffer {
                 line_len
             };
     }
+
+    pub fn select_word(&mut self) {
+        if self.content.len_chars() == 0 {
+            return;
+        }
+        let char_idx = self.to_char_idx(self.cursor_row, self.cursor_col)
+            .min(self.content.len_chars().saturating_sub(1));
+        let c = self.content.char(char_idx);
+
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        let is_whitespace = |c: char| c.is_whitespace();
+
+        let mut start_idx = char_idx;
+        let mut end_idx = char_idx;
+
+        if is_word_char(c) {
+            while start_idx > 0 && is_word_char(self.content.char(start_idx - 1)) {
+                start_idx -= 1;
+            }
+            while end_idx < self.content.len_chars() && is_word_char(self.content.char(end_idx)) {
+                end_idx += 1;
+            }
+        } else if is_whitespace(c) {
+            while start_idx > 0 && is_whitespace(self.content.char(start_idx - 1)) {
+                start_idx -= 1;
+            }
+            while end_idx < self.content.len_chars() && is_whitespace(self.content.char(end_idx)) {
+                end_idx += 1;
+            }
+        } else {
+            end_idx += 1;
+        }
+
+        if start_idx != end_idx {
+            let (start_row, start_col) = self.char_to_line_col(start_idx);
+            let (end_row, end_col) = self.char_to_line_col(end_idx);
+            self.selection_start = Some((start_row, start_col));
+            self.cursor_row = end_row;
+            self.cursor_col = end_col;
+        }
+    }
 }
