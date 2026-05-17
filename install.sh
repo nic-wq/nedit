@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
                 SPECIFIC_VERSION="$2"
                 shift 2
             else
-                echo "Error: --version requires a valid version argument (e.g., --version 0.3.0)."
+                echo "Error: --version requires a valid version argument (e.g., --version 0.5.0)."
                 exit 1
             fi
             ;;
@@ -48,12 +48,8 @@ if [ "$REAL_TIME" = true ]; then
     DOWNLOAD_URL="https://github.com/$REPO/releases/download/nightly/nedit_linux"
 
 elif [ -n "$SPECIFIC_VERSION" ]; then
-    # Se a versão passada não começar com "v", adicionamos automaticamente para bater com a tag do GitHub (ex: v0.3.0)
-    if [[ ! "$SPECIFIC_VERSION" =~ ^v ]]; then
-        TAG_VERSION="v$SPECIFIC_VERSION"
-    else
-        TAG_VERSION="$SPECIFIC_VERSION"
-    fi
+    # Usamos a versão exatamente como o usuário digitou (ex: 0.5.0), já que suas tags não usam "v"
+    TAG_VERSION="$SPECIFIC_VERSION"
     
     echo "Fetching specific version: $TAG_VERSION..."
     API_URL="https://api.github.com/repos/$REPO/releases/tags/$TAG_VERSION"
