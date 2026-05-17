@@ -550,24 +550,20 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     let shortcuts = if app.is_welcome {
         vec![
             ("Ctrl+O", "Open File"),
-            ("Ctrl+Alt+T", "Switch Theme"),
-            ("Ctrl+H", "Open docs"),
+            ("Ctrl+Alt+T", "Theme"),
+            ("Ctrl+H", "Docs"),
         ]
     } else if app.is_fuzzy {
-        vec![("Enter", "Select"), ("Esc", "Quit")]
+        vec![("Enter", "Select"), ("Esc", "Close")]
     } else if app.focus == Focus::Explorer {
-        vec![
-            ("Enter", "Open File"),
-            ("Ctrl+N", "New File"),
-            ("Ctrl+X", "Delete"),
-            ("Ctrl+R", "Rename"),
-        ]
+        vec![("Enter", "Open"), ("Ctrl+N", "New"), ("Shift+O", "Options")]
     } else {
         vec![
             ("Ctrl+S", "Save"),
-            ("Ctrl+P", "Open File"),
-            ("Ctrl+G", "Global Search"),
-            ("Ctrl+E", "Toggle Explorer"),
+            ("Ctrl+O", "Open"),
+            ("Ctrl+G", "Search"),
+            ("Ctrl+P", "Palette"),
+            ("Ctrl+E", "Explorer"),
         ]
     };
 
