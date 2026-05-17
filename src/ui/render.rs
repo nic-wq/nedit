@@ -1,12 +1,13 @@
 use ratatui::prelude::Stylize;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     Frame,
 };
 use syntect::easy::HighlightLines;
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus, FuzzyMode};
 
@@ -202,7 +203,10 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             "󰈔 "
         };
 
-        spans.push(Span::styled(format!(" {} {} {} ", icon, name, modified), style));
+        spans.push(Span::styled(
+            format!(" {} {} {} ", icon, name, modified),
+            style,
+        ));
         spans.push(Span::raw(" "));
     }
 
@@ -232,7 +236,9 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         .map(|(i, item)| {
             let actual_idx = i + scroll_offset;
             let indent = "  ".repeat(item.depth);
-            let icon = app.icon_registry.get_icon(&item.path, item.is_dir, item.expanded);
+            let icon = app
+                .icon_registry
+                .get_icon(&item.path, item.is_dir, item.expanded);
 
             let style = if actual_idx == app.explorer.selected_idx && app.focus == Focus::Explorer {
                 Style::default()
@@ -280,6 +286,8 @@ fn draw_editor(
         Some(b) => b,
         None => return,
     };
+
+    let matching_bracket = buffer.find_matching_bracket();
 
     let mut buffer_scroll_row = buffer.scroll_row;
     let height = area.height as usize;
@@ -412,6 +420,14 @@ fn draw_editor(
                         }
                     }
 
+                    if matching_bracket == Some((i, char_offset))
+                        || (matching_bracket.is_some()
+                            && i == buffer.cursor_row
+                            && char_offset == buffer.cursor_col)
+                    {
+                        style = style.bg(colors.accent).fg(colors.bg);
+                    }
+
                     let disp_text = if c == '\t' {
                         " ".repeat(4)
                     } else {
@@ -537,29 +553,56 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
 }
 
 fn draw_welcome_screen(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
-    let logo = format!(
-        r#"
-    ███╗   ██╗███████╗██████╗ ██╗████████╗
-    ████╗  ██║██╔════╝██╔══██╗██║╚══██╔══╝
-    ██╔██╗ ██║█████╗  ██║  ██║██║   ██║   
-    ██║╚██╗██║██╔══╝  ██║  ██║██║   ██║   
-    ██║ ╚████║███████╗██████╔╝██║   ██║   
-    ╚═╝  ╚═══╝╚══════╝╚═════╝ ╚═╝   ╚═╝   
-    v{}
-    "#,
-        env!("CARGO_PKG_VERSION")
-    );
+    let logo_lines = [
+        "███╗   ██╗███████╗██████╗ ██╗████████╗",
+        "████╗  ██║██╔════╝██╔══██╗██║╚══██╔══╝",
+        "██╔██╗ ██║█████╗  ██║  ██║██║   ██║",
+        "██║╚██╗██║██╔══╝  ██║  ██║██║   ██║",
+        "██║ ╚████║███████╗██████╔╝██║   ██║",
+        "╚═╝  ╚═══╝╚══════╝╚═════╝ ╚═╝   ╚═╝",
+    ];
+    let logo_width = logo_lines
+        .iter()
+        .map(|line| UnicodeWidthStr::width(*line))
+        .max()
+        .unwrap_or(0) as u16;
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(9), Constraint::Length(10)])
         .split(area);
 
+    let logo_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(logo_width.min(chunks[0].width)),
+            Constraint::Min(0),
+        ])
+        .split(chunks[0]);
+
+    let logo = logo_lines
+        .into_iter()
+        .map(Line::from)
+        .collect::<Vec<Line<'_>>>();
+
     let logo_para = Paragraph::new(logo)
         .style(Style::default().fg(colors.accent))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Left);
 
-    f.render_widget(logo_para, chunks[0]);
+    f.render_widget(logo_para, logo_chunks[1]);
+
+    let version_area = Rect {
+        y: chunks[0].y + 7,
+        height: 1,
+        ..chunks[0]
+    };
+    f.render_widget(
+        Paragraph::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+            .style(Style::default().fg(colors.accent))
+            .alignment(Alignment::Center),
+        version_area,
+    );
 
     let shortcuts = vec![
         Line::from(vec![
@@ -599,7 +642,7 @@ fn draw_welcome_screen(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) 
         ]),
     ];
 
-    let paragraph = Paragraph::new(shortcuts).alignment(ratatui::layout::Alignment::Center);
+    let paragraph = Paragraph::new(shortcuts).alignment(Alignment::Center);
     f.render_widget(paragraph, chunks[1]);
 }
 

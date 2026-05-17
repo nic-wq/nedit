@@ -113,6 +113,49 @@ impl EditorBuffer {
         words
     }
 
+    pub fn find_matching_bracket(&self) -> Option<(usize, usize)> {
+        let char_idx = self.to_char_idx(self.cursor_row, self.cursor_col);
+        if char_idx >= self.content.len_chars() {
+            return None;
+        }
+
+        let current_char = self.content.char(char_idx);
+        let open_chars = ['(', '[', '{'];
+        let close_chars = [')', ']', '}'];
+
+        if let Some(pos) = open_chars.iter().position(|&c| c == current_char) {
+            let target_close = close_chars[pos];
+            let mut depth = 0;
+            for i in (char_idx + 1)..self.content.len_chars() {
+                let c = self.content.char(i);
+                if c == current_char {
+                    depth += 1;
+                } else if c == target_close {
+                    if depth == 0 {
+                        return Some(self.char_to_line_col(i));
+                    }
+                    depth -= 1;
+                }
+            }
+        } else if let Some(pos) = close_chars.iter().position(|&c| c == current_char) {
+            let target_open = open_chars[pos];
+            let mut depth = 0;
+            for i in (0..char_idx).rev() {
+                let c = self.content.char(i);
+                if c == current_char {
+                    depth += 1;
+                } else if c == target_open {
+                    if depth == 0 {
+                        return Some(self.char_to_line_col(i));
+                    }
+                    depth -= 1;
+                }
+            }
+        }
+
+        None
+    }
+
     pub(crate) fn push_history(&mut self) {
         if self.history_idx < self.history.len() - 1 {
             self.history.truncate(self.history_idx + 1);
