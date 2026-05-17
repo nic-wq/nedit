@@ -1,7 +1,8 @@
 mod colors;
+pub mod icons;
 mod layout;
 mod render;
-pub mod icons;
+mod welcome;
 
 pub use colors::{get_colors, UIColors};
 pub use layout::centered_rect;

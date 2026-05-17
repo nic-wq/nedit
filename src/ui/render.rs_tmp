@@ -1,0 +1,15 @@
+use std::path::{Path, PathBuf};
+use ratatui::prelude::Stylize;
+use ratatui::{
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    Frame,
+};
+use syntect::easy::HighlightLines;
+use unicode_width::UnicodeWidthStr;
+
+use crate::app::{App, Focus, FuzzyMode};
+
+use super::{centered_rect, get_colors, UIColors};

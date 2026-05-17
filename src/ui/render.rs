@@ -6,11 +6,12 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     Frame,
 };
+use std::path::Path;
 use syntect::easy::HighlightLines;
-use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus, FuzzyMode};
 
+use super::welcome::draw_welcome_screen;
 use super::{centered_rect, get_colors, UIColors};
 
 pub fn render(f: &mut Frame, app: &mut App) {
@@ -486,164 +487,161 @@ fn draw_notification(
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
+    let (mode_text, mode_color) = if app.is_welcome {
+        (" WELCOME ", Color::Rgb(180, 190, 254)) // Lavender
+    } else if app.is_fuzzy {
+        (" FUZZY ", Color::Rgb(245, 194, 231)) // Pink
+    } else {
+        match app.focus {
+            Focus::Explorer => (" EXPLORER ", Color::Rgb(166, 227, 161)), // Green
+            Focus::Editor => (" EDITOR ", Color::Rgb(137, 180, 250)),     // Blue
+        }
+    };
+
+    let mode_span = Span::styled(
+        mode_text,
+        Style::default()
+            .bg(mode_color)
+            .fg(colors.bg)
+            .add_modifier(Modifier::BOLD),
+    );
+
+    let mode_sep = Span::styled("", Style::default().bg(colors.surface).fg(mode_color));
+
+    // File info
+    let mut file_spans = Vec::new();
+    if !app.is_welcome && !app.buffers.is_empty() {
+        if let Some(buffer) = app.buffers.get(app.current_buffer_idx) {
+            let path = buffer.path.as_deref().unwrap_or(Path::new("[No Name]"));
+            let icon = app.icon_registry.get_icon(path, false, false);
+
+            file_spans.push(Span::styled(
+                format!(" {} ", icon),
+                Style::default().fg(mode_color),
+            ));
+
+            let components: Vec<_> = path.components().collect();
+            let path_str = if components.len() > 4 {
+                let last_parts: Vec<_> = components.iter().rev().take(4).rev().collect();
+                let mut p = String::new();
+                for (i, part) in last_parts.iter().enumerate() {
+                    if i > 0 {
+                        p.push('/');
+                    }
+                    p.push_str(&part.as_os_str().to_string_lossy());
+                }
+                format!(".../{}", p)
+            } else {
+                path.to_string_lossy().to_string()
+            };
+
+            file_spans.push(Span::styled(path_str, Style::default().fg(colors.fg)));
+            if buffer.modified {
+                file_spans.push(Span::styled(
+                    " ●",
+                    Style::default().fg(Color::Rgb(249, 226, 175)),
+                ));
+            }
+        }
+    }
+
+    // Shortcuts
+    let mut shortcut_spans = Vec::new();
+    let shortcuts = if app.is_welcome {
+        vec![
+            ("Ctrl+O", "Open File"),
+            ("Ctrl+Alt+T", "Switch Theme"),
+            ("Ctrl+H", "Open docs"),
+        ]
+    } else if app.is_fuzzy {
+        vec![("Enter", "Select"), ("Esc", "Quit")]
+    } else if app.focus == Focus::Explorer {
+        vec![
+            ("Enter", "Open File"),
+            ("Ctrl+N", "New File"),
+            ("Ctrl+X", "Delete"),
+            ("Ctrl+R", "Rename"),
+        ]
+    } else {
+        vec![
+            ("Ctrl+S", "Save"),
+            ("Ctrl+P", "Open File"),
+            ("Ctrl+G", "Global Search"),
+            ("Ctrl+E", "Toggle Explorer"),
+        ]
+    };
+
+    for (i, (key, desc)) in shortcuts.iter().enumerate() {
+        if i > 0 {
+            shortcut_spans.push(Span::raw(" "));
+        }
+        let icon = app.icon_registry.get_command_icon(desc);
+        shortcut_spans.push(Span::styled(
+            format!(" {} {}", icon, key),
+            Style::default().fg(mode_color).add_modifier(Modifier::BOLD),
+        ));
+        shortcut_spans.push(Span::styled(
+            format!(" {} ", desc),
+            Style::default().fg(colors.fg),
+        ));
+    }
+
+    // Stats (Right side)
+    let stats_text = if let Some(buffer) = app.buffers.get(app.current_buffer_idx) {
+        format!("  {}:{} ", buffer.cursor_row + 1, buffer.cursor_col + 1)
+    } else {
+        String::new()
+    };
+
     let ws_text = if let Some(ws) = &app.current_workspace {
         format!(" 󰘳 {} ", ws)
     } else {
         String::new()
     };
 
-    let left_text = if app.is_welcome || app.buffers.is_empty() {
-        format!(
-            " {} | {} {} | {} {} ",
-            app.i18n.t("welcome_to_nedit"),
-            app.config.get_keybind("theme_select").to_uppercase(),
-            app.i18n.t("select_themes"),
-            app.config.get_keybind("open_help").to_uppercase(),
-            app.i18n.t("for_help")
-        )
-    } else if let Some(buffer) = app.buffers.get(app.current_buffer_idx) {
-        let file_name = buffer
-            .path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "[No Name]".to_string());
+    let left_spans = [vec![mode_span, mode_sep], file_spans].concat();
+    let left_line = Line::from(left_spans);
 
-        let modified = if buffer.modified { "*" } else { "" };
-        let read_only = if buffer.is_read_only {
-            format!(" {}", app.i18n.t("read_only"))
-        } else {
-            "".to_string()
-        };
-        format!(
-            " {} {} {} | {}: {} | {}: {}, {}: {} ",
-            file_name,
-            modified,
-            read_only,
-            app.i18n.t("theme"),
-            app.current_theme,
-            app.i18n.t("row"),
-            buffer.cursor_row + 1,
-            app.i18n.t("col"),
-            buffer.cursor_col + 1
-        )
-    } else {
-        String::new()
-    };
+    let middle_line = Line::from(shortcut_spans);
+
+    let mut right_spans = vec![Span::styled(stats_text, Style::default().fg(colors.fg))];
+    if !ws_text.is_empty() {
+        right_spans.push(Span::styled(
+            " ",
+            Style::default().bg(colors.surface).fg(mode_color),
+        ));
+        right_spans.push(Span::styled(
+            ws_text,
+            Style::default()
+                .bg(mode_color)
+                .fg(colors.bg)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    let right_line = Line::from(right_spans);
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Min(10),
-            Constraint::Length(ws_text.chars().count() as u16),
+            Constraint::Percentage(30),
+            Constraint::Percentage(50),
+            Constraint::Percentage(20),
         ])
         .split(area);
 
+    f.render_widget(Paragraph::new(left_line).bg(colors.surface), chunks[0]);
     f.render_widget(
-        Paragraph::new(left_text).bg(colors.accent).fg(colors.bg),
-        chunks[0],
-    );
-    f.render_widget(
-        Paragraph::new(ws_text)
-            .bg(colors.accent)
-            .fg(colors.bg)
-            .alignment(ratatui::layout::Alignment::Right),
+        Paragraph::new(middle_line)
+            .bg(colors.surface)
+            .alignment(Alignment::Center),
         chunks[1],
     );
-}
-
-fn draw_welcome_screen(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
-    let logo_lines = [
-        "███╗   ██╗███████╗██████╗ ██╗████████╗",
-        "████╗  ██║██╔════╝██╔══██╗██║╚══██╔══╝",
-        "██╔██╗ ██║█████╗  ██║  ██║██║   ██║",
-        "██║╚██╗██║██╔══╝  ██║  ██║██║   ██║",
-        "██║ ╚████║███████╗██████╔╝██║   ██║",
-        "╚═╝  ╚═══╝╚══════╝╚═════╝ ╚═╝   ╚═╝",
-    ];
-    let logo_width = logo_lines
-        .iter()
-        .map(|line| UnicodeWidthStr::width(*line))
-        .max()
-        .unwrap_or(0) as u16;
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(9), Constraint::Length(10)])
-        .split(area);
-
-    let logo_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(logo_width.min(chunks[0].width)),
-            Constraint::Min(0),
-        ])
-        .split(chunks[0]);
-
-    let logo = logo_lines
-        .into_iter()
-        .map(Line::from)
-        .collect::<Vec<Line<'_>>>();
-
-    let logo_para = Paragraph::new(logo)
-        .style(Style::default().fg(colors.accent))
-        .alignment(Alignment::Left);
-
-    f.render_widget(logo_para, logo_chunks[1]);
-
-    let version_area = Rect {
-        y: chunks[0].y + 7,
-        height: 1,
-        ..chunks[0]
-    };
     f.render_widget(
-        Paragraph::new(format!("v{}", env!("CARGO_PKG_VERSION")))
-            .style(Style::default().fg(colors.accent))
-            .alignment(Alignment::Center),
-        version_area,
+        Paragraph::new(right_line)
+            .bg(colors.surface)
+            .alignment(Alignment::Right),
+        chunks[2],
     );
-
-    let shortcuts = vec![
-        Line::from(vec![
-            Span::styled(
-                app.config.get_keybind("new_file").to_uppercase(),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw(format!("  {}", app.i18n.t("new_file"))),
-        ]),
-        Line::from(vec![
-            Span::styled(
-                app.config.get_keybind("toggle_explorer").to_uppercase(),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw(format!("  {}", app.i18n.t("file_explorer"))),
-        ]),
-        Line::from(vec![
-            Span::styled(
-                app.config.get_keybind("open_file").to_uppercase(),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw(format!("  {}", app.i18n.t("open_file_fuzzy"))),
-        ]),
-        Line::from(vec![
-            Span::styled(
-                app.config.get_keybind("global_search").to_uppercase(),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw(format!("  {}", app.i18n.t("global_search"))),
-        ]),
-        Line::from(vec![
-            Span::styled(
-                app.config.get_keybind("theme_select").to_uppercase(),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw(format!("  {}", app.i18n.t("select_theme"))),
-        ]),
-    ];
-
-    let paragraph = Paragraph::new(shortcuts).alignment(Alignment::Center);
-    f.render_widget(paragraph, chunks[1]);
 }
 
 fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {

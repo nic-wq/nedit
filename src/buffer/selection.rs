@@ -65,7 +65,8 @@ impl EditorBuffer {
         if self.content.len_chars() == 0 {
             return;
         }
-        let char_idx = self.to_char_idx(self.cursor_row, self.cursor_col)
+        let char_idx = self
+            .to_char_idx(self.cursor_row, self.cursor_col)
             .min(self.content.len_chars().saturating_sub(1));
         let c = self.content.char(char_idx);
 
