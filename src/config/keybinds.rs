@@ -26,6 +26,7 @@ impl Config {
                 "down" => target_code = KeyCode::Down,
                 "left" => target_code = KeyCode::Left,
                 "right" => target_code = KeyCode::Right,
+                "backspace" => target_code = KeyCode::Backspace,
                 "f1" => target_code = KeyCode::F(1),
                 "f2" => target_code = KeyCode::F(2),
                 "f3" => target_code = KeyCode::F(3),

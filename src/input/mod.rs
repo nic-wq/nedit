@@ -157,6 +157,18 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         app.toggle_fuzzy(crate::app::FuzzyMode::Themes);
         return;
     }
+
+    if (key.code == KeyCode::Backspace && key.modifiers.contains(KeyModifiers::CONTROL))
+        || (key.code == KeyCode::Char('h') && key.modifiers.contains(KeyModifiers::CONTROL))
+    {
+        if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+            if !buffer.is_read_only {
+                buffer.delete_word();
+                return;
+            }
+        }
+    }
+
     if app.config.matches(key, "open_help") {
         app.open_docs();
         return;

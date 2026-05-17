@@ -52,4 +52,23 @@ impl EditorBuffer {
             self.modified = true;
         }
     }
+
+    pub fn delete_word(&mut self) {
+        if self.selection_start.is_some() {
+            self.delete_selection();
+            return;
+        }
+
+        let end_idx = self.to_char_idx(self.cursor_row, self.cursor_col);
+        if end_idx == 0 {
+            return;
+        }
+
+        self.push_history();
+        self.move_word(-1);
+        let start_idx = self.to_char_idx(self.cursor_row, self.cursor_col);
+
+        self.content.remove(start_idx..end_idx);
+        self.modified = true;
+    }
 }
