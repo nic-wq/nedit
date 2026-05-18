@@ -1,6 +1,8 @@
 mod templates;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+};
 
 use crate::app::{App, Focus};
 
@@ -10,7 +12,8 @@ pub use templates::LUA_TEMPLATE;
 pub fn handle_events(app: &mut App) -> anyhow::Result<()> {
     if event::poll(std::time::Duration::from_millis(16))? {
         match event::read()? {
-            Event::Key(key) => handle_key_event(app, key),
+            Event::Key(key) if key.kind != KeyEventKind::Release => handle_key_event(app, key),
+            Event::Key(_) => {}
             Event::Mouse(mouse) => handle_mouse_event(app, mouse),
             _ => {}
         }
@@ -157,6 +160,10 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         app.toggle_fuzzy(crate::app::FuzzyMode::Themes);
         return;
     }
+    if app.config.matches(key, "open_help") {
+        app.open_docs();
+        return;
+    }
 
     if (key.code == KeyCode::Backspace && key.modifiers.contains(KeyModifiers::CONTROL))
         || (key.code == KeyCode::Char('h') && key.modifiers.contains(KeyModifiers::CONTROL))
@@ -167,11 +174,6 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
                 return;
             }
         }
-    }
-
-    if app.config.matches(key, "open_help") {
-        app.open_docs();
-        return;
     }
     if app.config.matches(key, "toggle_focus") {
         app.focus = match app.focus {
