@@ -545,8 +545,44 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         }
     }
 
+    // Stats (Right side)
+    let stats_text = if let Some(buffer) = app.buffers.get(app.current_buffer_idx) {
+        format!("  {}:{} ", buffer.cursor_row + 1, buffer.cursor_col + 1)
+    } else {
+        String::new()
+    };
+
+    let ws_text = if let Some(ws) = &app.current_workspace {
+        format!(" 󰘳 {} ", ws)
+    } else {
+        String::new()
+    };
+
+    let left_spans = [vec![mode_span, mode_sep], file_spans].concat();
+    let left_line = Line::from(left_spans);
+
+    let mut right_spans = vec![Span::styled(stats_text, Style::default().fg(colors.fg))];
+    if !ws_text.is_empty() {
+        right_spans.push(Span::styled(
+            " ",
+            Style::default().bg(colors.surface).fg(mode_color),
+        ));
+        right_spans.push(Span::styled(
+            ws_text,
+            Style::default()
+                .bg(mode_color)
+                .fg(colors.bg)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    let right_line = Line::from(right_spans);
+
+    // Calculate available width for shortcuts
+    let left_width = left_line.width();
+    let right_width = right_line.width();
+    let middle_width = area.width.saturating_sub(left_width as u16).saturating_sub(right_width as u16);
+
     // Shortcuts
-    let mut shortcut_spans = Vec::new();
     let shortcuts = if app.is_welcome {
         vec![
             ("Ctrl+O", "Open File"),
@@ -567,61 +603,47 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         ]
     };
 
+    let mut final_shortcut_spans = Vec::new();
+    let mut current_shortcuts_width = 0;
+
     for (i, (key, desc)) in shortcuts.iter().enumerate() {
-        if i > 0 {
-            shortcut_spans.push(Span::raw(" "));
-        }
         let icon = app.icon_registry.get_command_icon(desc);
-        shortcut_spans.push(Span::styled(
+        let key_span = Span::styled(
             format!(" {} {}", icon, key),
             Style::default().fg(mode_color).add_modifier(Modifier::BOLD),
-        ));
-        shortcut_spans.push(Span::styled(
+        );
+        let desc_span = Span::styled(
             format!(" {} ", desc),
             Style::default().fg(colors.fg),
-        ));
+        );
+        
+        let mut item_width = key_span.width() + desc_span.width();
+        if i > 0 {
+            item_width += 1; // space
+        }
+
+        if current_shortcuts_width + item_width <= middle_width as usize {
+            if i > 0 {
+                final_shortcut_spans.push(Span::raw(" "));
+                current_shortcuts_width += 1;
+            }
+            current_shortcuts_width += key_span.width();
+            final_shortcut_spans.push(key_span);
+            current_shortcuts_width += desc_span.width();
+            final_shortcut_spans.push(desc_span);
+        } else {
+            break;
+        }
     }
 
-    // Stats (Right side)
-    let stats_text = if let Some(buffer) = app.buffers.get(app.current_buffer_idx) {
-        format!("  {}:{} ", buffer.cursor_row + 1, buffer.cursor_col + 1)
-    } else {
-        String::new()
-    };
-
-    let ws_text = if let Some(ws) = &app.current_workspace {
-        format!(" 󰘳 {} ", ws)
-    } else {
-        String::new()
-    };
-
-    let left_spans = [vec![mode_span, mode_sep], file_spans].concat();
-    let left_line = Line::from(left_spans);
-
-    let middle_line = Line::from(shortcut_spans);
-
-    let mut right_spans = vec![Span::styled(stats_text, Style::default().fg(colors.fg))];
-    if !ws_text.is_empty() {
-        right_spans.push(Span::styled(
-            " ",
-            Style::default().bg(colors.surface).fg(mode_color),
-        ));
-        right_spans.push(Span::styled(
-            ws_text,
-            Style::default()
-                .bg(mode_color)
-                .fg(colors.bg)
-                .add_modifier(Modifier::BOLD),
-        ));
-    }
-    let right_line = Line::from(right_spans);
+    let middle_line = Line::from(final_shortcut_spans);
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(30),
-            Constraint::Percentage(50),
-            Constraint::Percentage(20),
+            Constraint::Length(left_width as u16),
+            Constraint::Min(0),
+            Constraint::Length(right_width as u16),
         ])
         .split(area);
 
