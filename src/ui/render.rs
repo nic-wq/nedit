@@ -599,7 +599,6 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             ("Ctrl+O", "Open"),
             ("Ctrl+G", "Search"),
             ("Ctrl+P", "Palette"),
-            ("Ctrl+E", "Explorer"),
         ]
     };
 

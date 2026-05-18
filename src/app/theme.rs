@@ -12,10 +12,7 @@ impl App {
     }
 
     pub fn save_current_theme(&self) {
-        let home_dir = std::env::var("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let theme_file = home_dir.join(".config/nedit/theme.txt");
+        let theme_file = Self::config_dir().join("theme.txt");
         let _ = std::fs::write(theme_file, &self.current_theme);
     }
 }

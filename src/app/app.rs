@@ -196,7 +196,7 @@ impl App {
         app
     }
 
-    fn config_dir() -> PathBuf {
+    pub fn config_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("nedit")
