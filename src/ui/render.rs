@@ -487,16 +487,17 @@ fn draw_notification(
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
-    let (mode_text, mode_color) = if app.is_welcome {
-        (" WELCOME ", Color::Rgb(180, 190, 254)) // Lavender
+    let mode_text = if app.is_welcome {
+        " WELCOME "
     } else if app.is_fuzzy {
-        (" FUZZY ", Color::Rgb(245, 194, 231)) // Pink
+        " FUZZY "
     } else {
         match app.focus {
-            Focus::Explorer => (" EXPLORER ", Color::Rgb(166, 227, 161)), // Green
-            Focus::Editor => (" EDITOR ", Color::Rgb(137, 180, 250)),     // Blue
+            Focus::Explorer => " EXPLORER ",
+            Focus::Editor => " EDITOR ",
         }
     };
+    let mode_color = colors.accent;
 
     let mode_span = Span::styled(
         mode_text,
