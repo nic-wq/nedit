@@ -110,11 +110,12 @@ impl App {
         }
 
         let mut theme_set = ThemeSet::new();
-        if let Some(theme) = Self::load_theme_by_name(&current_theme, &config_dir) {
+        Self::load_custom_themes_into(&mut theme_set, &config_dir);
+        if let Some(theme) = Self::load_theme_by_name(&current_theme, &theme_set) {
             theme_set.themes.insert(current_theme.clone(), theme);
         } else {
             current_theme = default_theme_name();
-            if let Some(theme) = Self::load_theme_by_name(&current_theme, &config_dir) {
+            if let Some(theme) = Self::load_theme_by_name(&current_theme, &theme_set) {
                 theme_set.themes.insert(current_theme.clone(), theme);
             }
         }
@@ -202,12 +203,15 @@ impl App {
             .join("nedit")
     }
 
-    fn load_theme_by_name(theme_name: &str, config_dir: &std::path::Path) -> Option<Theme> {
-        let custom_theme = config_dir
-            .join("themes")
-            .join(format!("{}.tmTheme", theme_name));
-        if let Ok(theme) = ThemeSet::get_theme(custom_theme) {
-            return Some(theme);
+    fn load_theme_by_name(theme_name: &str, loaded_custom_themes: &ThemeSet) -> Option<Theme> {
+        if let Some(theme) = loaded_custom_themes.themes.get(theme_name) {
+            return Some(theme.clone());
+        }
+
+        if let Some(stripped) = theme_name.strip_suffix(".tmTheme") {
+            if let Some(theme) = loaded_custom_themes.themes.get(stripped) {
+                return Some(theme.clone());
+            }
         }
 
         ThemeSet::load_defaults().themes.remove(theme_name)
@@ -218,8 +222,7 @@ impl App {
             return;
         }
 
-        let config_dir = Self::config_dir();
-        if let Some(theme) = Self::load_theme_by_name(&self.current_theme, &config_dir) {
+        if let Some(theme) = Self::load_theme_by_name(&self.current_theme, &self.theme_set) {
             self.theme_set
                 .themes
                 .insert(self.current_theme.clone(), theme);
@@ -227,7 +230,7 @@ impl App {
         }
 
         self.current_theme = default_theme_name();
-        if let Some(theme) = Self::load_theme_by_name(&self.current_theme, &config_dir) {
+        if let Some(theme) = Self::load_theme_by_name(&self.current_theme, &self.theme_set) {
             self.theme_set
                 .themes
                 .insert(self.current_theme.clone(), theme);
@@ -241,10 +244,54 @@ impl App {
 
         let config_dir = Self::config_dir();
         let mut theme_set = ThemeSet::load_defaults();
-        let _ = theme_set.add_from_folder(config_dir.join("themes"));
+        Self::load_custom_themes_into(&mut theme_set, &config_dir);
         self.theme_set = theme_set;
         self.themes_loaded = true;
         self.ensure_current_theme_loaded();
+    }
+
+    fn load_custom_themes_into(theme_set: &mut ThemeSet, config_dir: &Path) {
+        let themes_dir = config_dir.join("themes");
+        let Ok(theme_paths) = ThemeSet::discover_theme_paths(&themes_dir) else {
+            return;
+        };
+
+        for path in theme_paths {
+            let Ok(theme) = ThemeSet::get_theme(&path) else {
+                continue;
+            };
+
+            for alias in Self::theme_aliases_for_path(&path, &themes_dir, &theme) {
+                theme_set.themes.insert(alias, theme.clone());
+            }
+        }
+    }
+
+    fn theme_aliases_for_path(path: &Path, themes_dir: &Path, theme: &Theme) -> Vec<String> {
+        let mut aliases = Vec::new();
+        let mut push_alias = |alias: String| {
+            let alias = alias.trim();
+            if !alias.is_empty() && !aliases.iter().any(|existing| existing == alias) {
+                aliases.push(alias.to_string());
+            }
+        };
+
+        if let Some(stem) = path.file_stem().and_then(|value| value.to_str()) {
+            push_alias(stem.to_string());
+        }
+
+        if let Ok(relative_path) = path.strip_prefix(themes_dir) {
+            let relative_stem = relative_path.with_extension("");
+            if let Some(relative_stem) = relative_stem.to_str() {
+                push_alias(relative_stem.to_string());
+            }
+        }
+
+        if let Some(theme_name) = theme.name.as_deref() {
+            push_alias(theme_name.to_string());
+        }
+
+        aliases
     }
 
     pub fn ensure_syntax_set_loaded(&mut self) {
@@ -462,4 +509,55 @@ impl App {
 
 fn default_theme_name() -> String {
     "base16-ocean.dark".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::App;
+    use std::fs;
+    use syntect::highlighting::ThemeSet;
+    use tempfile::tempdir;
+
+    #[test]
+    fn loads_custom_themes_with_multiple_aliases() {
+        let temp_dir = tempdir().unwrap();
+        let config_dir = temp_dir.path();
+        let themes_dir = config_dir.join("themes/nested");
+        fs::create_dir_all(&themes_dir).unwrap();
+
+        fs::write(
+            themes_dir.join("Oceanic.tmTheme"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>name</key>
+  <string>Base16 Ocean Dark</string>
+  <key>settings</key>
+  <array>
+    <dict>
+      <key>settings</key>
+      <dict>
+        <key>background</key>
+        <string>#1B2B34</string>
+        <key>foreground</key>
+        <string>#C0C5CE</string>
+      </dict>
+    </dict>
+  </array>
+</dict>
+</plist>
+"#,
+        )
+        .unwrap();
+
+        let mut theme_set = ThemeSet::new();
+        App::load_custom_themes_into(&mut theme_set, config_dir);
+
+        assert!(theme_set.themes.contains_key("Oceanic"));
+        assert!(theme_set.themes.contains_key("nested/Oceanic"));
+        assert!(theme_set.themes.contains_key("Base16 Ocean Dark"));
+        assert!(App::load_theme_by_name("Oceanic.tmTheme", &theme_set).is_some());
+        assert!(App::load_theme_by_name("nested/Oceanic.tmTheme", &theme_set).is_some());
+    }
 }

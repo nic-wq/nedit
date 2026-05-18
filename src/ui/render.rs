@@ -580,7 +580,10 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     // Calculate available width for shortcuts
     let left_width = left_line.width();
     let right_width = right_line.width();
-    let middle_width = area.width.saturating_sub(left_width as u16).saturating_sub(right_width as u16);
+    let middle_width = area
+        .width
+        .saturating_sub(left_width as u16)
+        .saturating_sub(right_width as u16);
 
     // Shortcuts
     let shortcuts = if app.is_welcome {
@@ -611,11 +614,8 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             format!(" {} {}", icon, key),
             Style::default().fg(mode_color).add_modifier(Modifier::BOLD),
         );
-        let desc_span = Span::styled(
-            format!(" {} ", desc),
-            Style::default().fg(colors.fg),
-        );
-        
+        let desc_span = Span::styled(format!(" {} ", desc), Style::default().fg(colors.fg));
+
         let mut item_width = key_span.width() + desc_span.width();
         if i > 0 {
             item_width += 1; // space
