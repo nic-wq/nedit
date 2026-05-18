@@ -29,9 +29,7 @@ impl Config {
         let config_path = config_dir.join("config.toml");
 
         if let Ok(content) = fs::read_to_string(&config_path) {
-            if let Ok(config) = toml::from_str::<Config>(&content) {
-                return config;
-            }
+            return Self::from_toml_with_defaults(&content).unwrap_or_else(|_| Self::default());
         }
 
         Self::default()
@@ -80,5 +78,66 @@ impl Config {
                 .cloned()
                 .unwrap_or_default()
         })
+    }
+
+    fn from_toml_with_defaults(content: &str) -> Result<Self, toml::de::Error> {
+        let mut config = Self::default();
+        let value = toml::from_str::<toml::Value>(content)?;
+
+        if let Some(enabled) = value
+            .get("autocomplete_enabled")
+            .and_then(toml::Value::as_bool)
+        {
+            config.autocomplete_enabled = enabled;
+        }
+
+        if let Some(theme) = value.get("theme").and_then(toml::Value::as_str) {
+            config.theme = theme.to_string();
+        }
+
+        if let Some(keybinds) = value.get("keybinds").and_then(toml::Value::as_table) {
+            for (action, key) in keybinds {
+                if let Some(key) = key.as_str() {
+                    config.keybinds.insert(action.clone(), key.to_string());
+                }
+            }
+        }
+
+        if let Some(table) = value.as_table() {
+            for action in Self::default_keybind_actions() {
+                if let Some(key) = table.get(*action).and_then(toml::Value::as_str) {
+                    config.keybinds.insert(action.to_string(), key.to_string());
+                }
+            }
+        }
+
+        Ok(config)
+    }
+
+    fn default_keybind_actions() -> &'static [&'static str] {
+        &[
+            "quit",
+            "new_file",
+            "open_file",
+            "command_palette",
+            "global_search",
+            "local_search",
+            "save",
+            "toggle_explorer",
+            "theme_select",
+            "toggle_focus",
+            "close_tab",
+            "undo",
+            "redo",
+            "copy",
+            "paste",
+            "cut",
+            "select_all",
+            "select_line",
+            "open_help",
+            "run_live_script",
+            "live_script_next",
+            "live_script_prev",
+        ]
     }
 }

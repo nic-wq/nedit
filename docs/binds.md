@@ -44,6 +44,7 @@ Save, New File, Open File, Close Tab, Toggle Explorer, Global Search, Local Sear
 Edit ~/.config/nedit/config.toml:
 
 ```toml
+[keybinds]
 quit = "ctrl+q"
 new_file = "ctrl+n"
 open_file = "ctrl+o"

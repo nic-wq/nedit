@@ -587,22 +587,29 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         .saturating_sub(right_width as u16);
 
     // Shortcuts
-    let shortcuts = if app.is_welcome {
+    let shortcuts: Vec<(String, &str)> = if app.is_welcome {
         vec![
-            ("Ctrl+O", "Open File"),
-            ("Ctrl+Alt+T", "Theme"),
-            ("Ctrl+H", "Docs"),
+            (app.config.get_keybind("open_file").to_uppercase(), "Open File"),
+            (app.config.get_keybind("theme_select").to_uppercase(), "Theme"),
+            (app.config.get_keybind("open_help").to_uppercase(), "Docs"),
         ]
     } else if app.is_fuzzy {
-        vec![("Enter", "Select"), ("Esc", "Close")]
+        vec![("Enter".to_string(), "Select"), ("Esc".to_string(), "Close")]
     } else if app.focus == Focus::Explorer {
-        vec![("Enter", "Open"), ("Ctrl+N", "New"), ("Shift+O", "Options")]
+        vec![
+            ("Enter".to_string(), "Open"),
+            (app.config.get_keybind("new_file").to_uppercase(), "New"),
+            ("Shift+O".to_string(), "Options"),
+        ]
     } else {
         vec![
-            ("Ctrl+S", "Save"),
-            ("Ctrl+O", "Open"),
-            ("Ctrl+G", "Search"),
-            ("Ctrl+P", "Palette"),
+            (app.config.get_keybind("save").to_uppercase(), "Save"),
+            (app.config.get_keybind("open_file").to_uppercase(), "Open"),
+            (app.config.get_keybind("global_search").to_uppercase(), "Search"),
+            (
+                app.config.get_keybind("command_palette").to_uppercase(),
+                "Palette",
+            ),
         ]
     };
 
