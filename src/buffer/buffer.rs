@@ -20,6 +20,7 @@ pub struct EditorBuffer {
     pub autocomplete_options: Vec<String>,
     pub autocomplete_idx: usize,
     pub show_autocomplete_list: bool,
+    pub syntax_states: Vec<Option<(syntect::parsing::ParseState, syntect::highlighting::HighlightState)>>,
 }
 
 impl EditorBuffer {
@@ -34,12 +35,13 @@ impl EditorBuffer {
             scroll_col: 0,
             modified: false,
             selection_start: None,
-            history: vec![content],
+            history: vec![content.clone()],
             history_idx: 0,
             is_read_only: false,
             autocomplete_options: Vec::new(),
             autocomplete_idx: 0,
             show_autocomplete_list: false,
+            syntax_states: vec![None; content.len_lines()],
         }
     }
 
@@ -59,12 +61,13 @@ impl EditorBuffer {
             scroll_col: 0,
             modified: false,
             selection_start: None,
-            history: vec![content],
+            history: vec![content.clone()],
             history_idx: 0,
             is_read_only: false,
             autocomplete_options: Vec::new(),
             autocomplete_idx: 0,
             show_autocomplete_list: false,
+            syntax_states: vec![None; content.len_lines()],
         })
     }
 
@@ -165,6 +168,17 @@ impl EditorBuffer {
             self.history.remove(0);
         } else {
             self.history_idx += 1;
+        }
+    }
+
+    pub fn sync_syntax_states(&mut self, from_row: usize) {
+        let line_count = self.content.len_lines();
+        if self.syntax_states.len() != line_count {
+            self.syntax_states.resize(line_count, None);
+        }
+        
+        for i in from_row..self.syntax_states.len() {
+            self.syntax_states[i] = None;
         }
     }
 }

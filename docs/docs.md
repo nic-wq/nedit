@@ -58,6 +58,7 @@ You can open files or directories directly from your terminal:
 - **Translation**: 100% controlled by `language.toml`.
 - **Icon System**: NEdit now features a centralized icon system powered by Nerd Fonts. Files and folders are displayed with specific icons based on their type, extension, or filename, making navigation more intuitive. Icons are visible in the File Explorer, Fuzzy Finder, and even in the Tab Bar.
   - **Customization**: You can add your own icons by creating `.toml` files in `~/.config/nedit/icons/`.
+- **Performance Optimization**: Syntax highlighting is now cached incrementally, ensuring that large files remain responsive during scrolling and editing. This fix also addresses the issue where highlighting was lost when scrolling past certain points in a file.
     Example `custom.toml`:
     ```toml
     [extensions]

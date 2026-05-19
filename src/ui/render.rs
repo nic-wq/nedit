@@ -7,7 +7,8 @@ use ratatui::{
     Frame,
 };
 use std::path::Path;
-use syntect::easy::HighlightLines;
+use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter};
+use syntect::parsing::{ParseState, ScopeStack};
 
 use crate::app::{App, Focus, FuzzyMode};
 
@@ -137,9 +138,11 @@ pub fn render(f: &mut Frame, app: &mut App) {
             .and_then(|b| b.path.clone());
         app.ensure_syntax_for_path_loading(current_path.as_deref());
 
-        let buffer = &mut app.buffers[app.current_buffer_idx];
-        let width = editor_chunks[1].width as usize;
-        buffer.move_cursor(0, 0, width);
+        {
+            let buffer = &mut app.buffers[app.current_buffer_idx];
+            let width = editor_chunks[1].width as usize;
+            buffer.move_cursor(0, 0, width);
+        }
 
         draw_editor(
             f,
@@ -277,7 +280,7 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
 
 fn draw_editor(
     f: &mut Frame,
-    app: &App,
+    app: &mut App,
     area: Rect,
     buffer_idx: usize,
     is_focused: bool,
@@ -295,18 +298,23 @@ fn draw_editor(
     let max_scroll = buffer.content.len_lines().saturating_sub(1);
     buffer_scroll_row = buffer_scroll_row.min(max_scroll);
 
-    let theme = match app
-        .theme_set
-        .themes
-        .get(&app.current_theme)
-        .or_else(|| app.theme_set.themes.get("base16-ocean.dark"))
-    {
-        Some(theme) => theme,
+    let (theme, syntax_set) = {
+        let theme = app
+            .theme_set
+            .themes
+            .get(&app.current_theme)
+            .or_else(|| app.theme_set.themes.get("base16-ocean.dark"))
+            .unwrap();
+        (theme, app.syntax_set.as_ref())
+    };
+
+    let buffer = match app.buffers.get_mut(buffer_idx) {
+        Some(b) => b,
         None => return,
     };
 
-    let syntax_set = app.syntax_set.as_ref();
-    let mut highlighter = syntax_set.map(|syntax_set| {
+    let line_count = buffer.content.len_lines();
+    let mut syntax_highlighter = syntax_set.map(|syntax_set| {
         let syntax = buffer
             .path
             .as_ref()
@@ -314,15 +322,63 @@ fn draw_editor(
             .and_then(|e| syntax_set.find_syntax_by_extension(e.to_str().unwrap_or("")))
             .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
 
-        HighlightLines::new(syntax, theme)
+        let highlighter = Highlighter::new(theme);
+
+        let (ps, hs) = if buffer_scroll_row > 0 {
+            let prev_row = buffer_scroll_row - 1;
+            if prev_row < buffer.syntax_states.len() && buffer.syntax_states[prev_row].is_some() {
+                let (ps, hs) = buffer.syntax_states[prev_row].as_ref().unwrap();
+                (ps.clone(), hs.clone())
+            } else {
+                let mut last_known_row = None;
+                for j in (0..prev_row.min(buffer.syntax_states.len())).rev() {
+                    if buffer.syntax_states[j].is_some() {
+                        last_known_row = Some(j);
+                        break;
+                    }
+                }
+
+                let (mut ps, mut hs) = if let Some(j) = last_known_row {
+                    let (ps, hs) = buffer.syntax_states[j].as_ref().unwrap();
+                    (ps.clone(), hs.clone())
+                } else {
+                    (
+                        ParseState::new(syntax),
+                        HighlightState::new(&highlighter, ScopeStack::new()),
+                    )
+                };
+
+                let start_at = last_known_row.map(|j| j + 1).unwrap_or(0);
+                for k in start_at..=prev_row {
+                    if k >= buffer.content.len_lines() {
+                        break;
+                    }
+                    let line_str = buffer.content.line(k).to_string();
+                    let ops = ps.parse_line(&line_str, syntax_set).unwrap_or_default();
+                    let _ =
+                        HighlightIterator::new(&mut hs, &ops, &line_str, &highlighter).collect::<Vec<_>>();
+                    if k < buffer.syntax_states.len() {
+                        buffer.syntax_states[k] = Some((ps.clone(), hs.clone()));
+                    }
+                }
+                (ps, hs)
+            }
+        } else {
+            (
+                ParseState::new(syntax),
+                HighlightState::new(&highlighter, ScopeStack::new()),
+            )
+        };
+
+        (highlighter, ps, hs)
     });
 
-    let line_count = buffer.content.len_lines();
     let mut lines = Vec::new();
     let visible_width = area.width.saturating_sub(5) as usize;
 
     for i in buffer_scroll_row..(buffer_scroll_row + height).min(line_count) {
-        let mut line_content = buffer.content.line(i).to_string();
+        let original_line = buffer.content.line(i).to_string();
+        let mut line_content = original_line.clone();
         if line_content.ends_with('\n') {
             line_content.pop();
         }
@@ -358,11 +414,14 @@ fn draw_editor(
         spans.push(Span::styled(format!("{:3} ", i + 1), line_num_style));
 
         let ranges: Vec<(Color, &str)> =
-            if let (Some(highlighter), Some(syntax_set)) = (highlighter.as_mut(), syntax_set) {
-                highlighter
-                    .highlight_line(&line_content, syntax_set)
-                    .unwrap_or_default()
-                    .into_iter()
+            if let (Some((ref highlighter, ref mut ps, ref mut hs)), Some(syntax_set)) =
+                (syntax_highlighter.as_mut(), syntax_set)
+            {
+                let ops = ps.parse_line(&original_line, syntax_set).unwrap_or_default();
+                if i < buffer.syntax_states.len() {
+                    buffer.syntax_states[i] = Some((ps.clone(), hs.clone()));
+                }
+                HighlightIterator::new(hs, &ops, &original_line, highlighter)
                     .map(|(s, text)| {
                         (
                             Color::Rgb(s.foreground.r, s.foreground.g, s.foreground.b),
@@ -378,6 +437,9 @@ fn draw_editor(
 
         for (fg, text) in ranges {
             for c in text.chars() {
+                if c == '\n' || c == '\r' {
+                    continue;
+                }
                 if visual_col >= buffer.scroll_col && visual_col < buffer.scroll_col + visible_width
                 {
                     let mut style = Style::default().fg(fg);
