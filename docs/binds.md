@@ -19,7 +19,6 @@ CTRL+C Copy
 CTRL+V Paste
 CTRL+X Cut
 CTRL+ALT+T Theme Selection
-CTRL+ALT+W Workspaces Menu
 SHIFT+TAB Toggle Focus
 
 ## Live Script (Split View)
@@ -35,7 +34,7 @@ CTRL+ENTER Set as root
 SHIFT+O File Options
 
 ## Command Palette
-Save, New File, Open File, Close Tab, Toggle Explorer, Global Search, Local Search, Switch Theme, Workspaces, Open Lua Script, Run Lua Script, Edit Lua Script, Delete Lua Script, Open Help, Quit, Undo, Redo, Copy, Paste, Cut, Select All
+Save, New File, Open File, Close Tab, Toggle Explorer, Global Search, Local Search, Switch Theme, Open Lua Script, Run Lua Script, Edit Lua Script, Delete Lua Script, Open Help, Quit, Undo, Redo, Copy, Paste, Cut, Select All
 
 ---
 

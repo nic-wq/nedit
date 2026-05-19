@@ -140,7 +140,6 @@ fn diagnose_config_files(app: &App) -> anyhow::Result<()> {
     let config_file = config_dir.join("config.toml");
     let theme_file = config_dir.join("theme.txt");
     let language_file = config_dir.join("language.toml");
-    let workspace_file = config_dir.join("workspaces.toml");
     let syntax_dir = config_dir.join("syntax");
     let themes_dir = config_dir.join("themes");
 
@@ -163,11 +162,6 @@ fn diagnose_config_files(app: &App) -> anyhow::Result<()> {
         "language_file",
         language_file.is_file(),
         language_file.display().to_string(),
-    );
-    print_check(
-        "workspace_file",
-        workspace_file.is_file(),
-        workspace_file.display().to_string(),
     );
     println!(
         "{:<34} syntax_files={} theme_files={}",
@@ -401,12 +395,7 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     print_step(
         "app_new_plain_text_ready",
         app_start.elapsed(),
-        format!(
-            "root={} buffers={} workspace={}",
-            app.explorer.root.display(),
-            app.buffers.len(),
-            app.current_workspace.as_deref().unwrap_or("none")
-        ),
+        format!("root={} buffers={}", app.explorer.root.display(), app.buffers.len()),
     );
 
     let explorer_wait = wait_for_background_tasks(&mut app);
@@ -433,14 +422,6 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     if !config_ok || !i18n_ok {
         anyhow::bail!("Config/i18n loading failed");
     }
-
-    println!(
-        "{:<34} total={} active={}",
-        "workspaces",
-        app.workspaces.len(),
-        app.current_workspace.as_deref().unwrap_or("none")
-    );
-    println!();
 
     diagnose_config_files(&app)?;
     diagnose_filesystem()?;
@@ -612,7 +593,6 @@ fn main() -> anyhow::Result<()> {
         }
 
         if app.should_quit {
-            app.save_workspaces();
             break;
         }
     }

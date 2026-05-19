@@ -173,7 +173,6 @@ impl App {
                 "Global Search",
                 "Local Search",
                 "Switch Theme",
-                "Workspaces",
                 "New Lua Script",
                 "Run Lua Script",
                 "Edit Lua Script",
@@ -192,27 +191,6 @@ impl App {
             self.fuzzy_results = commands
                 .into_iter()
                 .filter(|c| query.is_empty() || c.to_lowercase().contains(&query))
-                .map(PathBuf::from)
-                .collect();
-            if reset_idx {
-                self.fuzzy_idx = 0;
-            }
-            return;
-        }
-
-        if self.fuzzy_mode == FuzzyMode::Workspaces {
-            let options = self
-                .workspaces
-                .iter()
-                .map(|w| w.name.clone())
-                .chain(
-                    self.current_workspace
-                        .iter()
-                        .map(|_| "Exit Workspace".to_string()),
-                )
-                .chain(std::iter::once("New Workspace...".to_string()));
-            self.fuzzy_results = options
-                .filter(|name| query.is_empty() || name.to_lowercase().contains(&query))
                 .map(PathBuf::from)
                 .collect();
             if reset_idx {

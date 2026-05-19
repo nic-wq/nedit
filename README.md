@@ -12,7 +12,6 @@ A modern, lightweight terminal text editor written in Rust. Fast, extensible, an
 - 🔧 **Lua Extensibility** - Customize and extend the editor with Lua scripts.
 - 🌍 **Internationalization (i18n)** - Multi-language support.
 - 🐭 **Mouse Support** - Scroll independently of cursor, click to position, and drag for selection.
-- 📂 **Workspaces** - Save and restore state for multiple project roots.
 - 🔍 **Fuzzy Finder & Global Search** - Quick file opening and content search across your projects.
 - ⚡ **Autocomplete** - Built-in word-based autocomplete with interactive navigation.
 
@@ -70,7 +69,7 @@ The codebase has been refactored into a modular architecture for better maintain
 ```
 src/
 ├── main.rs            # Entry point and terminal setup
-├── app/               # Application state, workspaces, and themes
+├── app/               # Application state and themes
 ├── buffer/            # Buffer management, cursor, and history
 ├── clipboard/         # System clipboard abstraction
 ├── config/            # TOML-based configuration and keybinds
@@ -85,7 +84,6 @@ src/
 
 Config files are stored in `~/.config/nedit/`:
 - `config.toml`: General settings (keybinds, theme, autocomplete).
-- `workspaces.toml`: Persistent workspace state.
 - `theme.txt`: Last selected theme.
 - `scripts/`: Your custom Lua scripts.
 

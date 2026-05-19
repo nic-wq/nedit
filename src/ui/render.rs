@@ -553,30 +553,13 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         String::new()
     };
 
-    let ws_text = if let Some(ws) = &app.current_workspace {
-        format!(" 󰘳 {} ", ws)
-    } else {
-        String::new()
-    };
-
     let left_spans = [vec![mode_span, mode_sep], file_spans].concat();
     let left_line = Line::from(left_spans);
 
-    let mut right_spans = vec![Span::styled(stats_text, Style::default().fg(colors.fg))];
-    if !ws_text.is_empty() {
-        right_spans.push(Span::styled(
-            " ",
-            Style::default().bg(colors.surface).fg(mode_color),
-        ));
-        right_spans.push(Span::styled(
-            ws_text,
-            Style::default()
-                .bg(mode_color)
-                .fg(colors.bg)
-                .add_modifier(Modifier::BOLD),
-        ));
-    }
-    let right_line = Line::from(right_spans);
+    let right_line = Line::from(vec![Span::styled(
+        stats_text,
+        Style::default().fg(colors.fg),
+    )]);
 
     // Calculate available width for shortcuts
     let left_width = left_line.width();
@@ -672,9 +655,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
 fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
     let is_small = matches!(
         app.fuzzy_mode,
-        FuzzyMode::WorkspaceAddName
-            | FuzzyMode::WorkspaceAddPath
-            | FuzzyMode::SaveAs
+        FuzzyMode::SaveAs
             | FuzzyMode::Rename
             | FuzzyMode::DeleteConfirm
             | FuzzyMode::NewFolder
@@ -699,9 +680,6 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::Rename => format!(" 󰏫  {} ", app.i18n.t("rename")),
         FuzzyMode::DeleteConfirm => format!(" 󰆴  {} ", app.i18n.t("delete_confirm")),
         FuzzyMode::FileOptions => format!(" 󰘳  {} ", app.i18n.t("file_options")),
-        FuzzyMode::Workspaces => format!(" 󰘳  {} ", app.i18n.t("workspaces")),
-        FuzzyMode::WorkspaceAddName => format!(" 󰏫  {} ", app.i18n.t("add_workspace_name")),
-        FuzzyMode::WorkspaceAddPath => format!(" 󰆓  {} ", app.i18n.t("add_workspace_path")),
         FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
         FuzzyMode::RunScript => format!(" 󰢱  Run Lua Script "),
@@ -887,7 +865,6 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             app.fuzzy_mode,
             FuzzyMode::CommandPalette
                 | FuzzyMode::FileOptions
-                | FuzzyMode::Workspaces
                 | FuzzyMode::RunScript
                 | FuzzyMode::EditScript
                 | FuzzyMode::DeleteScript
@@ -942,8 +919,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                         };
                         let icon = match app.fuzzy_mode {
                             FuzzyMode::CommandPalette
-                            | FuzzyMode::FileOptions
-                            | FuzzyMode::Workspaces => app.icon_registry.get_command_icon(&name),
+                            | FuzzyMode::FileOptions => app.icon_registry.get_command_icon(&name),
                             FuzzyMode::RunScript => "󰢱 ",
                             FuzzyMode::EditScript => "󰏫 ",
                             FuzzyMode::DeleteScript => "󰆴 ",

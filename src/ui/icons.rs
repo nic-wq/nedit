@@ -133,7 +133,6 @@ impl IconRegistry {
             "Global Search" => "󰈗 ",
             "Local Search" => "󰩊 ",
             "Switch Theme" => "󰔎 ",
-            "Workspaces" => "󰉋 ",
             "Open Lua Script" => "󰢱 ",
             "Run Lua Script" => "󰐊 ",
             "Edit Lua Script" => "󰏫 ",
@@ -151,8 +150,6 @@ impl IconRegistry {
             "Rename" => "󰏫 ",
             "Move" => "󰪹 ",
             "Delete" => "󰆴 ",
-            "Exit Workspace" => "󰈆 ",
-            "New Workspace..." => "󰉋 ",
             _ => "󰘳 ",
         }
     }

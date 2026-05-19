@@ -3,9 +3,7 @@ use std::path::{Path, PathBuf};
 
 use notify::{RecursiveMode, Watcher};
 
-use crate::app::{
-    Focus, FuzzyMode, NotificationType, Workspace, WorkspaceList, DOC_BINDS, DOC_LUA, DOC_MAIN,
-};
+use crate::app::{Focus, FuzzyMode, NotificationType, DOC_BINDS, DOC_LUA, DOC_MAIN};
 use crate::buffer::EditorBuffer;
 
 use super::App;
@@ -64,131 +62,6 @@ impl App {
                     _ => format!("Could not open file {}: {}", path.display(), err),
                 };
                 self.show_notification(message, NotificationType::Error);
-            }
-        }
-    }
-
-    pub fn load_workspaces(&mut self) {
-        let home_dir = std::env::var("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."));
-        let ws_file = home_dir.join(".config/nedit/workspaces.toml");
-        if let Ok(content) = std::fs::read_to_string(&ws_file) {
-            if let Ok(ws_list) = toml::from_str::<WorkspaceList>(&content) {
-                self.workspaces = ws_list.workspaces;
-                if let Some(active) = ws_list.active_workspace {
-                    if let Some(workspace) =
-                        self.workspaces.iter().find(|w| w.name == active).cloned()
-                    {
-                        self.current_workspace = Some(active);
-                        self.set_explorer_root(workspace.path);
-                        self.buffers.clear();
-                        self.current_buffer_idx = 0;
-                        self.is_welcome = true;
-                        for tab_path in workspace.tabs {
-                            self.open_file(tab_path);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn save_workspaces(&mut self) {
-        let home_dir = std::env::var("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."));
-        let ws_file = home_dir.join(".config/nedit/workspaces.toml");
-        if let Some(name) = &self.current_workspace {
-            let tabs: Vec<PathBuf> = self.buffers.iter().filter_map(|b| b.path.clone()).collect();
-            if let Some(ws) = self.workspaces.iter_mut().find(|w| &w.name == name) {
-                ws.tabs = tabs;
-            }
-        }
-
-        let ws_list = WorkspaceList {
-            active_workspace: self.current_workspace.clone(),
-            workspaces: self.workspaces.clone(),
-        };
-        if let Ok(content) = toml::to_string(&ws_list) {
-            if let Some(parent) = ws_file.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&ws_file, content);
-        }
-    }
-
-    pub fn refresh_workspace_results(&mut self) {
-        self.fuzzy_results = self
-            .workspaces
-            .iter()
-            .map(|w| PathBuf::from(&w.name))
-            .collect();
-        if self.current_workspace.is_some() {
-            self.fuzzy_results.push(PathBuf::from("Exit Workspace"));
-        }
-        self.fuzzy_results.push(PathBuf::from("New Workspace..."));
-        self.fuzzy_idx = 0;
-    }
-
-    pub fn create_workspace(&mut self, name: String, path: PathBuf) -> Result<(), String> {
-        if name.trim().is_empty() {
-            return Err("Workspace name cannot be empty".to_string());
-        }
-        if self.workspaces.iter().any(|w| w.name == name) {
-            return Err(format!("Workspace '{}' already exists", name));
-        }
-        if !path.is_dir() {
-            return Err(format!(
-                "Workspace path is not a directory: {}",
-                path.display()
-            ));
-        }
-
-        let tabs = self
-            .buffers
-            .iter()
-            .filter_map(|buffer| buffer.path.clone())
-            .collect();
-        self.workspaces.push(Workspace {
-            name: name.clone(),
-            path,
-            tabs,
-        });
-        self.switch_workspace(name.clone());
-        self.show_notification(
-            format!("Workspace '{}' created", name),
-            NotificationType::Info,
-        );
-        Ok(())
-    }
-
-    pub fn exit_workspace(&mut self) {
-        if let Some(name) = self.current_workspace.take() {
-            self.save_workspaces();
-            self.show_notification(
-                format!("Exited workspace '{}'", name),
-                NotificationType::Info,
-            );
-        }
-    }
-
-    pub fn switch_workspace(&mut self, name: String) {
-        self.save_workspaces();
-
-        if let Some(ws) = self.workspaces.iter().find(|w| w.name == name).cloned() {
-            self.current_workspace = Some(name);
-            self.set_explorer_root(ws.path.clone());
-            self.buffers.clear();
-            self.current_buffer_idx = 0;
-            self.live_script_mode = false;
-            self.live_script_buffer_idx = None;
-            self.target_buffer_idx = None;
-            for tab_path in ws.tabs {
-                self.open_file(tab_path);
-            }
-            if self.buffers.is_empty() {
-                self.is_welcome = true;
             }
         }
     }

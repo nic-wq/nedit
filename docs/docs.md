@@ -20,7 +20,6 @@ You can open files or directories directly from your terminal:
 - `CTRL + F` : Local Search (Current file)
 - `CTRL + G` : Global Search (All files)
 - `CTRL+ALT+T` : Theme Selection
-- `CTRL+ALT+W` : Workspaces Menu
 - `CTRL + H` : Open Documentation Menu
 - `CTRL + N` : New File (in editor) / New Folder (in explorer)
 - `SHIFT+TAB` : Toggle Focus (Editor <-> Explorer)
@@ -39,7 +38,6 @@ You can open files or directories directly from your terminal:
 - `Backspace` : Go to parent directory
 
 ### Features
-- **Workspaces**: Save your open tabs and root directory. Access via `CTRL+ALT+W`. Use `CTRL+X` in the menu to delete. The current workspace is displayed in the bottom-right corner of the status bar.
 - **Lua Scripts**: Automate the editor! Any `.lua` file in `~/.config/nedit/scripts/` is automatically a script. Run via `CTRL+P` → **Run Lua Script**.
   - **Interactive Scripts**: Scripts can now prompt for user input (`nedit.prompt`) or show a selection menu (`nedit.menu`) to perform more complex automation.
   - **Undo Last Script**: Did a script do something unexpected? Use `CTRL+P` → **Undo Last Script** to revert all changes made by the last script execution (including file writes, creations, and deletions).

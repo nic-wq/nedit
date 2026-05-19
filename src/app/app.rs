@@ -41,9 +41,6 @@ pub struct App {
     pub fuzzy_themes: Vec<String>,
     pub config: Config,
     pub i18n: I18n,
-    pub workspaces: Vec<crate::app::Workspace>,
-    pub current_workspace: Option<String>,
-    pub temp_ws_name: Option<String>,
     pub pending_path: Option<PathBuf>,
     pub pending_explorer_selection: Option<PathBuf>,
     pub move_dir: Option<PathBuf>,
@@ -148,9 +145,6 @@ impl App {
             fuzzy_themes: Vec::new(),
             config,
             i18n: I18n::load(),
-            workspaces: Vec::new(),
-            current_workspace: None,
-            temp_ws_name: None,
             pending_path: None,
             pending_explorer_selection: None,
             move_dir: None,
@@ -182,7 +176,6 @@ impl App {
             let _ = watcher.watch(&current_dir, Self::watch_mode_for_path(&current_dir));
         }
 
-        app.load_workspaces();
         app.refresh_explorer();
 
         for arg in args {

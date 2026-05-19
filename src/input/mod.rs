@@ -183,16 +183,6 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    if key.code == KeyCode::Char('w')
-        && key
-            .modifiers
-            .contains(KeyModifiers::CONTROL | KeyModifiers::ALT)
-    {
-        app.toggle_fuzzy(crate::app::FuzzyMode::Workspaces);
-        app.refresh_workspace_results();
-        return;
-    }
-
     if app.config.matches(key, "command_palette") {
         app.toggle_fuzzy(crate::app::FuzzyMode::CommandPalette);
         return;
@@ -286,9 +276,7 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
 fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
     if matches!(
         app.fuzzy_mode,
-        crate::app::FuzzyMode::WorkspaceAddName
-            | crate::app::FuzzyMode::WorkspaceAddPath
-            | crate::app::FuzzyMode::Rename
+        crate::app::FuzzyMode::Rename
             | crate::app::FuzzyMode::SaveAs
             | crate::app::FuzzyMode::NewFolder
     ) {
@@ -298,7 +286,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 app.fuzzy_query.clear();
                 app.pending_path = None;
                 app.move_dir = None;
-                app.temp_ws_name = None;
             }
             KeyCode::Enter => {}
             KeyCode::Backspace => {
@@ -316,25 +303,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         }
     }
 
-    if app.fuzzy_mode == crate::app::FuzzyMode::Workspaces
-        && key.code == KeyCode::Char('x')
-        && key.modifiers.contains(KeyModifiers::CONTROL)
-    {
-        if let Some(opt) = app.fuzzy_results.get(app.fuzzy_idx) {
-            let name = opt.to_string_lossy().to_string();
-            if name == "Exit Workspace" || name == "New Workspace..." {
-                return;
-            }
-            app.workspaces.retain(|w| w.name != name);
-            app.save_workspaces();
-            app.refresh_workspace_results();
-            if app.fuzzy_idx >= app.fuzzy_results.len() {
-                app.fuzzy_idx = app.fuzzy_results.len().saturating_sub(1);
-            }
-        }
-        return;
-    }
-
     match key.code {
         KeyCode::Esc => {
             if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
@@ -342,7 +310,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             }
             app.pending_path = None;
             app.move_dir = None;
-            app.temp_ws_name = None;
             app.clear_notification();
             app.is_fuzzy = false;
         }
@@ -392,9 +359,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::Rename => 0,
                 crate::app::FuzzyMode::DeleteConfirm => 0,
                 crate::app::FuzzyMode::FileOptions => app.fuzzy_results.len(),
-                crate::app::FuzzyMode::Workspaces => app.fuzzy_results.len(),
-                crate::app::FuzzyMode::WorkspaceAddName => 0,
-                crate::app::FuzzyMode::WorkspaceAddPath => 0,
                 crate::app::FuzzyMode::CommandPalette => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::Move => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::RunScript => app.fuzzy_results.len(),
@@ -450,64 +414,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                             app.fuzzy_query.clear();
                         }
                         _ => app.is_fuzzy = false,
-                    }
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::Workspaces {
-                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    let choice = path.to_string_lossy().to_string();
-                    match choice.as_str() {
-                        "New Workspace..." => {
-                            app.temp_ws_name = None;
-                            app.fuzzy_mode = crate::app::FuzzyMode::WorkspaceAddName;
-                            app.fuzzy_query.clear();
-                            app.fuzzy_results.clear();
-                            app.fuzzy_idx = 0;
-                        }
-                        "Exit Workspace" => {
-                            app.exit_workspace();
-                            app.is_fuzzy = false;
-                        }
-                        name => {
-                            app.switch_workspace(name.to_string());
-                            app.is_fuzzy = false;
-                        }
-                    }
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::WorkspaceAddName {
-                let name = app.fuzzy_query.trim().to_string();
-                if name.is_empty() {
-                    app.show_notification(
-                        "Workspace name cannot be empty".to_string(),
-                        crate::app::NotificationType::Error,
-                    );
-                } else {
-                    app.temp_ws_name = Some(name);
-                    app.fuzzy_mode = crate::app::FuzzyMode::WorkspaceAddPath;
-                    app.fuzzy_query = app.explorer.root.to_string_lossy().to_string();
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::WorkspaceAddPath {
-                let Some(name) = app.temp_ws_name.take() else {
-                    app.show_notification(
-                        "Workspace name is missing".to_string(),
-                        crate::app::NotificationType::Error,
-                    );
-                    app.is_fuzzy = false;
-                    return;
-                };
-                let raw_path = app.fuzzy_query.trim();
-                let path = if raw_path.is_empty() {
-                    app.explorer.root.clone()
-                } else {
-                    app.resolve_input_path(raw_path)
-                };
-                match app.create_workspace(name.clone(), path) {
-                    Ok(()) => app.is_fuzzy = false,
-                    Err(err) => {
-                        app.temp_ws_name = Some(name);
-                        app.show_notification(err, crate::app::NotificationType::Error);
                     }
                 }
                 return;
@@ -1031,11 +937,6 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
         }
         "Switch Theme" => {
             app.toggle_fuzzy(crate::app::FuzzyMode::Themes);
-            return true;
-        }
-        "Workspaces" => {
-            app.toggle_fuzzy(crate::app::FuzzyMode::Workspaces);
-            app.refresh_workspace_results();
             return true;
         }
         "New Lua Script" => {

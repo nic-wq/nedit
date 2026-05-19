@@ -52,15 +52,6 @@ impl I18n {
         defaults.insert("rename".to_string(), "Rename File".to_string());
         defaults.insert("delete_confirm".to_string(), "Delete File?".to_string());
         defaults.insert("file_options".to_string(), "File Options".to_string());
-        defaults.insert("workspaces".to_string(), "Workspaces".to_string());
-        defaults.insert(
-            "add_workspace_name".to_string(),
-            "Workspace Name".to_string(),
-        );
-        defaults.insert(
-            "add_workspace_path".to_string(),
-            "Workspace Path".to_string(),
-        );
         defaults.insert("command_palette".to_string(), "Command Palette".to_string());
         defaults.insert("move_file".to_string(), "Move File".to_string());
         defaults.insert("full_docs".to_string(), DOC_MAIN.to_string());
