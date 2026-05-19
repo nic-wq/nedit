@@ -20,6 +20,8 @@ pub fn get_colors(app: &App) -> UIColors {
     let theme = app.theme_set.themes.get(&app.current_theme);
 
     UIColors {
+        // We use hardcoded fallback colors (Catppuccin-like palette) to ensure the UI
+        // remains usable and beautiful even if the selected theme is missing certain keys.
         bg: theme
             .and_then(|theme| theme.settings.background)
             .map(map_color)

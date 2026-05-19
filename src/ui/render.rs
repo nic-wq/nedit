@@ -36,6 +36,8 @@ pub fn render(f: &mut Frame, app: &mut App) {
             .split(f.area())
     };
 
+    // We calculate the explorer width dynamically based on the longest filename 
+    // to minimize wasted space while ensuring names remain readable.
     let explorer_width = if app.show_explorer {
         let max_len = app.explorer.max_item_width;
         let percent = (max_len as f32 / f.area().width as f32 * 100.0) as u16;

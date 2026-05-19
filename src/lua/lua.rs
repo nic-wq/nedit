@@ -11,6 +11,8 @@ pub fn run_script(
     current_buffer_path: &Option<PathBuf>,
     request_handler: Arc<dyn Fn(ScriptRequest) -> ScriptResponse + Send + Sync>,
 ) -> Result<Vec<LuaAction>, String> {
+    // We use an inner closure that returns mlua::Result to simplify error handling 
+    // using the '?' operator while still providing a consistent Result<_, String> to the caller.
     fn inner(
         script: &str,
         ctx: LuaContext,

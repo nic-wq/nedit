@@ -18,6 +18,8 @@ impl App {
         let req_tx_clone = req_tx.clone();
         let res_rx = Arc::new(Mutex::new(res_rx));
 
+        // We spawn scripts in a separate thread so that long-running or blocking Lua code 
+        // doesn't freeze the main UI event loop.
         thread::spawn(move || {
             let res_rx_clone = res_rx.clone();
             let request_handler = Arc::new(move |req: ScriptRequest| {

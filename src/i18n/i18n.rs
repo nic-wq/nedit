@@ -92,6 +92,8 @@ impl I18n {
     }
 
     pub fn t<'a>(&'a self, key: &'a str) -> &'a str {
+        // We prioritize user-defined translations, falling back to English defaults,
+        // and finally the key itself to ensure the UI is never empty even if translations are missing.
         self.translations
             .get(key)
             .or_else(|| self.defaults.get(key))

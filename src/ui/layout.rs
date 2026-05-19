@@ -1,5 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
+// We use a nested 3-way split to calculate a perfectly centered rectangle, 
+// ensuring that popups and modals always appear balanced regardless of terminal size.
 pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)

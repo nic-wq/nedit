@@ -37,6 +37,8 @@ fn draw_logo(f: &mut Frame, area: Rect, colors: &UIColors) {
         .max()
         .unwrap_or(0) as u16;
 
+    // We use a horizontal layout with flexible margins (Constraint::Min(0)) 
+    // to ensure the logo is always horizontally centered regardless of terminal width.
     let logo_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([

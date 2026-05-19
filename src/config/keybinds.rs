@@ -46,6 +46,8 @@ impl Config {
             }
         }
 
+        // We normalize both event and target codes to lowercase to ensure that keybindings
+        // work consistently regardless of Caps Lock state or minor parsing variations.
         let event_code = match event.code {
             KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
             c => c,

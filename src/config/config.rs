@@ -37,6 +37,8 @@ impl Config {
 
     pub fn default() -> Self {
         let mut keybinds = HashMap::new();
+        // We provide a comprehensive set of default keybindings so the editor is 
+        // immediately usable "out of the box" without requiring initial configuration.
         keybinds.insert("quit".to_string(), "ctrl+q".to_string());
         keybinds.insert("new_file".to_string(), "ctrl+n".to_string());
         keybinds.insert("open_file".to_string(), "ctrl+o".to_string());

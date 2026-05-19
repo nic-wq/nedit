@@ -8,6 +8,8 @@ pub struct FileExplorer {
     pub root: PathBuf,
     pub items: Vec<FileItem>,
     pub selected_idx: usize,
+    // We use a HashSet for expanded paths to provide O(1) lookups when deciding 
+    // whether to render a directory's children during the recursive load.
     pub expanded_paths: HashSet<PathBuf>,
     pub scroll_offset: usize,
     pub max_item_width: usize,

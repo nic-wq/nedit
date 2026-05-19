@@ -10,6 +10,8 @@ use crate::app::{App, Focus};
 pub use templates::LUA_TEMPLATE;
 
 pub fn handle_events(app: &mut App) -> anyhow::Result<()> {
+    // We use a short poll duration (16ms ~ 60fps) to keep the UI responsive 
+    // without consuming excessive CPU when idle.
     if event::poll(std::time::Duration::from_millis(16))? {
         match event::read()? {
             Event::Key(key) if key.kind != KeyEventKind::Release => handle_key_event(app, key),

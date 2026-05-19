@@ -38,6 +38,8 @@ impl App {
         }
     }
 
+    // We slugify names to ensure they are safe for the filesystem across different OSs
+    // while maintaining a readable and consistent naming convention for user-generated scripts.
     fn slugify(&self, name: &str) -> String {
         name.to_lowercase()
             .chars()

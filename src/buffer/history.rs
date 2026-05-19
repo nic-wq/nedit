@@ -4,6 +4,8 @@ impl EditorBuffer {
     pub fn undo(&mut self) {
         if self.history_idx > 0 {
             self.history_idx -= 1;
+            // We clone the Rope here because Ropey's cloning is extremely cheap (O(1) copy-on-write),
+            // making state-based undo/redo very efficient.
             self.content = self.history[self.history_idx].clone();
             self.modified = true;
         }

@@ -17,6 +17,8 @@ pub fn copy(text: &str) {
         }
     }
 
+    // arboard can fail on some Linux environments (especially Wayland without Xwayland),
+    // so we provide shell-based fallbacks to ensure clipboard functionality works everywhere.
     if !success && cfg!(target_os = "linux") {
         // Fallback for Linux (Wayland/X11)
         let _ = copy_to_shell_clipboard(text);

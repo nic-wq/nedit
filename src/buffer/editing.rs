@@ -9,6 +9,8 @@ impl EditorBuffer {
         if ch == '\n' {
             let prev_row = self.cursor_row;
             let prev_line = self.content.line(prev_row);
+            // We preserve indentation from the previous line to provide a smoother
+            // coding experience and reduce repetitive keystrokes.
             let mut indentation = String::new();
             for c in prev_line.chars() {
                 if c == ' ' || c == '\t' {

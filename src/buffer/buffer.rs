@@ -6,6 +6,8 @@ use ropey::Rope;
 
 #[derive(Clone)]
 pub struct EditorBuffer {
+    // We use Ropey because it's optimized for very large files, allowing for 
+    // O(log n) insertions and deletions while maintaining efficient memory usage.
     pub content: Rope,
     pub path: Option<PathBuf>,
     pub cursor_row: usize,
@@ -160,6 +162,8 @@ impl EditorBuffer {
     }
 
     pub(crate) fn push_history(&mut self) {
+        // If the user performs a new action after an undo, we truncate the "future" 
+        // history to maintain a linear and predictable undo/redo timeline.
         if self.history_idx < self.history.len() - 1 {
             self.history.truncate(self.history_idx + 1);
         }

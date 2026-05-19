@@ -16,6 +16,9 @@ use crate::i18n::I18n;
 
 use super::{Focus, NotificationType};
 
+// The App struct acts as the "Single Source of Truth" for the entire application state.
+// By centralizing state here, we simplify data flow and make it easier to coordinate 
+// between the UI, input handler, and background tasks.
 pub struct App {
     pub buffers: Vec<EditorBuffer>,
     pub current_buffer_idx: usize,

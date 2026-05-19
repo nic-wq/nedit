@@ -19,6 +19,8 @@ impl EditorBuffer {
             self.cursor_col = self.cursor_col.min(max_col);
         }
 
+        // We adjust the scroll position automatically to keep the cursor visible, 
+        // ensuring the user never loses track of where they are typing.
         if width > 5 {
             let edit_width = width - 5;
             if self.cursor_col < self.scroll_col {

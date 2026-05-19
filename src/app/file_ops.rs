@@ -14,6 +14,8 @@ impl App {
     }
 
     pub fn open_file(&mut self, path: PathBuf) {
+        // We handle directories by switching the explorer root instead of opening them as buffers
+        // to maintain a consistent UX where the editor only deals with text content.
         if path.is_dir() {
             self.set_explorer_root(path);
             self.focus = Focus::Explorer;

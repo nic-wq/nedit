@@ -42,6 +42,8 @@ impl IconRegistry {
         Self { custom }
     }
 
+    // We use Nerd Fonts icons to provide a rich visual experience that helps users 
+    // quickly identify file types and directory states at a glance.
     pub fn get_icon(&self, path: &Path, is_dir: bool, expanded: bool) -> &str {
         if is_dir {
             if expanded {

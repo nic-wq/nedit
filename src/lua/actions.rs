@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+// We use an enum to represent script actions instead of applying them immediately.
+// This allows us to validate actions, generate descriptions for the user, 
+// and implement an "undo" mechanism for script executions.
 #[derive(Clone, Debug)]
 pub enum LuaAction {
     WriteSelection(String),

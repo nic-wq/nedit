@@ -70,3 +70,7 @@ You can open files or directories directly from your terminal:
     [commands]
     "Save" = "󰆓" # Change icons for commands in menus
     ```
+
+## Internal Documentation
+The codebase is documented with a focus on "why" certain design choices were made, rather than just "what" the code does. This helps maintainers understand the rationale behind complex logic and architectural decisions.
+

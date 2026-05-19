@@ -5,6 +5,8 @@ impl EditorBuffer {
         if let Some(start) = self.selection_start {
             let start_idx = self.to_char_idx(start.0, start.1);
             let end_idx = self.to_char_idx(self.cursor_row, self.cursor_col);
+            // We normalize the selection range to ensure start < end, 
+            // allowing the user to select text in both directions (forward and backward).
             let (s, e) = if start_idx < end_idx {
                 (start_idx, end_idx)
             } else {

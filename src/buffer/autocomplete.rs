@@ -15,6 +15,8 @@ impl EditorBuffer {
             .filter(|(w, _)| w.starts_with(&prefix) && w.len() > prefix.len())
             .collect();
 
+        // We sort by frequency (the second element of the tuple) to prioritize 
+        // the most commonly used words in the current buffer.
         matches.sort_by(|a, b| b.1.cmp(&a.1));
 
         self.autocomplete_options = matches.into_iter().map(|(w, _)| w).collect();

@@ -560,6 +560,8 @@ fn main() -> anyhow::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    // Enable advanced keyboard reporting to distinguish between keys like Esc/Alt+key
+    // and to receive release events which are crucial for certain key combos.
     let _ = execute!(
         stdout,
         PushKeyboardEnhancementFlags(

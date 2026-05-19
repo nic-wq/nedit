@@ -9,6 +9,8 @@ impl EditorBuffer {
 
     pub fn paste(&mut self) {
         if let Some(text) = crate::clipboard::paste() {
+            // We push history before the operation to allow the user to undo the entire paste
+            // as a single atomic action.
             self.push_history();
             let char_idx = self.content.line_to_char(self.cursor_row) + self.cursor_col;
             self.content.insert(char_idx, &text);
