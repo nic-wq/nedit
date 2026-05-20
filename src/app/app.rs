@@ -69,6 +69,8 @@ pub struct App {
     pub last_click_time: std::time::Instant,
     pub last_click_pos: (u16, u16),
     pub icon_registry: crate::ui::icons::IconRegistry,
+    pub pending_action: Option<crate::app::types::PendingAction>,
+    pub pending_buffer_idx: Option<usize>,
 }
 
 impl App {
@@ -173,6 +175,8 @@ impl App {
             last_click_time: std::time::Instant::now(),
             last_click_pos: (0, 0),
             icon_registry: crate::ui::icons::IconRegistry::load(),
+            pending_action: None,
+            pending_buffer_idx: None,
         };
 
         if let Some(watcher) = &mut app.watcher {

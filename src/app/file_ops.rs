@@ -71,6 +71,19 @@ impl App {
     pub fn close_current_buffer(&mut self) {
         if !self.buffers.is_empty() {
             let closing_idx = self.current_buffer_idx;
+            if self.buffers[closing_idx].modified {
+                self.pending_action = Some(crate::app::types::PendingAction::CloseTab);
+                self.pending_buffer_idx = Some(closing_idx);
+                self.toggle_fuzzy(crate::app::FuzzyMode::UnsavedChanges);
+                return;
+            }
+
+            self.force_close_buffer(closing_idx);
+        }
+    }
+
+    pub fn force_close_buffer(&mut self, closing_idx: usize) {
+        if closing_idx < self.buffers.len() {
             if self.live_script_mode {
                 let is_script = Some(closing_idx) == self.live_script_buffer_idx;
                 let is_target = Some(closing_idx) == self.target_buffer_idx;

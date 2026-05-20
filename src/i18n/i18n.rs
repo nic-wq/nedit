@@ -54,6 +54,7 @@ impl I18n {
         defaults.insert("file_options".to_string(), "File Options".to_string());
         defaults.insert("command_palette".to_string(), "Command Palette".to_string());
         defaults.insert("move_file".to_string(), "Move File".to_string());
+        defaults.insert("unsaved_changes".to_string(), "Unsaved Changes".to_string());
         defaults.insert("full_docs".to_string(), DOC_MAIN.to_string());
 
         let home_dir = std::env::var("HOME")

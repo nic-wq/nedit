@@ -115,7 +115,14 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
     }
 
     if app.config.matches(key, "quit") {
-        app.should_quit = true;
+        let modified_idx = app.buffers.iter().position(|b| b.modified);
+        if let Some(idx) = modified_idx {
+            app.pending_action = Some(crate::app::types::PendingAction::Quit);
+            app.pending_buffer_idx = Some(idx);
+            app.toggle_fuzzy(crate::app::FuzzyMode::UnsavedChanges);
+        } else {
+            app.should_quit = true;
+        }
         return;
     }
     if app.config.matches(key, "select_all") {
@@ -275,12 +282,41 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
     }
 }
 
+fn handle_unsaved_changes_completion(app: &mut App) {
+    let action = app.pending_action.take();
+    let buffer_idx = app.pending_buffer_idx.take();
+
+    match action {
+        Some(crate::app::types::PendingAction::CloseTab) => {
+            if let Some(idx) = buffer_idx {
+                app.force_close_buffer(idx);
+            }
+            app.is_fuzzy = false;
+        }
+        Some(crate::app::types::PendingAction::Quit) => {
+            let next_modified = app.buffers.iter().position(|b| b.modified);
+            if let Some(idx) = next_modified {
+                app.pending_action = Some(crate::app::types::PendingAction::Quit);
+                app.pending_buffer_idx = Some(idx);
+                // Stay in UnsavedChanges mode for the next buffer
+            } else {
+                app.should_quit = true;
+                app.is_fuzzy = false;
+            }
+        }
+        None => {
+            app.is_fuzzy = false;
+        }
+    }
+}
+
 fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
     if matches!(
         app.fuzzy_mode,
         crate::app::FuzzyMode::Rename
             | crate::app::FuzzyMode::SaveAs
             | crate::app::FuzzyMode::NewFolder
+            | crate::app::FuzzyMode::UnsavedChanges
     ) {
         match key.code {
             KeyCode::Esc => {
@@ -288,6 +324,8 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 app.fuzzy_query.clear();
                 app.pending_path = None;
                 app.move_dir = None;
+                app.pending_action = None;
+                app.pending_buffer_idx = None;
             }
             KeyCode::Enter => {}
             KeyCode::Backspace => {
@@ -295,8 +333,35 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     app.fuzzy_query.pop();
                 }
             }
+            KeyCode::Char('s') | KeyCode::Char('S') if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges => {
+                if let Some(idx) = app.pending_buffer_idx {
+                    if idx < app.buffers.len() {
+                        let has_path = app.buffers[idx].path.is_some();
+                        if !has_path {
+                            // If it has no path, we need to ask for a path first
+                            app.current_buffer_idx = idx;
+                            app.fuzzy_mode = crate::app::FuzzyMode::SaveAs;
+                            app.fuzzy_query.clear();
+                            return;
+                        } else {
+                            let _ = app.buffers[idx].save();
+                        }
+                    }
+                }
+                handle_unsaved_changes_completion(app);
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges => {
+                if let Some(idx) = app.pending_buffer_idx {
+                    if idx < app.buffers.len() {
+                        app.buffers[idx].modified = false;
+                    }
+                }
+                handle_unsaved_changes_completion(app);
+            }
             KeyCode::Char(c) => {
-                app.fuzzy_query.push(c);
+                if app.fuzzy_mode != crate::app::FuzzyMode::UnsavedChanges {
+                    app.fuzzy_query.push(c);
+                }
             }
             _ => {}
         }
@@ -370,6 +435,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::NewFolder => 0,
                 crate::app::FuzzyMode::ScriptMenu => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::ScriptInput => 0,
+                crate::app::FuzzyMode::UnsavedChanges => 0,
             };
             if max > 0 && app.fuzzy_idx < max - 1 {
                 app.fuzzy_idx += 1;
@@ -678,9 +744,12 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         }
                         app.refresh_explorer();
                     }
+                }
+                if app.pending_action.is_some() {
+                    handle_unsaved_changes_completion(app);
+                } else {
                     app.is_fuzzy = false;
                 }
-                return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::Local {
                 if let Some((line_idx, _)) = app.fuzzy_lines.get(app.fuzzy_idx) {
                     if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
@@ -772,7 +841,7 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
             app.explorer.go_up_root();
             app.refresh_explorer();
         }
-        KeyCode::Char('O') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+        KeyCode::Char(c) if is_explorer_file_options_shortcut(c, key.modifiers) => {
             if let Some(_item) = app.explorer.get_selected() {
                 app.toggle_fuzzy(crate::app::FuzzyMode::FileOptions);
                 app.fuzzy_results = vec![
@@ -785,6 +854,10 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
         }
         _ => {}
     }
+}
+
+fn is_explorer_file_options_shortcut(c: char, modifiers: KeyModifiers) -> bool {
+    c == 'O' || (c == 'o' && modifiers.contains(KeyModifiers::SHIFT))
 }
 
 fn handle_editor_input(app: &mut App, key: KeyEvent) {

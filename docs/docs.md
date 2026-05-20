@@ -33,7 +33,7 @@ You can open files or directories directly from your terminal:
 - **Mouse**: Double-click a word to select it. Selecting a word (or any text) will automatically highlight all other occurrences in the current file.
 
 ### Explorer
-- `SHIFT + O` : File Options (Rename/Move/Delete)
+- `SHIFT + O` : File Options (Rename/Move/Delete) - *Only when Explorer is focused*
 - `CTRL + Enter` : Set selected directory as root
 - `Backspace` : Go to parent directory
 
@@ -53,6 +53,11 @@ You can open files or directories directly from your terminal:
   - Lua API docs
   - Keyboard shortcuts
 - **Dynamic Search**: Global search (`CTRL+G`), File Finder (`CTRL+O`), and Local Search (`CTRL+F`) now support dynamic result loading. Instead of a fixed limit, more results are searched and displayed automatically as you scroll down the result list.
+## Basic Features
+
+- **Tab Management**: Open multiple files and switch between them using `Ctrl+Tab`.
+- **Unsaved Changes Prompt**: When closing a tab or the editor with unsaved changes, you will be prompted to Save, Discard, or Cancel.
+- **Syntax Highlighting**: Built-in support for multiple languages.
 - **Global Config**: All settings in `~/.config/nedit/`.
 - **Dynamic Themes**: Switch themes in real-time.
 - **Translation**: 100% controlled by `language.toml`.

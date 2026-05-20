@@ -4,7 +4,7 @@ mod fuzzy;
 mod live_script;
 mod scripting;
 mod theme;
-mod types;
+pub mod types;
 
 // We include documentation files as static strings to ensure they are always available 
 // within the binary, even if the user hasn't properly installed the docs folder.

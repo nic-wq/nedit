@@ -25,6 +25,13 @@ pub enum FuzzyMode {
     NewFolder,
     ScriptMenu,
     ScriptInput,
+    UnsavedChanges,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PendingAction {
+    CloseTab,
+    Quit,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -723,6 +723,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             | FuzzyMode::Rename
             | FuzzyMode::DeleteConfirm
             | FuzzyMode::NewFolder
+            | FuzzyMode::UnsavedChanges
     );
 
     let area = if is_small {
@@ -765,6 +766,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                 " 󰏫  Script Input ".to_string()
             }
         }
+        FuzzyMode::UnsavedChanges => format!(" 󰆓  {} ", app.i18n.t("unsaved_changes")),
     };
 
     let block = Block::default()
@@ -828,6 +830,23 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             Span::styled(
                 " (Enter: Confirm, Esc: Cancel)",
                 Style::default().fg(colors.surface),
+            ),
+        ]))
+    } else if app.fuzzy_mode == FuzzyMode::UnsavedChanges {
+        let filename = app.pending_buffer_idx
+            .and_then(|idx| app.buffers.get(idx))
+            .and_then(|buf| buf.path.as_ref())
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .unwrap_or_else(|| "[No Name]".to_string());
+        Paragraph::new(Line::from(vec![
+            Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
+            Span::styled(
+                format!("Save changes to {}? ", filename),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " (S: Save, D: Discard, Esc: Cancel)",
+                Style::default().fg(colors.accent),
             ),
         ]))
     } else {
