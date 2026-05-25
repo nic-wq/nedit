@@ -12,7 +12,7 @@ A modern, lightweight terminal text editor written in Rust. Fast, extensible, an
 - 🔧 **Lua Extensibility** - Customize and extend the editor with Lua scripts.
 - 🌍 **Internationalization (i18n)** - Multi-language support.
 - 🐭 **Mouse Support** - Scroll independently of cursor, click to position, and drag for selection.
-- 🔍 **Fuzzy Finder & Global Search** - Quick file opening and content search across your projects.
+- 🔍 **Fuzzy Finder & Global Search** - Quick file opening and content search across your projects, with scoped folder search via `@` and `~` in the global search dropdown.
 - ⚡ **Autocomplete** - Built-in word-based autocomplete with interactive navigation.
 
 ## 🛠️ Technologies

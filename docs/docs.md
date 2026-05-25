@@ -18,7 +18,7 @@ You can open files or directories directly from your terminal:
 - `CTRL + O` : Fuzzy Finder (Files)
 - `CTRL + P` : Command Palette
 - `CTRL + F` : Local Search (Current file)
-- `CTRL + G` : Global Search (All files)
+- `CTRL + G` : Global Search (All files). Start the query with `@` to scope the search to a folder, for example `@src fn` or `@~/projects fn`. While typing `@path`, the dropdown suggests directories.
 - `CTRL+ALT+T` : Theme Selection
 - `CTRL + H` : Open Documentation Menu
 - `CTRL + N` : New File (in editor) / New Folder (in explorer)
@@ -52,7 +52,7 @@ You can open files or directories directly from your terminal:
   - General docs (this file)
   - Lua API docs
   - Keyboard shortcuts
-- **Dynamic Search**: Global search (`CTRL+G`), File Finder (`CTRL+O`), and Local Search (`CTRL+F`) now support dynamic result loading. Instead of a fixed limit, more results are searched and displayed automatically as you scroll down the result list.
+- **Dynamic Search**: Global search (`CTRL+G`), File Finder (`CTRL+O`), and Local Search (`CTRL+F`) now support dynamic result loading. Instead of a fixed limit, more results are searched and displayed automatically as you scroll down the result list. Global search also supports scoped directory queries with `@`, including `~` for your home folder.
 ## Basic Features
 
 - **Tab Management**: Open multiple files and switch between them using `Ctrl+Tab`.
@@ -78,4 +78,3 @@ You can open files or directories directly from your terminal:
 
 ## Internal Documentation
 The codebase is documented with a focus on "why" certain design choices were made, rather than just "what" the code does. This helps maintainers understand the rationale behind complex logic and architectural decisions.
-

@@ -6,7 +6,7 @@ CTRL+E Toggle Explorer
 CTRL+O Fuzzy Finder (Files)
 CTRL+P Command Palette
 CTRL+F Local Search (Current file)
-CTRL+G Global Search (All files)
+CTRL+G Global Search (All files; prefix with `@` to search a folder, like `@src fn` or `@~/projects fn`)
 CTRL+H Open Documentation
 CTRL+N New File / New Folder
 CTRL+S Save File
