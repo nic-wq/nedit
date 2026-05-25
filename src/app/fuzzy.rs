@@ -1,11 +1,173 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use walkdir::WalkDir;
 
 use super::{App, FuzzyMode};
 
 impl App {
+    pub(crate) fn format_search_dir_for_query(&self, path: &Path, prefer_home: bool) -> String {
+        if prefer_home {
+            if let Ok(home) = std::env::var("HOME") {
+                let home_path = PathBuf::from(&home);
+                if path == home_path {
+                    return "~".to_string();
+                }
+                if let Ok(relative) = path.strip_prefix(&home_path) {
+                    let relative = relative.to_string_lossy();
+                    if relative.is_empty() {
+                        return "~".to_string();
+                    }
+                    return format!("~/{}", relative);
+                }
+            }
+        }
+
+        if let Ok(relative) = path.strip_prefix(&self.explorer.root) {
+            let relative = relative.to_string_lossy();
+            if relative.is_empty() {
+                ".".to_string()
+            } else {
+                relative.to_string()
+            }
+        } else {
+            path.to_string_lossy().to_string()
+        }
+    }
+
+    fn expand_search_dir(&self, dir: &str) -> PathBuf {
+        if dir == "~" {
+            return std::env::var("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| self.explorer.root.clone());
+        }
+
+        if let Some(suffix) = dir.strip_prefix("~/") {
+            return std::env::var("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| self.explorer.root.clone())
+                .join(suffix);
+        }
+
+        let candidate = Path::new(dir);
+        if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            self.explorer.root.join(candidate)
+        }
+    }
+
+    fn content_scope_suggestions(&self) -> Option<Vec<PathBuf>> {
+        let trimmed = self.fuzzy_query.trim();
+        let scoped_query = trimmed.strip_prefix('@')?;
+        if scoped_query.chars().any(char::is_whitespace) {
+            return None;
+        }
+
+        let (base_dir, needle, prefer_home) = if scoped_query.is_empty() {
+            (self.explorer.root.clone(), String::new(), false)
+        } else if scoped_query.ends_with('/') {
+            (self.expand_search_dir(scoped_query), String::new(), scoped_query.starts_with('~'))
+        } else if let Some((parent, fragment)) = scoped_query.rsplit_once('/') {
+            (
+                self.expand_search_dir(parent),
+                fragment.to_lowercase(),
+                scoped_query.starts_with('~'),
+            )
+        } else {
+            (
+                self.explorer.root.clone(),
+                scoped_query.to_lowercase(),
+                scoped_query.starts_with('~'),
+            )
+        };
+
+        let Ok(entries) = fs::read_dir(&base_dir) else {
+            return Some(Vec::new());
+        };
+
+        let mut suggestions: Vec<PathBuf> = entries
+            .flatten()
+            .filter(|entry| entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+            .filter(|entry| {
+                let name = entry.file_name().to_string_lossy().to_lowercase();
+                needle.is_empty() || name.starts_with(&needle)
+            })
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| !Self::should_skip_dir_name(name))
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        suggestions.sort_by_key(|path| self.format_search_dir_for_query(path, prefer_home));
+        suggestions.truncate(self.fuzzy_limit);
+        Some(suggestions)
+    }
+
+    fn resolve_content_search_scope(&self) -> (String, PathBuf, bool) {
+        let trimmed = self.fuzzy_query.trim();
+        let Some(scoped_query) = trimmed.strip_prefix('@') else {
+            return (trimmed.to_lowercase(), self.explorer.root.clone(), false);
+        };
+
+        let mut parts = scoped_query.splitn(2, char::is_whitespace);
+        let Some(dir_part) = parts.next().map(str::trim).filter(|part| !part.is_empty()) else {
+            return (trimmed.to_lowercase(), self.explorer.root.clone(), false);
+        };
+        let Some(search_term) = parts.next().map(str::trim) else {
+            return (trimmed.to_lowercase(), self.explorer.root.clone(), false);
+        };
+
+        let search_root = self.expand_search_dir(dir_part);
+
+        if search_root.is_dir() {
+            (search_term.to_lowercase(), search_root, true)
+        } else {
+            (trimmed.to_lowercase(), self.explorer.root.clone(), false)
+        }
+    }
+
+    fn scoped_search_files(root: PathBuf) -> impl Iterator<Item = PathBuf> {
+        let root_for_filter = root.clone();
+        WalkDir::new(root)
+            .into_iter()
+            .filter_entry(move |entry| {
+                let path = entry.path();
+                if path == root_for_filter {
+                    return true;
+                }
+                let name = entry.file_name().to_string_lossy();
+                !Self::should_skip_dir_name(name.as_ref())
+            })
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| entry.path().to_path_buf())
+    }
+
+    fn search_content_in_files(
+        files: impl IntoIterator<Item = PathBuf>,
+        query: &str,
+        limit: usize,
+    ) -> Vec<(PathBuf, usize, String)> {
+        let mut results = Vec::new();
+        for path in files {
+            if let Ok(content) = fs::read_to_string(&path) {
+                for (i, line) in content.lines().enumerate() {
+                    if line.to_lowercase().contains(query) {
+                        results.push((path.clone(), i, line.to_string()));
+                        if results.len() >= limit {
+                            return results;
+                        }
+                    }
+                }
+            }
+        }
+        results
+    }
+
     pub fn toggle_fuzzy(&mut self, mode: FuzzyMode) {
         if self.is_fuzzy && self.fuzzy_mode == mode {
             self.is_fuzzy = false;
@@ -324,9 +486,9 @@ impl App {
         }
 
         if self.fuzzy_mode == FuzzyMode::Files || self.fuzzy_mode == FuzzyMode::Content {
-            self.fuzzy_results = Vec::new();
             self.fuzzy_global_results = Vec::new();
             if self.fuzzy_mode == FuzzyMode::Files {
+                self.fuzzy_results = Vec::new();
                 self.fuzzy_results = self
                     .all_files
                     .iter()
@@ -354,36 +516,46 @@ impl App {
                     .take(self.fuzzy_limit)
                     .collect();
             } else if self.fuzzy_mode == FuzzyMode::Content {
+                self.fuzzy_results = self.content_scope_suggestions().unwrap_or_default();
+                if !self.fuzzy_results.is_empty() {
+                    if reset_idx {
+                        self.fuzzy_idx = 0;
+                    }
+                    return;
+                }
+                self.fuzzy_results = Vec::new();
                 // Background search with debouncing logic would be better,
                 // but let's at least avoid blocking the main thread.
                 // To avoid thread storm, we check if a search is already in progress.
                 if self.content_search_receiver.is_none() {
+                    let (query_for_search, search_root, scoped_search) =
+                        self.resolve_content_search_scope();
+                    if query_for_search.is_empty() {
+                        if reset_idx {
+                            self.fuzzy_idx = 0;
+                        }
+                        return;
+                    }
+                    let files = self.all_files.clone();
+                    let query_for_thread = self.fuzzy_query.to_lowercase();
+
                     let (tx, rx) = std::sync::mpsc::channel();
                     self.content_search_receiver = Some(rx);
-                    let files = self.all_files.clone();
-                    let query_for_thread = query.clone();
-                    let query_for_search = query.clone();
-
                     let limit = self.fuzzy_limit;
                     std::thread::spawn(move || {
-                        let mut results = Vec::new();
-                        let mut count = 0;
-                        for path in files.iter() {
-                            if let Ok(content) = fs::read_to_string(path) {
-                                for (i, line) in content.lines().enumerate() {
-                                    if line.to_lowercase().contains(&query_for_search) {
-                                        results.push((path.clone(), i, line.to_string()));
-                                        count += 1;
-                                        if count >= limit {
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            if count >= limit {
-                                break;
-                            }
-                        }
+                        let results = if scoped_search {
+                            Self::search_content_in_files(
+                                Self::scoped_search_files(search_root),
+                                &query_for_search,
+                                limit,
+                            )
+                        } else {
+                            Self::search_content_in_files(
+                                files.iter().cloned(),
+                                &query_for_search,
+                                limit,
+                            )
+                        };
                         let _ = tx.send((query_for_thread, results));
                     });
                 }

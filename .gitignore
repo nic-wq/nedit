@@ -3,3 +3,4 @@ target/
 .issues/
 .tasks/
 .pr
+AGENTS.md

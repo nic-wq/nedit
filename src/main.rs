@@ -536,6 +536,47 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
         format!("results={}", app.fuzzy_global_results.len()),
     );
 
+    let scoped_suggestions_start = Instant::now();
+    app.fuzzy_query = "@src".to_string();
+    app.update_fuzzy(true);
+    print_step(
+        "scoped_content_dir_suggestions",
+        scoped_suggestions_start.elapsed(),
+        format!("suggestions={}", app.fuzzy_results.len()),
+    );
+    if app.fuzzy_results.is_empty() {
+        anyhow::bail!("Scoped content search did not offer directory suggestions");
+    }
+
+    let scoped_empty_start = Instant::now();
+    app.fuzzy_query = "@src ".to_string();
+    app.update_fuzzy(true);
+    let scoped_empty_kick = scoped_empty_start.elapsed();
+    let scoped_empty_wait = wait_for_background_tasks(&mut app);
+    print_step(
+        "scoped_content_empty_query",
+        scoped_empty_kick + scoped_empty_wait,
+        format!("pending={}", app.content_search_receiver.is_some()),
+    );
+    if app.content_search_receiver.is_some() {
+        anyhow::bail!("Scoped content search got stuck without a search term");
+    }
+
+    let scoped_content_start = Instant::now();
+    app.fuzzy_query = "@src fn".to_string();
+    app.update_fuzzy(true);
+    let scoped_content_kick = scoped_content_start.elapsed();
+    let scoped_content_wait = wait_for_background_tasks(&mut app);
+    print_step("scoped_content_search_kick", scoped_content_kick, "");
+    print_step(
+        "scoped_content_search_wait",
+        scoped_content_wait,
+        format!("results={}", app.fuzzy_global_results.len()),
+    );
+    if app.fuzzy_global_results.is_empty() {
+        anyhow::bail!("Scoped content search returned no results");
+    }
+
     println!("-------------------------------");
     println!("completed in {}", format_duration(start.elapsed()));
 

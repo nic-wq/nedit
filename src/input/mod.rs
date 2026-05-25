@@ -419,7 +419,13 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         KeyCode::Down => {
             let max = match app.fuzzy_mode {
                 crate::app::FuzzyMode::Local => app.fuzzy_lines.len(),
-                crate::app::FuzzyMode::Content => app.fuzzy_global_results.len(),
+                crate::app::FuzzyMode::Content => {
+                    if app.fuzzy_results.is_empty() {
+                        app.fuzzy_global_results.len()
+                    } else {
+                        app.fuzzy_results.len()
+                    }
+                }
                 crate::app::FuzzyMode::Files => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::Themes => app.fuzzy_themes.len(),
                 crate::app::FuzzyMode::SaveAs => 0,
@@ -758,6 +764,18 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     }
                 }
             } else if app.fuzzy_mode == crate::app::FuzzyMode::Content {
+                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+                    let prefer_home = app
+                        .fuzzy_query
+                        .trim()
+                        .strip_prefix('@')
+                        .map(|query| query.starts_with('~'))
+                        .unwrap_or(false);
+                    let path_text = app.format_search_dir_for_query(&path, prefer_home);
+                    app.fuzzy_query = format!("@{}/", path_text.trim_end_matches('/'));
+                    app.update_fuzzy(true);
+                    return;
+                }
                 if let Some((path, line_idx, _)) = app.fuzzy_global_results.get(app.fuzzy_idx) {
                     let path = path.clone();
                     let line_idx = *line_idx;

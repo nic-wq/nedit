@@ -892,17 +892,20 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                     .collect()
             }
         } else if app.fuzzy_mode == FuzzyMode::Content {
-            let safe_start = start_idx.min(app.fuzzy_global_results.len().saturating_sub(1));
-            let end_idx = (safe_start + list_height).min(app.fuzzy_global_results.len());
-            if app.fuzzy_global_results.is_empty() {
-                vec![]
-            } else {
-                app.fuzzy_global_results[safe_start..end_idx]
+            if !app.fuzzy_results.is_empty() {
+                let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
+                let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
+                let prefer_home = app
+                    .fuzzy_query
+                    .trim()
+                    .strip_prefix('@')
+                    .map(|query| query.starts_with('~'))
+                    .unwrap_or(false);
+                app.fuzzy_results[safe_start..end_idx]
                     .iter()
                     .enumerate()
-                    .map(|(idx, (path, line_num, text))| {
+                    .map(|(idx, path)| {
                         let i = safe_start + idx;
-                        let name = path.file_name().unwrap_or_default().to_string_lossy();
                         let style = if i == app.fuzzy_idx {
                             Style::default()
                                 .bg(colors.sel)
@@ -911,10 +914,36 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                         } else {
                             Style::default().fg(colors.fg)
                         };
-                        ListItem::new(format!(" {} (L{}): {}", name, line_num + 1, text.trim()))
+                        let label = app.format_search_dir_for_query(path, prefer_home);
+                        ListItem::new(format!(" {} {}/", "󰉋", label.trim_end_matches('/')))
                             .style(style)
                     })
                     .collect()
+            } else {
+                let safe_start = start_idx.min(app.fuzzy_global_results.len().saturating_sub(1));
+                let end_idx = (safe_start + list_height).min(app.fuzzy_global_results.len());
+                if app.fuzzy_global_results.is_empty() {
+                    vec![]
+                } else {
+                    app.fuzzy_global_results[safe_start..end_idx]
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, (path, line_num, text))| {
+                            let i = safe_start + idx;
+                            let name = path.file_name().unwrap_or_default().to_string_lossy();
+                            let style = if i == app.fuzzy_idx {
+                                Style::default()
+                                    .bg(colors.sel)
+                                    .fg(colors.accent)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(colors.fg)
+                            };
+                            ListItem::new(format!(" {} (L{}): {}", name, line_num + 1, text.trim()))
+                                .style(style)
+                        })
+                        .collect()
+                }
             }
         } else if app.fuzzy_mode == FuzzyMode::Themes {
             let safe_start = start_idx.min(app.fuzzy_themes.len().saturating_sub(1));
