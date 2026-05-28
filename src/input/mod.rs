@@ -761,6 +761,12 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
                         buffer.cursor_row = *line_idx;
                         buffer.cursor_col = 0;
+                        let height = app.editor_area.height as usize;
+                        if buffer.cursor_row < buffer.scroll_row {
+                            buffer.scroll_row = buffer.cursor_row;
+                        } else if buffer.cursor_row >= buffer.scroll_row + height {
+                            buffer.scroll_row = buffer.cursor_row.saturating_sub(height).saturating_add(1);
+                        }
                     }
                 }
             } else if app.fuzzy_mode == crate::app::FuzzyMode::Content {
@@ -783,6 +789,12 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
                         buffer.cursor_row = line_idx;
                         buffer.cursor_col = 0;
+                        let height = app.editor_area.height as usize;
+                        if buffer.cursor_row < buffer.scroll_row {
+                            buffer.scroll_row = buffer.cursor_row;
+                        } else if buffer.cursor_row >= buffer.scroll_row + height {
+                            buffer.scroll_row = buffer.cursor_row.saturating_sub(height).saturating_add(1);
+                        }
                     }
                 }
             } else if app.fuzzy_mode == crate::app::FuzzyMode::Themes {

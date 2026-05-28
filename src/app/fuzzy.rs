@@ -579,8 +579,19 @@ impl App {
 
         if self.fuzzy_mode == FuzzyMode::Themes {
             self.ensure_all_themes_loaded();
-            let themes: Vec<String> = self.theme_set.themes.keys().cloned().collect();
-            self.fuzzy_themes = themes
+            let mut seen = std::collections::HashSet::new();
+            let mut canonical_order = Vec::new();
+            let mut keys: Vec<&String> = self.theme_set.themes.keys().collect();
+            keys.sort();
+            for key in keys {
+                if let Some(theme) = self.theme_set.themes.get(key) {
+                    let canonical = theme.name.as_deref().unwrap_or(key.as_str());
+                    if seen.insert(canonical.to_string()) {
+                        canonical_order.push(canonical.to_string());
+                    }
+                }
+            }
+            self.fuzzy_themes = canonical_order
                 .into_iter()
                 .filter(|t| query.is_empty() || t.to_lowercase().contains(&query))
                 .collect();
@@ -588,6 +599,8 @@ impl App {
 
         if reset_idx {
             self.fuzzy_idx = 0;
+        } else if self.fuzzy_idx >= self.fuzzy_themes.len() {
+            self.fuzzy_idx = self.fuzzy_themes.len().saturating_sub(1);
         }
 
         if self.fuzzy_mode == FuzzyMode::Themes && !self.fuzzy_themes.is_empty() {

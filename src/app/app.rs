@@ -218,7 +218,9 @@ impl App {
     }
 
     pub fn ensure_current_theme_loaded(&mut self) {
-        if self.theme_set.themes.contains_key(&self.current_theme) {
+        let key = self.resolve_theme_key(&self.current_theme);
+        if self.theme_set.themes.contains_key(&key) {
+            self.current_theme = key;
             return;
         }
 
