@@ -152,6 +152,7 @@ impl IconRegistry {
             "Rename" => "󰏫 ",
             "Move" => "󰪹 ",
             "Delete" => "󰆴 ",
+            "Set as Root" => "󰒓 ",
             _ => "󰘳 ",
         }
     }

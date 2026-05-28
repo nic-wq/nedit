@@ -272,6 +272,18 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         return;
     }
 
+    if app.config.matches(key, "set_as_root") {
+        let path = app
+            .explorer
+            .get_selected()
+            .filter(|i| i.is_dir)
+            .map(|i| i.path.clone());
+        if let Some(path) = path {
+            app.set_explorer_root(path);
+            return;
+        }
+    }
+
     match app.focus {
         Focus::Explorer => handle_explorer_input(app, key),
         Focus::Editor => {
@@ -486,6 +498,10 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         "Delete" => {
                             app.fuzzy_mode = crate::app::FuzzyMode::DeleteConfirm;
                             app.fuzzy_query.clear();
+                        }
+                        "Set as Root" => {
+                            app.set_explorer_root(item.path.clone());
+                            app.is_fuzzy = false;
                         }
                         _ => app.is_fuzzy = false,
                     }
@@ -872,15 +888,18 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
             app.refresh_explorer();
         }
         KeyCode::Char(c) if is_explorer_file_options_shortcut(c, key.modifiers) => {
-            if let Some(_item) = app.explorer.get_selected() {
-                app.toggle_fuzzy(crate::app::FuzzyMode::FileOptions);
-                app.fuzzy_results = vec![
-                    std::path::PathBuf::from("Rename"),
-                    std::path::PathBuf::from("Move"),
-                    std::path::PathBuf::from("Delete"),
-                ];
-                app.fuzzy_idx = 0;
+            let is_dir = app.explorer.get_selected().map(|i| i.is_dir).unwrap_or(false);
+            app.toggle_fuzzy(crate::app::FuzzyMode::FileOptions);
+            let mut options = vec![
+                std::path::PathBuf::from("Rename"),
+                std::path::PathBuf::from("Move"),
+                std::path::PathBuf::from("Delete"),
+            ];
+            if is_dir {
+                options.push(std::path::PathBuf::from("Set as Root"));
             }
+            app.fuzzy_results = options;
+            app.fuzzy_idx = 0;
         }
         _ => {}
     }

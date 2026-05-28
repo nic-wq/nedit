@@ -30,7 +30,7 @@ CTRL+TAB Navigate between target file tabs (left pane updates automatically)
 ## Explorer
 Enter Open file / Toggle directory
 Backspace Go to parent directory
-CTRL+ENTER Set as root
+CTRL+ENTER Set as root (or use SHIFT+O → "Set as Root")
 SHIFT+O File Options
 
 ## Command Palette
@@ -66,11 +66,13 @@ open_help = "ctrl+h"
 run_live_script = "f9"
 live_script_next = "shift+alt+right"
 live_script_prev = "shift+alt+left"
+set_as_root = "ctrl+enter"
 ```
 
 Note: 
 - `new_file` creates file in editor or folder in explorer
 - `run_live_script` executes the Live Script and applies changes immediately to the target file
 - `live_script_next` / `live_script_prev` toggle focus between the target file and script panes in Live Script mode
+- `set_as_root` sets the selected directory as the explorer root (default `ctrl+enter`; may not work on all terminals — use `SHIFT+O` → "Set as Root" as an alternative)
 
 Modifiers: ctrl, alt, shift, backtab, tab, esc, enter, up, down, left, right

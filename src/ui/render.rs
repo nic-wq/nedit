@@ -377,6 +377,13 @@ fn draw_editor(
 
     let mut lines = Vec::new();
     let visible_width = area.width.saturating_sub(5) as usize;
+    const TAB_WIDTH: usize = 4;
+    let cursor_indent_level = if is_focused {
+        buffer.cursor_col / TAB_WIDTH
+    } else {
+        usize::MAX
+    };
+    let show_guides = app.config.show_indent_guides;
 
     for i in buffer_scroll_row..(buffer_scroll_row + height).min(line_count) {
         let original_line = buffer.content.line(i).to_string();
@@ -436,72 +443,109 @@ fn draw_editor(
             };
         let mut char_offset = 0;
         let mut visual_col = 0;
+        let mut in_leading = show_guides;
 
         for (fg, text) in ranges {
             for c in text.chars() {
                 if c == '\n' || c == '\r' {
                     continue;
                 }
+
+                let char_width = if c == '\t' { TAB_WIDTH } else { 1 };
+
+                if in_leading && c != ' ' && c != '\t' {
+                    in_leading = false;
+                }
+
                 if visual_col >= buffer.scroll_col && visual_col < buffer.scroll_col + visible_width
                 {
-                    let mut style = Style::default().fg(fg);
-
-                    if let Some((start_row, start_col)) = buffer.selection_start {
-                        let (r1, c1, r2, c2) =
-                            if (start_row, start_col) < (buffer.cursor_row, buffer.cursor_col) {
-                                (start_row, start_col, buffer.cursor_row, buffer.cursor_col)
+                    if in_leading {
+                        for col_offset in 0..char_width {
+                            let col = visual_col + col_offset;
+                            if col % TAB_WIDTH == 0 && col > 0 {
+                                let indent_level = col / TAB_WIDTH;
+                                let guide_color = if indent_level == cursor_indent_level
+                                {
+                                    colors.active_indent_guide
+                                } else {
+                                    colors.indent_guide
+                                };
+                                spans.push(Span::styled(
+                                    "│",
+                                    Style::default().fg(guide_color),
+                                ));
                             } else {
-                                (buffer.cursor_row, buffer.cursor_col, start_row, start_col)
+                                spans.push(Span::styled(
+                                    " ",
+                                    Style::default().fg(colors.indent_guide),
+                                ));
+                            }
+                        }
+                    } else {
+                        let mut style = Style::default().fg(fg);
+
+                        if let Some((start_row, start_col)) = buffer.selection_start {
+                            let (r1, c1, r2, c2) =
+                                if (start_row, start_col) < (buffer.cursor_row, buffer.cursor_col)
+                                {
+                                    (start_row, start_col, buffer.cursor_row, buffer.cursor_col)
+                                } else {
+                                    (buffer.cursor_row, buffer.cursor_col, start_row, start_col)
+                                };
+
+                            let is_selected = if i > r1 && i < r2 {
+                                true
+                            } else if i == r1 && i == r2 {
+                                char_offset >= c1 && char_offset < c2
+                            } else if i == r1 {
+                                char_offset >= c1
+                            } else if i == r2 {
+                                char_offset < c2
+                            } else {
+                                false
                             };
 
-                        let is_selected = if i > r1 && i < r2 {
-                            true
-                        } else if i == r1 && i == r2 {
-                            char_offset >= c1 && char_offset < c2
-                        } else if i == r1 {
-                            char_offset >= c1
-                        } else if i == r2 {
-                            char_offset < c2
-                        } else {
-                            false
-                        };
-
-                        if is_selected {
-                            style = style.bg(colors.sel);
+                            if is_selected {
+                                style = style.bg(colors.sel);
+                            } else {
+                                let is_match = match_ranges
+                                    .iter()
+                                    .any(|range| {
+                                        char_offset >= range.start && char_offset < range.end
+                                    });
+                                if is_match {
+                                    style = style.bg(colors.surface);
+                                }
+                            }
                         } else {
                             let is_match = match_ranges
                                 .iter()
-                                .any(|range| char_offset >= range.start && char_offset < range.end);
+                                .any(|range| {
+                                    char_offset >= range.start && char_offset < range.end
+                                });
                             if is_match {
                                 style = style.bg(colors.surface);
                             }
                         }
-                    } else {
-                        let is_match = match_ranges
-                            .iter()
-                            .any(|range| char_offset >= range.start && char_offset < range.end);
-                        if is_match {
-                            style = style.bg(colors.surface);
+
+                        if matching_bracket == Some((i, char_offset))
+                            || (matching_bracket.is_some()
+                                && i == buffer.cursor_row
+                                && char_offset == buffer.cursor_col)
+                        {
+                            style = style.bg(colors.accent).fg(colors.bg);
                         }
-                    }
 
-                    if matching_bracket == Some((i, char_offset))
-                        || (matching_bracket.is_some()
-                            && i == buffer.cursor_row
-                            && char_offset == buffer.cursor_col)
-                    {
-                        style = style.bg(colors.accent).fg(colors.bg);
+                        let disp_text = if c == '\t' {
+                            " ".repeat(TAB_WIDTH)
+                        } else {
+                            c.to_string()
+                        };
+                        spans.push(Span::styled(disp_text, style));
                     }
-
-                    let disp_text = if c == '\t' {
-                        " ".repeat(4)
-                    } else {
-                        c.to_string()
-                    };
-                    spans.push(Span::styled(disp_text, style));
                 }
 
-                visual_col += if c == '\t' { 4 } else { 1 };
+                visual_col += char_width;
                 char_offset += 1;
             }
         }

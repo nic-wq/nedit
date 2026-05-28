@@ -10,6 +10,8 @@ pub struct UIColors {
     pub accent: Color,
     pub surface: Color,
     pub error: Color,
+    pub indent_guide: Color,
+    pub active_indent_guide: Color,
 }
 
 fn map_color(color: syntect::highlighting::Color) -> Color {
@@ -46,7 +48,23 @@ pub fn get_colors(app: &App) -> UIColors {
             .and_then(theme_error)
             .map(map_color)
             .unwrap_or(Color::Rgb(243, 139, 168)),
+        indent_guide: theme
+            .and_then(theme_indent_guide)
+            .map(map_color)
+            .unwrap_or(Color::Rgb(45, 46, 66)),
+        active_indent_guide: theme
+            .and_then(theme_accent)
+            .map(map_color)
+            .unwrap_or(Color::Rgb(137, 180, 250)),
     }
+}
+
+fn theme_indent_guide(theme: &Theme) -> Option<syntect::highlighting::Color> {
+    theme
+        .settings
+        .gutter
+        .or(theme.settings.line_highlight)
+        .or(theme.settings.selection)
 }
 
 fn theme_accent(theme: &Theme) -> Option<syntect::highlighting::Color> {

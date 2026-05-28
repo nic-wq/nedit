@@ -11,6 +11,8 @@ pub struct Config {
     pub keybinds: HashMap<String, String>,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_true")]
+    pub show_indent_guides: bool,
 }
 
 fn default_true() -> bool {
@@ -64,11 +66,13 @@ impl Config {
             "shift+alt+right".to_string(),
         );
         keybinds.insert("live_script_prev".to_string(), "shift+alt+left".to_string());
+        keybinds.insert("set_as_root".to_string(), "ctrl+enter".to_string());
 
         Self {
             autocomplete_enabled: true,
             keybinds,
             theme: default_theme(),
+            show_indent_guides: true,
         }
     }
 
@@ -95,6 +99,13 @@ impl Config {
 
         if let Some(theme) = value.get("theme").and_then(toml::Value::as_str) {
             config.theme = theme.to_string();
+        }
+
+        if let Some(enabled) = value
+            .get("show_indent_guides")
+            .and_then(toml::Value::as_bool)
+        {
+            config.show_indent_guides = enabled;
         }
 
         if let Some(keybinds) = value.get("keybinds").and_then(toml::Value::as_table) {
@@ -140,6 +151,7 @@ impl Config {
             "run_live_script",
             "live_script_next",
             "live_script_prev",
+            "set_as_root",
         ]
     }
 }
