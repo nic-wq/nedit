@@ -22,6 +22,7 @@ impl EditorBuffer {
             } else {
                 self.cursor_col += new_rope.len_chars();
             }
+            self.sync_cursor_goal_from_position();
             self.modified = true;
         }
     }

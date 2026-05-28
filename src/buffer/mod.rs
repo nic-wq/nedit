@@ -3,6 +3,7 @@
 mod autocomplete;
 mod buffer;
 mod clipboard;
+pub(crate) mod column;
 mod cursor;
 mod editing;
 mod history;

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use super::column;
 use ropey::Rope;
 
 #[derive(Clone)]
@@ -12,6 +13,8 @@ pub struct EditorBuffer {
     pub path: Option<PathBuf>,
     pub cursor_row: usize,
     pub cursor_col: usize,
+    /// Visual column remembered across vertical moves (goal column).
+    pub cursor_goal_visual_col: usize,
     pub scroll_row: usize,
     pub scroll_col: usize,
     pub modified: bool,
@@ -33,6 +36,7 @@ impl EditorBuffer {
             path: None,
             cursor_row: 0,
             cursor_col: 0,
+            cursor_goal_visual_col: 0,
             scroll_row: 0,
             scroll_col: 0,
             modified: false,
@@ -59,6 +63,7 @@ impl EditorBuffer {
             path: Some(path),
             cursor_row: 0,
             cursor_col: 0,
+            cursor_goal_visual_col: 0,
             scroll_row: 0,
             scroll_col: 0,
             modified: false,
@@ -71,6 +76,48 @@ impl EditorBuffer {
             show_autocomplete_list: false,
             syntax_states: vec![None; content.len_lines()],
         })
+    }
+
+    pub fn line_text(&self, row: usize) -> String {
+        let mut line = self.content.line(row).to_string();
+        if line.ends_with('\n') {
+            line.pop();
+        }
+        if line.ends_with('\r') {
+            line.pop();
+        }
+        line
+    }
+
+    pub fn line_max_char_col(&self, row: usize) -> usize {
+        let line_len = self.content.line(row).len_chars();
+        let mut max_col = line_len;
+        if self.content.line(row).chars().last() == Some('\n') {
+            max_col = max_col.saturating_sub(1);
+        }
+        max_col
+    }
+
+    pub fn line_max_visual_col(&self, row: usize) -> usize {
+        let line = self.line_text(row);
+        column::visual_column_at_char_index(&line, self.line_max_char_col(row))
+    }
+
+    pub fn cursor_visual_col(&self) -> usize {
+        let line = self.line_text(self.cursor_row);
+        column::visual_column_at_char_index(&line, self.cursor_col)
+    }
+
+    pub fn sync_cursor_goal_from_position(&mut self) {
+        self.cursor_goal_visual_col = self.cursor_visual_col();
+    }
+
+    pub fn place_cursor(&mut self, row: usize, char_col: usize) {
+        let line_count = self.content.len_lines();
+        self.cursor_row = row.min(line_count.saturating_sub(1));
+        let max_col = self.line_max_char_col(self.cursor_row);
+        self.cursor_col = char_col.min(max_col);
+        self.sync_cursor_goal_from_position();
     }
 
     pub fn save(&mut self) -> anyhow::Result<()> {

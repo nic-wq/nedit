@@ -33,6 +33,7 @@ impl EditorBuffer {
         } else {
             self.cursor_col += 1;
         }
+        self.sync_cursor_goal_from_position();
         self.modified = true;
         self.sync_syntax_states(self.cursor_row);
     }
@@ -52,6 +53,7 @@ impl EditorBuffer {
                     self.cursor_col -= 1;
                 }
             }
+            self.sync_cursor_goal_from_position();
             self.modified = true;
             self.sync_syntax_states(self.cursor_row);
         }

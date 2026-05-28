@@ -47,14 +47,8 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                     let target_row = buffer.scroll_row + rel_row;
                     let target_col =
                         buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
-                    buffer.cursor_row =
-                        target_row.min(buffer.content.len_lines().saturating_sub(1));
-                    let line_len = buffer
-                        .content
-                        .line(buffer.cursor_row)
-                        .len_chars()
-                        .saturating_sub(1);
-                    buffer.cursor_col = target_col.min(line_len);
+                    let row = target_row.min(buffer.content.len_lines().saturating_sub(1));
+                    buffer.place_cursor(row, target_col);
                     buffer.selection_start = None;
 
                     let is_double_click = app.last_click_pos == (mouse.column, mouse.row)
@@ -93,14 +87,8 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                     let target_row = buffer.scroll_row + rel_row;
                     let target_col =
                         buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
-                    buffer.cursor_row =
-                        target_row.min(buffer.content.len_lines().saturating_sub(1));
-                    let line_len = buffer
-                        .content
-                        .line(buffer.cursor_row)
-                        .len_chars()
-                        .saturating_sub(1);
-                    buffer.cursor_col = target_col.min(line_len);
+                    let row = target_row.min(buffer.content.len_lines().saturating_sub(1));
+                    buffer.place_cursor(row, target_col);
                 }
             }
         }
@@ -776,7 +764,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 if let Some((line_idx, _)) = app.fuzzy_lines.get(app.fuzzy_idx) {
                     if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
                         buffer.cursor_row = *line_idx;
-                        buffer.cursor_col = 0;
+                        buffer.move_to_line_start();
                         let height = app.editor_area.height as usize;
                         if buffer.cursor_row < buffer.scroll_row {
                             buffer.scroll_row = buffer.cursor_row;
@@ -804,7 +792,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     app.open_file(path);
                     if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
                         buffer.cursor_row = line_idx;
-                        buffer.cursor_col = 0;
+                        buffer.move_to_line_start();
                         let height = app.editor_area.height as usize;
                         if buffer.cursor_row < buffer.scroll_row {
                             buffer.scroll_row = buffer.cursor_row;

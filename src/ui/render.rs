@@ -11,6 +11,7 @@ use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter};
 use syntect::parsing::{ParseState, ScopeStack};
 
 use crate::app::{App, Focus, FuzzyMode};
+use crate::buffer::column::{visual_column_at_char_index, TAB_WIDTH};
 
 use super::welcome::draw_welcome_screen;
 use super::{centered_rect, get_colors, UIColors};
@@ -292,17 +293,6 @@ fn visual_leading_indent(line: &str) -> usize {
     col
 }
 
-fn visual_column_at_char_index(line: &str, char_index: usize) -> usize {
-    let mut visual = 0;
-    for (i, c) in line.chars().enumerate() {
-        if i >= char_index {
-            break;
-        }
-        visual += if c == '\t' { 4 } else { 1 };
-    }
-    visual
-}
-
 /// Returns `(active_level, scope_start, scope_end)` for the indent guide at the cursor.
 /// Active level follows the cursor's visual column (not the line's trailing auto-indent).
 /// Vertical scope uses each line's leading indent to bound the highlighted block.
@@ -429,7 +419,6 @@ fn draw_editor(
 
     let mut lines = Vec::new();
     let visible_width = area.width.saturating_sub(5) as usize;
-    const TAB_WIDTH: usize = 4;
     let (active_indent_level, active_scope_start, active_scope_end) = if is_focused {
         let line_without_newline = |row: usize| {
             let mut line = buffer.content.line(row).to_string();

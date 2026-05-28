@@ -403,6 +403,7 @@ impl App {
                         buf.content = ropey::Rope::from_str(&old_content);
                         buf.cursor_row = cursor.0;
                         buf.cursor_col = cursor.1;
+                        buf.sync_cursor_goal_from_position();
                         buf.selection_start = None;
                     }
                 }
@@ -489,6 +490,7 @@ impl App {
                         buf.content = ropey::Rope::from_str(&text);
                         buf.cursor_row = 0;
                         buf.cursor_col = 0;
+                        buf.cursor_goal_visual_col = 0;
                     }
                 }
                 crate::lua::LuaAction::WriteFile(path, text) => {

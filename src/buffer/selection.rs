@@ -33,6 +33,7 @@ impl EditorBuffer {
             if start_idx < end_idx {
                 self.cursor_row = start.0;
                 self.cursor_col = start.1;
+                self.sync_cursor_goal_from_position();
             }
             self.selection_start = None;
             self.modified = true;
@@ -51,6 +52,7 @@ impl EditorBuffer {
             } else {
                 last_col
             };
+        self.sync_cursor_goal_from_position();
     }
 
     pub fn select_line(&mut self) {
@@ -62,6 +64,7 @@ impl EditorBuffer {
             } else {
                 line_len
             };
+        self.sync_cursor_goal_from_position();
     }
 
     pub fn select_word(&mut self) {
@@ -103,6 +106,7 @@ impl EditorBuffer {
             self.selection_start = Some((start_row, start_col));
             self.cursor_row = end_row;
             self.cursor_col = end_col;
+            self.sync_cursor_goal_from_position();
         }
     }
 }
