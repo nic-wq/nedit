@@ -439,8 +439,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::DeleteScript => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::DocSelect => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::NewFolder => 0,
-                crate::app::FuzzyMode::ScriptMenu => app.fuzzy_results.len(),
-                crate::app::FuzzyMode::ScriptInput => 0,
                 crate::app::FuzzyMode::UnsavedChanges => 0,
             };
             if max > 0 && app.fuzzy_idx < max - 1 {
@@ -657,23 +655,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     }
                     app.is_fuzzy = false;
                 }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::ScriptInput {
-                let response = app.fuzzy_query.clone();
-                if let Some(tx) = &app.script_response_tx {
-                    let _ = tx.send(crate::lua::ScriptResponse::Prompt(response));
-                }
-                app.is_fuzzy = false;
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::ScriptMenu {
-                let response = app
-                    .fuzzy_results
-                    .get(app.fuzzy_idx)
-                    .map(|p| p.to_string_lossy().to_string());
-                if let Some(tx) = &app.script_response_tx {
-                    let _ = tx.send(crate::lua::ScriptResponse::Menu(response));
-                }
-                app.is_fuzzy = false;
                 return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::DocSelect {
                 if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx) {

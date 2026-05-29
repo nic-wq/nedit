@@ -23,8 +23,6 @@ pub enum FuzzyMode {
     DeleteScript,
     DocSelect,
     NewFolder,
-    ScriptMenu,
-    ScriptInput,
     UnsavedChanges,
 }
 

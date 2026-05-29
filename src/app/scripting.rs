@@ -7,7 +7,7 @@ use crate::lua::{run_script, LuaContext, ScriptRequest, ScriptResponse};
 
 impl App {
     pub fn start_script(&mut self, script: String, ctx: LuaContext, path: Option<PathBuf>) {
-        let (req_tx, req_rx) = channel();
+        let (_req_tx, req_rx) = channel();
         let (res_tx, res_rx) = channel();
         let (act_tx, act_rx) = channel();
 
@@ -15,20 +15,18 @@ impl App {
         self.script_response_tx = Some(res_tx);
         self.script_action_rx = Some(act_rx);
 
-        let req_tx_clone = req_tx.clone();
         let res_rx = Arc::new(Mutex::new(res_rx));
 
         // We spawn scripts in a separate thread so that long-running or blocking Lua code 
         // doesn't freeze the main UI event loop.
         thread::spawn(move || {
             let res_rx_clone = res_rx.clone();
-            let request_handler = Arc::new(move |req: ScriptRequest| {
-                let _ = req_tx_clone.send(req);
+            let request_handler = Arc::new(move |_req: ScriptRequest| {
                 res_rx_clone
                     .lock()
                     .unwrap()
                     .recv()
-                    .unwrap_or(ScriptResponse::Prompt(String::new()))
+                    .unwrap_or(ScriptResponse::NoResponse)
             });
 
             match run_script(&script, ctx, &path, request_handler) {
@@ -45,29 +43,6 @@ impl App {
     }
 
     pub fn poll_script_messages(&mut self) {
-        if let Some(rx) = &self.script_request_rx {
-            if let Ok(req) = rx.try_recv() {
-                match req {
-                    ScriptRequest::Prompt { title, default } => {
-                        self.fuzzy_query = default;
-                        self.fuzzy_mode = crate::app::FuzzyMode::ScriptInput;
-                        self.is_fuzzy = true;
-                        self.script_request = Some(ScriptRequest::Prompt {
-                            title,
-                            default: String::new(),
-                        });
-                    }
-                    ScriptRequest::Menu { title, options } => {
-                        self.fuzzy_results = options.iter().map(PathBuf::from).collect();
-                        self.fuzzy_mode = crate::app::FuzzyMode::ScriptMenu;
-                        self.is_fuzzy = true;
-                        self.fuzzy_idx = 0;
-                        self.script_request = Some(ScriptRequest::Menu { title, options });
-                    }
-                }
-            }
-        }
-
         if let Some(rx) = &self.script_action_rx {
             if let Ok(actions) = rx.try_recv() {
                 if actions.is_empty() {

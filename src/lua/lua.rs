@@ -17,7 +17,7 @@ pub fn run_script(
         script: &str,
         ctx: LuaContext,
         current_buffer_path: &Option<PathBuf>,
-        request_handler: Arc<dyn Fn(ScriptRequest) -> ScriptResponse + Send + Sync>,
+        _request_handler: Arc<dyn Fn(ScriptRequest) -> ScriptResponse + Send + Sync>,
     ) -> mlua::Result<Vec<LuaAction>> {
         let lua = Lua::new();
         let actions = Arc::new(Mutex::new(Vec::new()));
@@ -120,35 +120,6 @@ pub fn run_script(
             })?,
         )?;
 
-        let req_h = request_handler.clone();
-        nedit.set(
-            "prompt",
-            lua.create_function(move |_, (title, default): (String, Option<String>)| {
-                let res = req_h(ScriptRequest::Prompt {
-                    title,
-                    default: default.unwrap_or_default(),
-                });
-                if let ScriptResponse::Prompt(val) = res {
-                    Ok(Some(val))
-                } else {
-                    Ok(None)
-                }
-            })?,
-        )?;
-
-        let req_h2 = request_handler.clone();
-        nedit.set(
-            "menu",
-            lua.create_function(move |_, (title, options): (String, Vec<String>)| {
-                let res = req_h2(ScriptRequest::Menu { title, options });
-                if let ScriptResponse::Menu(val) = res {
-                    Ok(val)
-                } else {
-                    Ok(None)
-                }
-            })?,
-        )?;
-
         lua.globals().set("nedit", nedit)?;
         lua.load(script).exec()?;
 
@@ -231,6 +202,6 @@ pub fn run_script_no_interactive(
         script,
         ctx,
         current_buffer_path,
-        Arc::new(|_| ScriptResponse::Prompt(String::new())),
+        Arc::new(|_| ScriptResponse::NoResponse),
     )
 }

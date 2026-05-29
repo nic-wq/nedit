@@ -44,11 +44,8 @@ pub struct ScriptUndo {
 
 #[derive(Debug)]
 pub enum ScriptRequest {
-    Prompt { title: String, default: String },
-    Menu { title: String, options: Vec<String> },
 }
 
 pub enum ScriptResponse {
-    Prompt(String),
-    Menu(Option<String>),
+    NoResponse,
 }

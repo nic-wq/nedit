@@ -859,20 +859,6 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::DeleteScript => format!(" 󰆴  Delete Lua Script "),
         FuzzyMode::DocSelect => format!(" 󰈔  Select Documentation "),
         FuzzyMode::NewFolder => format!(" 󰉋  New Folder Name "),
-        FuzzyMode::ScriptMenu => {
-            if let Some(crate::lua::ScriptRequest::Menu { title, .. }) = &app.script_request {
-                format!(" 󰘳  {} ", title)
-            } else {
-                " 󰘳  Script Menu ".to_string()
-            }
-        }
-        FuzzyMode::ScriptInput => {
-            if let Some(crate::lua::ScriptRequest::Prompt { title, .. }) = &app.script_request {
-                format!(" 󰏫  {} ", title)
-            } else {
-                " 󰏫  Script Input ".to_string()
-            }
-        }
         FuzzyMode::UnsavedChanges => format!(" 󰆓  {} ", app.i18n.t("unsaved_changes")),
     };
 
@@ -1143,7 +1129,6 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                             FuzzyMode::EditScript => "󰏫 ",
                             FuzzyMode::DeleteScript => "󰆴 ",
                             FuzzyMode::DocSelect => app.icon_registry.get_icon(path, false, false),
-                            FuzzyMode::ScriptMenu => "󰘳 ",
                             _ => "  ",
                         };
                         ListItem::new(format!(" {} {}", icon, name)).style(style)
