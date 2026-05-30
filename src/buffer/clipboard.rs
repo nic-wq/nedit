@@ -12,6 +12,7 @@ impl EditorBuffer {
             // We push history before the operation to allow the user to undo the entire paste
             // as a single atomic action.
             self.push_history();
+            self.delete_selection();
             let char_idx = self.content.line_to_char(self.cursor_row) + self.cursor_col;
             self.content.insert(char_idx, &text);
             let new_rope = ropey::Rope::from_str(&text);
