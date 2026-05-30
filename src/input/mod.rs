@@ -12,15 +12,56 @@ pub use templates::LUA_TEMPLATE;
 pub fn handle_events(app: &mut App) -> anyhow::Result<()> {
     // We use a short poll duration (16ms ~ 60fps) to keep the UI responsive 
     // without consuming excessive CPU when idle.
-    if event::poll(std::time::Duration::from_millis(16))? {
-        match event::read()? {
-            Event::Key(key) if key.kind != KeyEventKind::Release => handle_key_event(app, key),
-            Event::Key(_) => {}
-            Event::Mouse(mouse) => handle_mouse_event(app, mouse),
-            _ => {}
+    if !event::poll(std::time::Duration::from_millis(16))? {
+        return Ok(());
+    }
+
+    let mut pending_mouse_drag = None;
+    let mut event_count = 0;
+
+    loop {
+        let event = event::read()?;
+        handle_event(app, event, &mut pending_mouse_drag);
+
+        event_count += 1;
+        if event_count >= 4096 || !event::poll(std::time::Duration::ZERO)? {
+            break;
         }
     }
+
+    flush_pending_mouse_drag(app, &mut pending_mouse_drag);
     Ok(())
+}
+
+fn handle_event(app: &mut App, event: Event, pending_mouse_drag: &mut Option<MouseEvent>) {
+    match event {
+        Event::Key(key) if key.kind != KeyEventKind::Release => {
+            flush_pending_mouse_drag(app, pending_mouse_drag);
+            handle_key_event(app, key);
+        }
+        Event::Key(_) => {}
+        Event::Mouse(mouse) if is_editor_left_drag(app, mouse) => {
+            *pending_mouse_drag = Some(mouse);
+        }
+        Event::Mouse(mouse) => {
+            flush_pending_mouse_drag(app, pending_mouse_drag);
+            handle_mouse_event(app, mouse);
+        }
+        _ => {}
+    }
+}
+
+fn flush_pending_mouse_drag(app: &mut App, pending_mouse_drag: &mut Option<MouseEvent>) {
+    if let Some(mouse) = pending_mouse_drag.take() {
+        handle_mouse_event(app, mouse);
+    }
+}
+
+fn is_editor_left_drag(app: &App, mouse: MouseEvent) -> bool {
+    matches!(mouse.kind, MouseEventKind::Drag(button) if button == event::MouseButton::Left)
+        && app
+            .editor_area
+            .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
 }
 
 fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {

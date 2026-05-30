@@ -445,6 +445,30 @@ fn draw_editor(
         (usize::MAX, 0, 0)
     };
     let show_guides = app.config.show_indent_guides;
+    let selected_match_text = buffer.selection_start.and_then(|start| {
+        let start_idx = buffer.to_char_idx(start.0, start.1);
+        let end_idx = buffer.to_char_idx(buffer.cursor_row, buffer.cursor_col);
+        let (selection_start, selection_end) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+        let selection_len = selection_end.saturating_sub(selection_start);
+
+        if selection_len == 0 || selection_len >= 100 {
+            return None;
+        }
+
+        let text = buffer.content.slice(selection_start..selection_end).to_string();
+        if text.trim().is_empty() {
+            None
+        } else {
+            Some(text)
+        }
+    });
+    let selected_match_chars = selected_match_text
+        .as_ref()
+        .map(|text| text.chars().collect::<Vec<_>>());
 
     for i in buffer_scroll_row..(buffer_scroll_row + height).min(line_count) {
         let original_line = buffer.content.line(i).to_string();
@@ -456,17 +480,13 @@ fn draw_editor(
             line_content.pop();
         }
 
-        let selected_text = buffer.get_selected_text();
         let mut match_ranges = Vec::new();
-        if let Some(ref word) = selected_text {
-            if !word.trim().is_empty() && word.len() < 100 {
-                let word_chars: Vec<char> = word.chars().collect();
-                let line_chars: Vec<char> = line_content.chars().collect();
-                if !word_chars.is_empty() && line_chars.len() >= word_chars.len() {
-                    for i in 0..=(line_chars.len() - word_chars.len()) {
-                        if line_chars[i..i + word_chars.len()] == word_chars[..] {
-                            match_ranges.push(i..i + word_chars.len());
-                        }
+        if let Some(word_chars) = selected_match_chars.as_ref() {
+            let line_chars: Vec<char> = line_content.chars().collect();
+            if !word_chars.is_empty() && line_chars.len() >= word_chars.len() {
+                for i in 0..=(line_chars.len() - word_chars.len()) {
+                    if line_chars[i..i + word_chars.len()] == word_chars[..] {
+                        match_ranges.push(i..i + word_chars.len());
                     }
                 }
             }
