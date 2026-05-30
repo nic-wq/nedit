@@ -11,7 +11,7 @@ use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter};
 use syntect::parsing::{ParseState, ScopeStack};
 
 use crate::app::{App, Focus, FuzzyMode};
-use crate::buffer::column::{visual_column_at_char_index, TAB_WIDTH};
+use crate::buffer::column::TAB_WIDTH;
 
 use super::welcome::draw_welcome_screen;
 use super::{centered_rect, get_colors, UIColors};
@@ -294,16 +294,20 @@ fn visual_leading_indent(line: &str) -> usize {
 }
 
 /// Returns `(active_level, scope_start, scope_end)` for the indent guide at the cursor.
-/// Active level follows the cursor's visual column (not the line's trailing auto-indent).
+/// Active level follows the parent visual scope of the cursor line.
 /// Vertical scope uses each line's leading indent to bound the highlighted block.
 fn active_indent_guide_scope(
     line_count: usize,
     line_indent: impl Fn(usize) -> usize,
     cursor_row: usize,
-    cursor_visual_col: usize,
     tab_width: usize,
 ) -> (usize, usize, usize) {
-    let active_level = cursor_visual_col / tab_width;
+    let indent_level = line_indent(cursor_row) / tab_width;
+    let active_level = if indent_level > 1 {
+        indent_level - 1
+    } else {
+        indent_level
+    };
     if active_level == 0 {
         return (0, cursor_row, cursor_row);
     }
@@ -431,14 +435,10 @@ fn draw_editor(
             line
         };
         let line_indent = |row: usize| visual_leading_indent(&line_without_newline(row));
-        let cursor_line = line_without_newline(buffer.cursor_row);
-        let cursor_visual_col =
-            visual_column_at_char_index(&cursor_line, buffer.cursor_col);
         active_indent_guide_scope(
             line_count,
             line_indent,
             buffer.cursor_row,
-            cursor_visual_col,
             TAB_WIDTH,
         )
     } else {
@@ -1195,34 +1195,33 @@ mod indent_guide_tests {
     use super::active_indent_guide_scope;
 
     #[test]
-    fn active_scope_is_block_not_full_column() {
+    fn active_scope_uses_parent_guide_inside_nested_block() {
         // def (0) -> if (4) -> bar (8) -> baz (4)
         let indents = [0, 4, 8, 4];
         let line_indent = |row: usize| indents[row];
-        let (level, start, end) = active_indent_guide_scope(4, line_indent, 2, 8, 4);
-        assert_eq!(level, 2);
-        assert_eq!(start, 2);
-        assert_eq!(end, 2);
-    }
-
-    #[test]
-    fn active_scope_expands_for_same_indent_siblings() {
-        let indents = [0, 4, 4, 4];
-        let line_indent = |row: usize| indents[row];
-        let (level, start, end) = active_indent_guide_scope(4, line_indent, 2, 4, 4);
+        let (level, start, end) = active_indent_guide_scope(4, line_indent, 2, 4);
         assert_eq!(level, 1);
         assert_eq!(start, 1);
         assert_eq!(end, 3);
     }
 
     #[test]
-    fn empty_line_at_column_zero_ignores_auto_indent() {
-        // Line has auto-indent spaces (8) but cursor is at visual column 0.
+    fn active_scope_expands_for_same_indent_siblings() {
+        let indents = [0, 4, 4, 4];
+        let line_indent = |row: usize| indents[row];
+        let (level, start, end) = active_indent_guide_scope(4, line_indent, 2, 4);
+        assert_eq!(level, 1);
+        assert_eq!(start, 1);
+        assert_eq!(end, 3);
+    }
+
+    #[test]
+    fn active_scope_uses_line_indent_not_cursor_column() {
         let indents = [0, 4, 8, 8];
         let line_indent = |row: usize| indents[row];
-        let (level, start, end) = active_indent_guide_scope(4, line_indent, 3, 0, 4);
-        assert_eq!(level, 0);
-        assert_eq!(start, 3);
+        let (level, start, end) = active_indent_guide_scope(4, line_indent, 3, 4);
+        assert_eq!(level, 1);
+        assert_eq!(start, 1);
         assert_eq!(end, 3);
     }
 }
