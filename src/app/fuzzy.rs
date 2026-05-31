@@ -57,7 +57,7 @@ impl App {
         }
     }
 
-    fn content_scope_suggestions(&self) -> Option<Vec<PathBuf>> {
+    fn scoped_dir_suggestions(&self) -> Option<Vec<PathBuf>> {
         let trimmed = self.fuzzy_query.trim();
         let scoped_query = trimmed.strip_prefix('@')?;
         if scoped_query.chars().any(char::is_whitespace) {
@@ -105,6 +105,23 @@ impl App {
         suggestions.sort_by_key(|path| self.format_search_dir_for_query(path, prefer_home));
         suggestions.truncate(self.fuzzy_limit);
         Some(suggestions)
+    }
+
+    fn resolve_file_search_scope(&self) -> Option<(String, PathBuf)> {
+        let trimmed = self.fuzzy_query.trim();
+        let scoped_query = trimmed.strip_prefix('@')?;
+
+        let mut parts = scoped_query.splitn(2, char::is_whitespace);
+        let dir_part = parts
+            .next()
+            .map(str::trim)
+            .filter(|part| !part.is_empty())?;
+        let search_term = parts.next().map(str::trim)?;
+
+        let search_root = self.expand_search_dir(dir_part);
+        search_root
+            .is_dir()
+            .then(|| (search_term.to_lowercase(), search_root))
     }
 
     fn resolve_content_search_scope(&self) -> (String, PathBuf, bool) {
@@ -166,6 +183,28 @@ impl App {
             }
         }
         results
+    }
+
+    fn fuzzy_file_name_matches(path: &Path, query: &str) -> bool {
+        if query.is_empty() {
+            return true;
+        }
+
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
+        let mut it = query.chars();
+        let mut curr = it.next();
+        for c in name.chars() {
+            if let Some(target) = curr {
+                if c == target {
+                    curr = it.next();
+                }
+            }
+        }
+        curr.is_none()
     }
 
     pub fn toggle_fuzzy(&mut self, mode: FuzzyMode) {
@@ -488,35 +527,30 @@ impl App {
         if self.fuzzy_mode == FuzzyMode::Files || self.fuzzy_mode == FuzzyMode::Content {
             self.fuzzy_global_results = Vec::new();
             if self.fuzzy_mode == FuzzyMode::Files {
-                self.fuzzy_results = Vec::new();
-                self.fuzzy_results = self
-                    .all_files
-                    .iter()
-                    .filter(|p| {
-                        let name = p
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_lowercase();
-                        if query.is_empty() {
-                            return true;
-                        }
-                        let mut it = query.chars();
-                        let mut curr = it.next();
-                        for c in name.chars() {
-                            if let Some(target) = curr {
-                                if c == target {
-                                    curr = it.next();
-                                }
-                            }
-                        }
-                        curr.is_none()
-                    })
-                    .cloned()
-                    .take(self.fuzzy_limit)
-                    .collect();
+                if let Some(suggestions) = self.scoped_dir_suggestions() {
+                    self.fuzzy_results = suggestions;
+                    if reset_idx {
+                        self.fuzzy_idx = 0;
+                    }
+                    return;
+                }
+
+                if let Some((query, search_root)) = self.resolve_file_search_scope() {
+                    self.fuzzy_results = Self::scoped_search_files(search_root)
+                        .filter(|path| Self::fuzzy_file_name_matches(path, &query))
+                        .take(self.fuzzy_limit)
+                        .collect();
+                } else {
+                    self.fuzzy_results = self
+                        .all_files
+                        .iter()
+                        .filter(|p| Self::fuzzy_file_name_matches(p, &query))
+                        .cloned()
+                        .take(self.fuzzy_limit)
+                        .collect();
+                }
             } else if self.fuzzy_mode == FuzzyMode::Content {
-                self.fuzzy_results = self.content_scope_suggestions().unwrap_or_default();
+                self.fuzzy_results = self.scoped_dir_suggestions().unwrap_or_default();
                 if !self.fuzzy_results.is_empty() {
                     if reset_idx {
                         self.fuzzy_idx = 0;

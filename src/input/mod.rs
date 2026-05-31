@@ -823,6 +823,29 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         }
                     }
                 }
+            } else if app.fuzzy_mode == crate::app::FuzzyMode::Files {
+                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+                    let is_scoped_dir_pick = path.is_dir()
+                        && app
+                            .fuzzy_query
+                            .trim()
+                            .strip_prefix('@')
+                            .map(|query| !query.chars().any(char::is_whitespace))
+                            .unwrap_or(false);
+                    if is_scoped_dir_pick {
+                        let prefer_home = app
+                            .fuzzy_query
+                            .trim()
+                            .strip_prefix('@')
+                            .map(|query| query.starts_with('~'))
+                            .unwrap_or(false);
+                        let path_text = app.format_search_dir_for_query(&path, prefer_home);
+                        app.fuzzy_query = format!("@{}/", path_text.trim_end_matches('/'));
+                        app.update_fuzzy(true);
+                        return;
+                    }
+                    app.open_file(path);
+                }
             } else if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
                 if let Some(theme) = app.fuzzy_themes.get(app.fuzzy_idx) {
                     app.apply_theme(theme.clone());
