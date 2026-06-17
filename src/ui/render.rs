@@ -352,7 +352,8 @@ fn draw_editor(
             .themes
             .get(&app.current_theme)
             .or_else(|| app.theme_set.themes.get("base16-ocean.dark"))
-            .unwrap();
+            .unwrap_or_else(|| app.theme_set.themes.values().next())
+            .expect("No themes loaded — check your theme directory");
         (theme, app.syntax_set.as_ref())
     };
 
