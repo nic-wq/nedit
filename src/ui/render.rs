@@ -686,7 +686,15 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     } else {
         match app.focus {
             Focus::Explorer => " EXPLORER ",
-            Focus::Editor => " EDITOR ",
+            Focus::Editor => {
+                if app.live_script_mode
+                    && Some(app.current_buffer_idx) == app.live_script_buffer_idx
+                {
+                    " SCRIPT "
+                } else {
+                    " EDITOR "
+                }
+            }
         }
     };
     let mode_color = colors.accent;
