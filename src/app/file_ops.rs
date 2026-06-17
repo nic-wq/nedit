@@ -312,7 +312,7 @@ impl App {
             if selected.is_dir {
                 selected.path.clone()
             } else {
-                self.explorer.root.clone()
+                selected.path.parent().unwrap_or(&self.explorer.root).to_path_buf()
             }
         } else {
             self.explorer.root.clone()
