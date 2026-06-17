@@ -305,10 +305,20 @@ impl App {
     pub fn resolve_input_path(&self, raw: &str) -> PathBuf {
         let path = PathBuf::from(raw);
         if path.is_absolute() {
-            path
-        } else {
-            self.explorer.root.join(path)
+            return path;
         }
+
+        let base = if let Some(selected) = self.explorer.get_selected() {
+            if selected.is_dir {
+                selected.path.clone()
+            } else {
+                self.explorer.root.clone()
+            }
+        } else {
+            self.explorer.root.clone()
+        };
+
+        base.join(path)
     }
 
     pub fn update_buffer_paths(&mut self, old_path: &Path, new_path: &Path) {
