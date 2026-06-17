@@ -352,7 +352,7 @@ fn draw_editor(
             .themes
             .get(&app.current_theme)
             .or_else(|| app.theme_set.themes.get("base16-ocean.dark"))
-            .unwrap_or_else(|| app.theme_set.themes.values().next())
+            .or_else(|| app.theme_set.themes.values().next())
             .expect("No themes loaded — check your theme directory");
         (theme, app.syntax_set.as_ref())
     };
@@ -668,14 +668,14 @@ fn draw_notification(
     msg: &str,
     ntype: &crate::app::NotificationType,
     area: Rect,
-    _colors: &UIColors,
+    colors: &UIColors,
 ) {
     let (bg, icon) = match ntype {
-        crate::app::NotificationType::Error => (Color::Rgb(191, 97, 106), " Error "),
-        crate::app::NotificationType::Info => (Color::Rgb(129, 161, 193), " Info "),
+        crate::app::NotificationType::Error => (colors.error, " Error "),
+        crate::app::NotificationType::Info => (colors.accent, " Info "),
     };
     let text = format!("{}{}", icon, msg);
-    f.render_widget(Paragraph::new(text).bg(bg).fg(Color::Rgb(30, 30, 46)), area);
+    f.render_widget(Paragraph::new(text).bg(bg).fg(colors.bg), area);
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
@@ -732,7 +732,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             if buffer.modified {
                 file_spans.push(Span::styled(
                     " ●",
-                    Style::default().fg(Color::Rgb(249, 226, 175)),
+                    Style::default().fg(colors.accent),
                 ));
             }
         }
