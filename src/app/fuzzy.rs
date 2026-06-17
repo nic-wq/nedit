@@ -297,6 +297,12 @@ impl App {
                         self.explorer.selected_idx = idx;
                     }
                 }
+
+                // If a new refresh was requested while the previous one was running, trigger it now
+                if self.explorer_needs_refresh {
+                    self.explorer_needs_refresh = false;
+                    self.refresh_explorer();
+                }
             }
         }
         if let Some(rx) = &self.content_search_receiver {

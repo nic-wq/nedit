@@ -57,6 +57,7 @@ pub struct App {
     pub syntax_set_receiver: Option<Receiver<SyntaxSet>>,
     pub indexed_files_receiver: Option<Receiver<Vec<PathBuf>>>,
     pub explorer_refresh_receiver: Option<Receiver<(Vec<crate::explorer::FileItem>, usize)>>,
+    pub explorer_needs_refresh: bool,
     pub content_search_receiver: Option<Receiver<(String, Vec<(PathBuf, usize, String)>)>>,
     pub explorer_area: Rect,
     pub editor_area: Rect,
@@ -162,6 +163,7 @@ impl App {
             syntax_set_receiver: None,
             indexed_files_receiver: None,
             explorer_refresh_receiver: None,
+            explorer_needs_refresh: false,
             content_search_receiver: None,
             explorer_area: Rect::default(),
             editor_area: Rect::default(),
@@ -479,6 +481,7 @@ impl App {
 
     pub fn refresh_explorer(&mut self) {
         if self.explorer_refresh_receiver.is_some() {
+            self.explorer_needs_refresh = true;
             return;
         }
 

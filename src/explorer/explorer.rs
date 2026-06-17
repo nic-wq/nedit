@@ -122,6 +122,7 @@ impl FileExplorer {
         if let Some(parent) = self.root.parent() {
             self.root = parent.to_path_buf();
             self.selected_idx = 0;
+            self.scroll_offset = 0;
         }
     }
 

@@ -207,6 +207,7 @@ impl App {
         }
         self.explorer.root = path;
         self.explorer.selected_idx = 0;
+        self.explorer.scroll_offset = 0;
         self.refresh_explorer();
         self.invalidate_file_index();
     }
