@@ -20,7 +20,7 @@ fn default_true() -> bool {
 }
 
 fn default_theme() -> String {
-    "base16-ocean.dark".to_string()
+    "NEdit Dark".to_string()
 }
 
 impl Config {

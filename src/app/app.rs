@@ -112,6 +112,9 @@ impl App {
         }
 
         let mut theme_set = ThemeSet::new();
+        if let Some(theme) = Self::load_embedded_theme() {
+            theme_set.themes.insert("NEdit Dark".to_string(), theme);
+        }
         Self::load_custom_themes_into(&mut theme_set, &config_dir);
         if let Some(theme) = Self::load_theme_by_name(&current_theme, &theme_set) {
             theme_set.themes.insert(current_theme.clone(), theme);
@@ -214,7 +217,7 @@ impl App {
             }
         }
 
-        ThemeSet::load_defaults().themes.remove(theme_name)
+        None
     }
 
     pub fn ensure_current_theme_loaded(&mut self) {
@@ -245,11 +248,23 @@ impl App {
         }
 
         let config_dir = Self::config_dir();
-        let mut theme_set = ThemeSet::load_defaults();
+        let mut theme_set = ThemeSet::new();
+        if let Some(theme) = Self::load_embedded_theme() {
+            theme_set.themes.insert("NEdit Dark".to_string(), theme);
+        }
         Self::load_custom_themes_into(&mut theme_set, &config_dir);
         self.theme_set = theme_set;
         self.themes_loaded = true;
         self.ensure_current_theme_loaded();
+    }
+
+    fn load_embedded_theme() -> Option<Theme> {
+        let bytes = include_bytes!("../../themes/nedit-dark.tmTheme");
+        let temp_path = std::env::temp_dir().join("nedit-dark-theme.tmTheme");
+        std::fs::write(&temp_path, bytes).ok()?;
+        let theme = ThemeSet::get_theme(&temp_path).ok()?;
+        let _ = std::fs::remove_file(&temp_path);
+        Some(theme)
     }
 
     fn load_custom_themes_into(theme_set: &mut ThemeSet, config_dir: &Path) {
@@ -511,7 +526,7 @@ impl App {
 }
 
 fn default_theme_name() -> String {
-    "base16-ocean.dark".to_string()
+    "NEdit Dark".to_string()
 }
 
 #[cfg(test)]

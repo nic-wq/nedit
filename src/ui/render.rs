@@ -16,6 +16,14 @@ use crate::buffer::{column::TAB_WIDTH, EditorBuffer};
 use super::welcome::draw_welcome_screen;
 use super::{centered_rect, get_colors, UIColors};
 
+fn syntect_foreground_or(fg: syntect::highlighting::Color, fallback: Color) -> Color {
+    if fg.a == 0 {
+        fallback
+    } else {
+        Color::Rgb(fg.r, fg.g, fg.b)
+    }
+}
+
 pub fn render(f: &mut Frame, app: &mut App) {
     let colors = get_colors(app);
 
@@ -576,7 +584,7 @@ fn draw_editor(
             .theme_set
             .themes
             .get(&app.current_theme)
-            .or_else(|| app.theme_set.themes.get("base16-ocean.dark"))
+            .or_else(|| app.theme_set.themes.get("NEdit Dark"))
             .or_else(|| app.theme_set.themes.values().next())
             .expect("No themes loaded — check your theme directory");
         (theme, app.syntax_set.as_ref())
@@ -740,7 +748,7 @@ fn draw_editor(
                 HighlightIterator::new(hs, &ops, &original_line, highlighter)
                     .map(|(s, text)| {
                         (
-                            Color::Rgb(s.foreground.r, s.foreground.g, s.foreground.b),
+                            syntect_foreground_or(s.foreground, colors.fg),
                             text,
                         )
                     })
