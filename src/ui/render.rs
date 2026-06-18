@@ -11,7 +11,7 @@ use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter};
 use syntect::parsing::{ParseState, ScopeStack};
 
 use crate::app::{App, Focus, FuzzyMode};
-use crate::buffer::column::TAB_WIDTH;
+use crate::buffer::{column::TAB_WIDTH, EditorBuffer};
 
 use super::welcome::draw_welcome_screen;
 use super::{centered_rect, get_colors, UIColors};
@@ -37,7 +37,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
             .split(f.area())
     };
 
-    // We calculate the explorer width dynamically based on the longest filename 
+    // We calculate the explorer width dynamically based on the longest filename
     // to minimize wasted space while ensuring names remain readable.
     let explorer_width = if app.show_explorer {
         let max_len = app.explorer.max_item_width;
@@ -96,17 +96,20 @@ pub fn render(f: &mut Frame, app: &mut App) {
             let separator_area = split_chunks[1];
             let script_area = split_chunks[2];
 
+            let target_body_area = editor_body_area(app, target_area, target_idx);
+            let script_body_area = editor_body_area(app, script_area, script_idx);
+
             if let Some(target_buf) = app.buffers.get_mut(target_idx) {
-                let width = target_area.width as usize;
+                let width = target_body_area.width as usize;
                 target_buf.move_cursor(0, 0, width);
             }
 
             if let Some(script_buf) = app.buffers.get_mut(script_idx) {
-                let width = script_area.width as usize;
+                let width = script_body_area.width as usize;
                 script_buf.move_cursor(0, 0, width);
             }
 
-            draw_editor(
+            draw_editor_pane(
                 f,
                 app,
                 target_area,
@@ -115,7 +118,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
                 &colors,
             );
             draw_split_separator(f, separator_area, &colors);
-            draw_editor(
+            draw_editor_pane(
                 f,
                 app,
                 script_area,
@@ -124,7 +127,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
                 &colors,
             );
         } else if !app.buffers.is_empty() {
-            draw_editor(
+            draw_editor_pane(
                 f,
                 app,
                 editor_chunks[1],
@@ -142,12 +145,13 @@ pub fn render(f: &mut Frame, app: &mut App) {
         app.ensure_syntax_for_path_loading(current_path.as_deref());
 
         {
+            let body_area = editor_body_area(app, editor_chunks[1], app.current_buffer_idx);
             let buffer = &mut app.buffers[app.current_buffer_idx];
-            let width = editor_chunks[1].width as usize;
+            let width = body_area.width as usize;
             buffer.move_cursor(0, 0, width);
         }
 
-        draw_editor(
+        draw_editor_pane(
             f,
             app,
             editor_chunks[1],
@@ -172,6 +176,111 @@ pub fn render(f: &mut Frame, app: &mut App) {
 
 fn draw_split_separator(f: &mut Frame, area: Rect, colors: &UIColors) {
     f.render_widget(Block::default().bg(colors.surface), area);
+}
+
+fn should_draw_header_status_bar(app: &App, buffer_idx: usize) -> bool {
+    if app.is_welcome || app.buffers.is_empty() {
+        return false;
+    }
+
+    app.buffers
+        .get(buffer_idx)
+        .map(|buffer| buffer.path.is_some() || Some(buffer_idx) == app.live_script_buffer_idx)
+        .unwrap_or(false)
+}
+
+fn split_header_area(area: Rect, show_header: bool) -> (Option<Rect>, Rect) {
+    if !show_header || area.height == 0 {
+        return (None, area);
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(area);
+
+    (Some(chunks[0]), chunks[1])
+}
+
+fn editor_body_area(app: &App, area: Rect, buffer_idx: usize) -> Rect {
+    let (_, body_area) = split_header_area(area, should_draw_header_status_bar(app, buffer_idx));
+    body_area
+}
+
+fn draw_editor_pane(
+    f: &mut Frame,
+    app: &mut App,
+    area: Rect,
+    buffer_idx: usize,
+    is_focused: bool,
+    colors: &UIColors,
+) {
+    let (header_area, body_area) =
+        split_header_area(area, should_draw_header_status_bar(app, buffer_idx));
+
+    if is_focused {
+        app.editor_area = body_area;
+    }
+
+    if let Some(header_area) = header_area {
+        draw_header_status_bar(f, app, header_area, buffer_idx, colors);
+    }
+
+    draw_editor(f, app, body_area, buffer_idx, is_focused, colors);
+}
+
+fn draw_header_status_bar(
+    f: &mut Frame,
+    app: &App,
+    area: Rect,
+    buffer_idx: usize,
+    colors: &UIColors,
+) {
+    let Some(buffer) = app.buffers.get(buffer_idx) else {
+        return;
+    };
+
+    let breadcrumbs = cursor_breadcrumbs(buffer);
+    let metrics = file_metrics(buffer);
+
+    let left_spans = if breadcrumbs.is_empty() {
+        vec![Span::styled(
+            " scope: global ",
+            Style::default().fg(colors.fg),
+        )]
+    } else {
+        vec![
+            Span::styled(
+                " scope ",
+                Style::default()
+                    .fg(colors.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(breadcrumbs, Style::default().fg(colors.fg)),
+            Span::raw(" "),
+        ]
+    };
+    let left_line = Line::from(left_spans);
+    let right_line = Line::from(vec![Span::styled(
+        format!(" {} ", metrics),
+        Style::default()
+            .fg(colors.accent)
+            .add_modifier(Modifier::BOLD),
+    )]);
+
+    let right_width = right_line.width().min(area.width as usize) as u16;
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(right_width)])
+        .split(area);
+
+    f.render_widget(Paragraph::new(left_line).bg(colors.surface), chunks[0]);
+    f.render_widget(
+        Paragraph::new(right_line)
+            .bg(colors.surface)
+            .alignment(Alignment::Right),
+        chunks[1],
+    );
 }
 
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
@@ -247,7 +356,7 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
                 .icon_registry
                 .get_icon(&item.path, item.is_dir, item.expanded);
 
-            let style = if actual_idx == app.explorer.selected_idx && app.focus == Focus::Explorer {
+            let style = if actual_idx == app.explorer.selected_idx {
                 Style::default()
                     .bg(colors.sel)
                     .fg(colors.accent)
@@ -324,6 +433,122 @@ fn active_indent_guide_scope(
     }
 
     (active_level, start, end)
+}
+
+fn cursor_breadcrumbs(buffer: &EditorBuffer) -> String {
+    let line_count = buffer.content.len_lines();
+    if line_count == 0 {
+        return String::new();
+    }
+
+    let cursor_row = buffer.cursor_row.min(line_count.saturating_sub(1));
+    let mut scopes: Vec<(usize, String)> = Vec::new();
+
+    for row in 0..=cursor_row {
+        let line = buffer.line_text(row);
+        let trimmed = line.trim();
+        if trimmed.is_empty()
+            || trimmed.starts_with("//")
+            || trimmed.starts_with("--")
+            || trimmed.starts_with('*')
+        {
+            continue;
+        }
+
+        let indent = visual_leading_indent(&line);
+        while scopes
+            .last()
+            .map(|(scope_indent, _)| indent <= *scope_indent)
+            .unwrap_or(false)
+        {
+            scopes.pop();
+        }
+
+        if let Some(label) = scope_label(trimmed) {
+            scopes.push((indent, label));
+        }
+    }
+
+    let mut labels: Vec<String> = scopes.into_iter().map(|(_, label)| label).collect();
+    if labels.len() > 5 {
+        labels = labels.split_off(labels.len() - 4);
+        labels.insert(0, "...".to_string());
+    }
+
+    labels.join(" > ")
+}
+
+fn scope_label(trimmed: &str) -> Option<String> {
+    let statement = trimmed
+        .split('{')
+        .next()
+        .unwrap_or(trimmed)
+        .split("=>")
+        .next()
+        .unwrap_or(trimmed)
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+
+    if statement.is_empty() || statement.starts_with('#') {
+        return None;
+    }
+
+    if let Some(fn_pos) = statement.find("fn ") {
+        let prefix = &statement[..fn_pos + 3];
+        let after_fn = &statement[fn_pos + 3..];
+        let name_end = after_fn
+            .find(|c: char| c == '(' || c.is_whitespace())
+            .unwrap_or(after_fn.len());
+        let name = after_fn[..name_end].trim();
+        if !name.is_empty() {
+            return Some(format!("{}{}", prefix.trim_start(), name));
+        }
+    }
+
+    for keyword in ["impl", "trait", "struct", "enum", "mod"] {
+        if starts_with_keyword(statement, keyword) || statement.contains(&format!(" {keyword} ")) {
+            return Some(statement.to_string());
+        }
+    }
+
+    for keyword in ["else if", "if", "match", "for", "while", "loop", "else"] {
+        if starts_with_keyword(statement, keyword) {
+            return Some(statement.to_string());
+        }
+    }
+
+    None
+}
+
+fn starts_with_keyword(statement: &str, keyword: &str) -> bool {
+    statement == keyword
+        || statement
+            .strip_prefix(keyword)
+            .map(|rest| {
+                rest.starts_with(char::is_whitespace)
+                    || rest.starts_with('(')
+                    || rest.starts_with('<')
+            })
+            .unwrap_or(false)
+}
+
+fn file_metrics(buffer: &EditorBuffer) -> String {
+    let lines = buffer.content.len_lines();
+    let cols = (0..lines)
+        .map(|row| visual_line_width(&buffer.line_text(row)))
+        .max()
+        .unwrap_or(0);
+
+    format!("[Lines: {} | Cols: {}]", lines, cols)
+}
+
+fn visual_line_width(line: &str) -> usize {
+    let mut width = 0;
+    for c in line.chars() {
+        width += if c == '\t' { TAB_WIDTH } else { 1 };
+    }
+    width
 }
 
 fn draw_editor(
