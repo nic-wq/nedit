@@ -416,6 +416,7 @@ impl App {
                         buf.cursor_col = cursor.1;
                         buf.sync_cursor_goal_from_position();
                         buf.selection_start = None;
+                        buf.invalidate_breadcrumbs();
                     }
                 }
                 crate::lua::RevertAction::RestoreFile {
@@ -429,6 +430,7 @@ impl App {
                             if buf.path.as_ref() == Some(&path) {
                                 buf.content = ropey::Rope::from_str(&actual_content);
                                 buf.modified = false;
+                                buf.invalidate_breadcrumbs();
                             }
                         }
                     } else {
@@ -502,6 +504,7 @@ impl App {
                         buf.cursor_row = 0;
                         buf.cursor_col = 0;
                         buf.cursor_goal_visual_col = 0;
+                        buf.invalidate_breadcrumbs();
                         buf.sync_syntax_states(0);
                         buf.sync_rendered_spans(0);
                     }

@@ -26,8 +26,10 @@ impl EditorBuffer {
             }
             self.sync_cursor_goal_from_position();
             self.modified = true;
+            self.invalidate_breadcrumbs();
             self.sync_syntax_states(old_row);
             self.sync_rendered_spans(old_row);
+            self.invalidate_max_visual_width();
         }
     }
 

@@ -240,12 +240,12 @@ fn draw_editor_pane(
 
 fn draw_header_status_bar(
     f: &mut Frame,
-    app: &App,
+    app: &mut App,
     area: Rect,
     buffer_idx: usize,
     colors: &UIColors,
 ) {
-    let Some(buffer) = app.buffers.get(buffer_idx) else {
+    let Some(buffer) = app.buffers.get_mut(buffer_idx) else {
         return;
     };
 
@@ -451,7 +451,13 @@ fn active_indent_guide_scope(
     (active_level, start, end)
 }
 
-fn cursor_breadcrumbs(buffer: &EditorBuffer) -> Vec<String> {
+fn cursor_breadcrumbs(buffer: &mut EditorBuffer) -> Vec<String> {
+    if let Some((row, cached)) = &buffer.cached_breadcrumbs {
+        if *row == buffer.cursor_row {
+            return cached.clone();
+        }
+    }
+
     let line_count = buffer.content.len_lines();
     if line_count == 0 {
         return Vec::new();
@@ -485,7 +491,9 @@ fn cursor_breadcrumbs(buffer: &EditorBuffer) -> Vec<String> {
         }
     }
 
-    scopes.into_iter().map(|(_, label)| label).collect()
+    let result: Vec<String> = scopes.into_iter().map(|(_, label)| label).collect();
+    buffer.cached_breadcrumbs = Some((buffer.cursor_row, result.clone()));
+    result
 }
 
 fn truncate_breadcrumbs(labels: &[String], available_width: usize) -> String {
@@ -577,23 +585,16 @@ fn starts_with_keyword(statement: &str, keyword: &str) -> bool {
             .unwrap_or(false)
 }
 
-fn file_metrics(buffer: &EditorBuffer) -> String {
+fn file_metrics(buffer: &mut EditorBuffer) -> String {
+    if buffer.max_visual_width.is_none() {
+        buffer.update_max_visual_width();
+    }
     let lines = buffer.content.len_lines();
-    let cols = (0..lines)
-        .map(|row| visual_line_width(&buffer.line_text(row)))
-        .max()
-        .unwrap_or(0);
-
+    let cols = buffer.max_visual_width.unwrap();
     format!("[Lines: {} | Cols: {}]", lines, cols)
 }
 
-fn visual_line_width(line: &str) -> usize {
-    let mut width = 0;
-    for c in line.chars() {
-        width += if c == '\t' { TAB_WIDTH } else { 1 };
-    }
-    width
-}
+
 
 fn draw_editor(
     f: &mut Frame,
