@@ -1,4 +1,5 @@
 use ratatui::prelude::Stylize;
+use unicode_width::UnicodeWidthStr;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -248,27 +249,9 @@ fn draw_header_status_bar(
         return;
     };
 
-    let breadcrumbs = cursor_breadcrumbs(buffer);
+    let breadcrumb_labels = cursor_breadcrumbs(buffer);
     let metrics = file_metrics(buffer);
 
-    let left_spans = if breadcrumbs.is_empty() {
-        vec![Span::styled(
-            " scope: global ",
-            Style::default().fg(colors.fg),
-        )]
-    } else {
-        vec![
-            Span::styled(
-                " scope ",
-                Style::default()
-                    .fg(colors.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(breadcrumbs, Style::default().fg(colors.fg)),
-            Span::raw(" "),
-        ]
-    };
-    let left_line = Line::from(left_spans);
     let right_line = Line::from(vec![Span::styled(
         format!(" {} ", metrics),
         Style::default()
@@ -281,6 +264,29 @@ fn draw_header_status_bar(
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(right_width)])
         .split(area);
+
+    let left_spans = if breadcrumb_labels.is_empty() {
+        vec![Span::styled(
+            " scope: global ",
+            Style::default().fg(colors.fg),
+        )]
+    } else {
+        let left_area_width = chunks[0].width as usize;
+        let available = left_area_width.saturating_sub(8); // "scope " + " " padding
+        let breadcrumbs = truncate_breadcrumbs(&breadcrumb_labels, available);
+
+        vec![
+            Span::styled(
+                " scope ",
+                Style::default()
+                    .fg(colors.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(breadcrumbs, Style::default().fg(colors.fg)),
+            Span::raw(" "),
+        ]
+    };
+    let left_line = Line::from(left_spans);
 
     f.render_widget(Paragraph::new(left_line).bg(colors.surface), chunks[0]);
     f.render_widget(
@@ -443,10 +449,10 @@ fn active_indent_guide_scope(
     (active_level, start, end)
 }
 
-fn cursor_breadcrumbs(buffer: &EditorBuffer) -> String {
+fn cursor_breadcrumbs(buffer: &EditorBuffer) -> Vec<String> {
     let line_count = buffer.content.len_lines();
     if line_count == 0 {
-        return String::new();
+        return Vec::new();
     }
 
     let cursor_row = buffer.cursor_row.min(line_count.saturating_sub(1));
@@ -477,13 +483,41 @@ fn cursor_breadcrumbs(buffer: &EditorBuffer) -> String {
         }
     }
 
-    let mut labels: Vec<String> = scopes.into_iter().map(|(_, label)| label).collect();
-    if labels.len() > 5 {
-        labels = labels.split_off(labels.len() - 4);
-        labels.insert(0, "...".to_string());
+    scopes.into_iter().map(|(_, label)| label).collect()
+}
+
+fn truncate_breadcrumbs(labels: &[String], available_width: usize) -> String {
+    let full = labels.join(" > ");
+    if full.width() <= available_width {
+        return full;
     }
 
-    labels.join(" > ")
+    if labels.len() <= 2 {
+        // With 1 or 2 labels, just show what fits (fallback to "...")
+        let last = labels.last().map(|s| s.as_str()).unwrap_or("");
+        let last_str = format!("... > {}", last);
+        if last_str.width() <= available_width {
+            return last_str;
+        }
+        return "...".to_string();
+    }
+
+    // Try: first > ... > last
+    let first = &labels[0];
+    let last = labels.last().unwrap();
+    let candidate = format!("{} > ... > {}", first, last);
+    if candidate.width() <= available_width {
+        return candidate;
+    }
+
+    // Try: ... > last
+    let candidate = format!("... > {}", last);
+    if candidate.width() <= available_width {
+        return candidate;
+    }
+
+    // Fallback
+    "...".to_string()
 }
 
 fn scope_label(trimmed: &str) -> Option<String> {
