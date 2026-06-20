@@ -265,7 +265,9 @@ fn draw_header_status_bar(
         .constraints([Constraint::Min(0), Constraint::Length(right_width)])
         .split(area);
 
-    let left_spans = if breadcrumb_labels.is_empty() {
+    let left_spans = if !app.config.show_scope_breadcrumbs {
+        Vec::new()
+    } else if breadcrumb_labels.is_empty() {
         vec![Span::styled(
             " scope: global ",
             Style::default().fg(colors.fg),
