@@ -57,6 +57,7 @@ impl App {
                 self.script_request_rx = None;
                 self.script_response_tx = None;
                 self.script_action_rx = None;
+                self.needs_redraw = true;
             }
         }
     }

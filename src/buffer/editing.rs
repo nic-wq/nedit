@@ -36,6 +36,7 @@ impl EditorBuffer {
         self.sync_cursor_goal_from_position();
         self.modified = true;
         self.sync_syntax_states(self.cursor_row);
+        self.sync_rendered_spans(self.cursor_row);
     }
 
     pub fn delete_backspace(&mut self) {
@@ -56,6 +57,7 @@ impl EditorBuffer {
             self.sync_cursor_goal_from_position();
             self.modified = true;
             self.sync_syntax_states(self.cursor_row);
+            self.sync_rendered_spans(self.cursor_row);
         }
     }
 
@@ -77,5 +79,6 @@ impl EditorBuffer {
         self.content.remove(start_idx..end_idx);
         self.modified = true;
         self.sync_syntax_states(self.cursor_row);
+        self.sync_rendered_spans(self.cursor_row);
     }
 }

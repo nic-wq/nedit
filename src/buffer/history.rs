@@ -8,6 +8,8 @@ impl EditorBuffer {
             // making state-based undo/redo very efficient.
             self.content = self.history[self.history_idx].clone();
             self.modified = true;
+            self.sync_syntax_states(0);
+            self.sync_rendered_spans(0);
         }
     }
 
@@ -16,6 +18,8 @@ impl EditorBuffer {
             self.history_idx += 1;
             self.content = self.history[self.history_idx].clone();
             self.modified = true;
+            self.sync_syntax_states(0);
+            self.sync_rendered_spans(0);
         }
     }
 }

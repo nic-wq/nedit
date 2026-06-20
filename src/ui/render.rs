@@ -737,30 +737,41 @@ fn draw_editor(
         };
         spans.push(Span::styled(format!("{:3} ", i + 1), line_num_style));
 
-        let ranges: Vec<(Color, &str)> =
-            if let (Some((ref highlighter, ref mut ps, ref mut hs)), Some(syntax_set)) =
+        let ranges: Vec<(Color, String)> =
+            if let Some(cached) = buffer.rendered_spans.get(i).and_then(|c| c.as_ref()) {
+                cached.clone()
+            } else if let (Some((ref highlighter, ref mut ps, ref mut hs)), Some(syntax_set)) =
                 (syntax_highlighter.as_mut(), syntax_set)
             {
                 let ops = ps.parse_line(&original_line, syntax_set).unwrap_or_default();
                 if i < buffer.syntax_states.len() {
                     buffer.syntax_states[i] = Some((ps.clone(), hs.clone()));
                 }
-                HighlightIterator::new(hs, &ops, &original_line, highlighter)
-                    .map(|(s, text)| {
-                        (
-                            syntect_foreground_or(s.foreground, colors.fg),
-                            text,
-                        )
-                    })
-                    .collect()
+                let result: Vec<(Color, String)> =
+                    HighlightIterator::new(hs, &ops, &original_line, highlighter)
+                        .map(|(s, text)| {
+                            (
+                                syntect_foreground_or(s.foreground, colors.fg),
+                                text.to_string(),
+                            )
+                        })
+                        .collect();
+                if i < buffer.rendered_spans.len() {
+                    buffer.rendered_spans[i] = Some(result.clone());
+                }
+                result
             } else {
-                vec![(colors.fg, line_content.as_str())]
+                let result = vec![(colors.fg, line_content.to_string())];
+                if i < buffer.rendered_spans.len() {
+                    buffer.rendered_spans[i] = Some(result.clone());
+                }
+                result
             };
         let mut char_offset = 0;
         let mut visual_col = 0;
         let mut in_leading = show_guides;
 
-        for (fg, text) in ranges {
+        for (fg, text) in &ranges {
             for c in text.chars() {
                 if c == '\n' || c == '\r' {
                     continue;
@@ -799,7 +810,7 @@ fn draw_editor(
                             }
                         }
                     } else {
-                        let mut style = Style::default().fg(fg);
+                        let mut style = Style::default().fg(*fg);
 
                         if let Some((start_row, start_col)) = buffer.selection_start {
                             let (r1, c1, r2, c2) =

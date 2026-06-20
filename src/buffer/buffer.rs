@@ -7,7 +7,7 @@ use ropey::Rope;
 
 #[derive(Clone)]
 pub struct EditorBuffer {
-    // We use Ropey because it's optimized for very large files, allowing for 
+    // We use Ropey because it's optimized for very large files, allowing for
     // O(log n) insertions and deletions while maintaining efficient memory usage.
     pub content: Rope,
     pub path: Option<PathBuf>,
@@ -26,6 +26,7 @@ pub struct EditorBuffer {
     pub autocomplete_idx: usize,
     pub show_autocomplete_list: bool,
     pub syntax_states: Vec<Option<(syntect::parsing::ParseState, syntect::highlighting::HighlightState)>>,
+    pub rendered_spans: Vec<Option<Vec<(ratatui::style::Color, String)>>>,
 }
 
 impl EditorBuffer {
@@ -48,6 +49,7 @@ impl EditorBuffer {
             autocomplete_idx: 0,
             show_autocomplete_list: false,
             syntax_states: vec![None; content.len_lines()],
+            rendered_spans: vec![None; content.len_lines()],
         }
     }
 
@@ -75,6 +77,7 @@ impl EditorBuffer {
             autocomplete_idx: 0,
             show_autocomplete_list: false,
             syntax_states: vec![None; content.len_lines()],
+            rendered_spans: vec![None; content.len_lines()],
         })
     }
 
@@ -227,9 +230,26 @@ impl EditorBuffer {
         if self.syntax_states.len() != line_count {
             self.syntax_states.resize(line_count, None);
         }
-        
+
         for i in from_row..self.syntax_states.len() {
             self.syntax_states[i] = None;
+        }
+    }
+
+    pub fn sync_rendered_spans(&mut self, from_row: usize) {
+        let line_count = self.content.len_lines();
+        if self.rendered_spans.len() != line_count {
+            self.rendered_spans.resize(line_count, None);
+        }
+
+        for i in from_row..self.rendered_spans.len() {
+            self.rendered_spans[i] = None;
+        }
+    }
+
+    pub fn invalidate_all_rendered_spans(&mut self) {
+        for entry in self.rendered_spans.iter_mut() {
+            *entry = None;
         }
     }
 }

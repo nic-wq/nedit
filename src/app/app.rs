@@ -71,12 +71,14 @@ pub struct App {
     pub icon_registry: crate::ui::icons::IconRegistry,
     pub pending_action: Option<crate::app::types::PendingAction>,
     pub pending_buffer_idx: Option<usize>,
+    pub needs_redraw: bool,
 }
 
 impl App {
     pub fn show_notification(&mut self, message: String, ntype: NotificationType) {
         self.notification = Some((message, ntype));
         self.notification_timer = 5;
+        self.needs_redraw = true;
     }
 
     pub fn clear_notification(&mut self) {
@@ -91,6 +93,10 @@ impl App {
                 self.notification = None;
             }
         }
+    }
+
+    pub fn request_redraw(&mut self) {
+        self.needs_redraw = true;
     }
 
     pub fn new(args: &[String]) -> Self {
@@ -180,6 +186,7 @@ impl App {
             icon_registry: crate::ui::icons::IconRegistry::load(),
             pending_action: None,
             pending_buffer_idx: None,
+            needs_redraw: true,
         };
 
         if let Some(watcher) = &mut app.watcher {

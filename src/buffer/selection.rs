@@ -38,6 +38,7 @@ impl EditorBuffer {
             self.selection_start = None;
             self.modified = true;
             self.sync_syntax_states(self.cursor_row);
+            self.sync_rendered_spans(self.cursor_row);
         }
     }
 

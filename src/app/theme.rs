@@ -20,6 +20,9 @@ impl App {
         }
         if self.theme_set.themes.contains_key(&key) {
             self.current_theme = key;
+            for buf in self.buffers.iter_mut() {
+                buf.invalidate_all_rendered_spans();
+            }
         }
     }
 

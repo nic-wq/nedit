@@ -624,7 +624,11 @@ fn main() -> anyhow::Result<()> {
         app.handle_fs_events();
         app.poll_background_tasks();
         app.poll_script_messages();
-        terminal.draw(|f| ui::render(f, &mut app))?;
+
+        if app.needs_redraw {
+            terminal.draw(|f| ui::render(f, &mut app))?;
+            app.needs_redraw = false;
+        }
 
         if let Err(e) = input::handle_events(&mut app) {
             eprintln!("Error handling events: {}", e);
@@ -633,6 +637,7 @@ fn main() -> anyhow::Result<()> {
         tick_counter = tick_counter.wrapping_add(1);
         if tick_counter == 0 {
             app.tick_notification();
+            app.needs_redraw = true;
         }
 
         if app.should_quit {

@@ -47,6 +47,7 @@ impl App {
         if changed {
             self.invalidate_file_index();
             self.refresh_explorer();
+            self.needs_redraw = true;
         }
     }
 }

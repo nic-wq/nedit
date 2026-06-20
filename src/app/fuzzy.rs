@@ -264,6 +264,10 @@ impl App {
                 match rx.try_recv() {
                     Ok(syntax_set) => {
                         self.syntax_set = Some(syntax_set);
+                        self.needs_redraw = true;
+                        for buf in self.buffers.iter_mut() {
+                            buf.invalidate_all_rendered_spans();
+                        }
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => break,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -283,6 +287,7 @@ impl App {
                 self.all_files_ready = true;
                 self.indexed_files_receiver = None;
                 self.update_fuzzy(true);
+                self.needs_redraw = true;
             }
         }
         if let Some(rx) = &self.explorer_refresh_receiver {
@@ -303,6 +308,7 @@ impl App {
                     self.explorer_needs_refresh = false;
                     self.refresh_explorer();
                 }
+                self.needs_redraw = true;
             }
         }
         if let Some(rx) = &self.content_search_receiver {
@@ -323,6 +329,7 @@ impl App {
                     // Trigger a new search for the current query.
                     self.update_fuzzy(true);
                 }
+                self.needs_redraw = true;
             }
         }
     }

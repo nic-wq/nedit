@@ -502,6 +502,8 @@ impl App {
                         buf.cursor_row = 0;
                         buf.cursor_col = 0;
                         buf.cursor_goal_visual_col = 0;
+                        buf.sync_syntax_states(0);
+                        buf.sync_rendered_spans(0);
                     }
                 }
                 crate::lua::LuaAction::WriteFile(path, text) => {

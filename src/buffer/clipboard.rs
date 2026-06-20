@@ -12,6 +12,7 @@ impl EditorBuffer {
             // We push history before the operation to allow the user to undo the entire paste
             // as a single atomic action.
             self.push_history();
+            let old_row = self.cursor_row;
             self.delete_selection();
             let char_idx = self.content.line_to_char(self.cursor_row) + self.cursor_col;
             self.content.insert(char_idx, &text);
@@ -25,6 +26,8 @@ impl EditorBuffer {
             }
             self.sync_cursor_goal_from_position();
             self.modified = true;
+            self.sync_syntax_states(old_row);
+            self.sync_rendered_spans(old_row);
         }
     }
 

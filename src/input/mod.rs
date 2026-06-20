@@ -49,6 +49,7 @@ fn handle_event(app: &mut App, event: Event, pending_mouse_drag: &mut Option<Mou
         }
         _ => {}
     }
+    app.needs_redraw = true;
 }
 
 fn flush_pending_mouse_drag(app: &mut App, pending_mouse_drag: &mut Option<MouseEvent>) {
