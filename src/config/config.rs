@@ -13,8 +13,6 @@ pub struct Config {
     pub theme: String,
     #[serde(default = "default_true")]
     pub show_indent_guides: bool,
-    #[serde(default = "default_true")]
-    pub show_scope_breadcrumbs: bool,
 }
 
 fn default_true() -> bool {
@@ -75,7 +73,6 @@ impl Config {
             keybinds,
             theme: default_theme(),
             show_indent_guides: true,
-            show_scope_breadcrumbs: true,
         }
     }
 
@@ -109,13 +106,6 @@ impl Config {
             .and_then(toml::Value::as_bool)
         {
             config.show_indent_guides = enabled;
-        }
-
-        if let Some(enabled) = value
-            .get("show_scope_breadcrumbs")
-            .and_then(toml::Value::as_bool)
-        {
-            config.show_scope_breadcrumbs = enabled;
         }
 
         if let Some(keybinds) = value.get("keybinds").and_then(toml::Value::as_table) {

@@ -1,5 +1,4 @@
 use ratatui::prelude::Stylize;
-use unicode_width::UnicodeWidthStr;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -192,10 +191,7 @@ fn should_draw_header_status_bar(app: &App, buffer_idx: usize) -> bool {
         return false;
     }
 
-    app.buffers
-        .get(buffer_idx)
-        .map(|buffer| buffer.path.is_some() || Some(buffer_idx) == app.live_script_buffer_idx)
-        .unwrap_or(false)
+    !app.live_script_mode && buffer_idx < app.buffers.len()
 }
 
 fn split_header_area(area: Rect, show_header: bool) -> (Option<Rect>, Rect) {
@@ -249,7 +245,6 @@ fn draw_header_status_bar(
         return;
     };
 
-    let breadcrumb_labels = cursor_breadcrumbs(buffer);
     let metrics = file_metrics(buffer);
 
     let right_line = Line::from(vec![Span::styled(
@@ -260,42 +255,17 @@ fn draw_header_status_bar(
     )]);
 
     let right_width = right_line.width().min(area.width as usize) as u16;
-    let chunks = Layout::default()
+    let left_chunk = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(right_width)])
         .split(area);
 
-    let left_spans = if !app.config.show_scope_breadcrumbs {
-        Vec::new()
-    } else if breadcrumb_labels.is_empty() {
-        vec![Span::styled(
-            " scope: global ",
-            Style::default().fg(colors.fg),
-        )]
-    } else {
-        let left_area_width = chunks[0].width as usize;
-        let available = left_area_width.saturating_sub(8); // "scope " + " " padding
-        let breadcrumbs = truncate_breadcrumbs(&breadcrumb_labels, available);
-
-        vec![
-            Span::styled(
-                " scope ",
-                Style::default()
-                    .fg(colors.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(breadcrumbs, Style::default().fg(colors.fg)),
-            Span::raw(" "),
-        ]
-    };
-    let left_line = Line::from(left_spans);
-
-    f.render_widget(Paragraph::new(left_line).bg(colors.surface), chunks[0]);
+    f.render_widget(Paragraph::new(Line::from(Vec::<Span>::new())).bg(colors.surface), left_chunk[0]);
     f.render_widget(
         Paragraph::new(right_line)
             .bg(colors.surface)
             .alignment(Alignment::Right),
-        chunks[1],
+        left_chunk[1],
     );
 }
 
@@ -449,140 +419,6 @@ fn active_indent_guide_scope(
     }
 
     (active_level, start, end)
-}
-
-fn cursor_breadcrumbs(buffer: &mut EditorBuffer) -> Vec<String> {
-    if let Some((row, cached)) = &buffer.cached_breadcrumbs {
-        if *row == buffer.cursor_row {
-            return cached.clone();
-        }
-    }
-
-    let line_count = buffer.content.len_lines();
-    if line_count == 0 {
-        return Vec::new();
-    }
-
-    let cursor_row = buffer.cursor_row.min(line_count.saturating_sub(1));
-    let mut scopes: Vec<(usize, String)> = Vec::new();
-
-    for row in 0..=cursor_row {
-        let line = buffer.line_text(row);
-        let trimmed = line.trim();
-        if trimmed.is_empty()
-            || trimmed.starts_with("//")
-            || trimmed.starts_with("--")
-            || trimmed.starts_with('*')
-        {
-            continue;
-        }
-
-        let indent = visual_leading_indent(&line);
-        while scopes
-            .last()
-            .map(|(scope_indent, _)| indent <= *scope_indent)
-            .unwrap_or(false)
-        {
-            scopes.pop();
-        }
-
-        if let Some(label) = scope_label(trimmed) {
-            scopes.push((indent, label));
-        }
-    }
-
-    let result: Vec<String> = scopes.into_iter().map(|(_, label)| label).collect();
-    buffer.cached_breadcrumbs = Some((buffer.cursor_row, result.clone()));
-    result
-}
-
-fn truncate_breadcrumbs(labels: &[String], available_width: usize) -> String {
-    let full = labels.join(" > ");
-    if full.width() <= available_width {
-        return full;
-    }
-
-    if labels.len() <= 2 {
-        // With 1 or 2 labels, just show what fits (fallback to "...")
-        let last = labels.last().map(|s| s.as_str()).unwrap_or("");
-        let last_str = format!("... > {}", last);
-        if last_str.width() <= available_width {
-            return last_str;
-        }
-        return "...".to_string();
-    }
-
-    // Try: first > ... > last
-    let first = &labels[0];
-    let last = labels.last().unwrap();
-    let candidate = format!("{} > ... > {}", first, last);
-    if candidate.width() <= available_width {
-        return candidate;
-    }
-
-    // Try: ... > last
-    let candidate = format!("... > {}", last);
-    if candidate.width() <= available_width {
-        return candidate;
-    }
-
-    // Fallback
-    "...".to_string()
-}
-
-fn scope_label(trimmed: &str) -> Option<String> {
-    let statement = trimmed
-        .split('{')
-        .next()
-        .unwrap_or(trimmed)
-        .split("=>")
-        .next()
-        .unwrap_or(trimmed)
-        .trim()
-        .trim_end_matches(';')
-        .trim();
-
-    if statement.is_empty() || statement.starts_with('#') {
-        return None;
-    }
-
-    if let Some(fn_pos) = statement.find("fn ") {
-        let prefix = &statement[..fn_pos + 3];
-        let after_fn = &statement[fn_pos + 3..];
-        let name_end = after_fn
-            .find(|c: char| c == '(' || c.is_whitespace())
-            .unwrap_or(after_fn.len());
-        let name = after_fn[..name_end].trim();
-        if !name.is_empty() {
-            return Some(format!("{}{}", prefix.trim_start(), name));
-        }
-    }
-
-    for keyword in ["impl", "trait", "struct", "enum", "mod"] {
-        if starts_with_keyword(statement, keyword) || statement.contains(&format!(" {keyword} ")) {
-            return Some(statement.to_string());
-        }
-    }
-
-    for keyword in ["else if", "if", "match", "for", "while", "loop", "else"] {
-        if starts_with_keyword(statement, keyword) {
-            return Some(statement.to_string());
-        }
-    }
-
-    None
-}
-
-fn starts_with_keyword(statement: &str, keyword: &str) -> bool {
-    statement == keyword
-        || statement
-            .strip_prefix(keyword)
-            .map(|rest| {
-                rest.starts_with(char::is_whitespace)
-                    || rest.starts_with('(')
-                    || rest.starts_with('<')
-            })
-            .unwrap_or(false)
 }
 
 fn file_metrics(buffer: &mut EditorBuffer) -> String {

@@ -28,7 +28,6 @@ pub struct EditorBuffer {
     pub syntax_states: Vec<Option<(syntect::parsing::ParseState, syntect::highlighting::HighlightState)>>,
     pub rendered_spans: Vec<Option<Vec<(ratatui::style::Color, String)>>>,
     pub max_visual_width: Option<usize>,
-    pub cached_breadcrumbs: Option<(usize, Vec<String>)>,
 }
 
 impl EditorBuffer {
@@ -53,7 +52,6 @@ impl EditorBuffer {
             syntax_states: vec![None; content.len_lines()],
             rendered_spans: vec![None; content.len_lines()],
             max_visual_width: None,
-            cached_breadcrumbs: None,
         }
     }
 
@@ -83,7 +81,6 @@ impl EditorBuffer {
             syntax_states: vec![None; content.len_lines()],
             rendered_spans: vec![None; content.len_lines()],
             max_visual_width: None,
-            cached_breadcrumbs: None,
         })
     }
 
@@ -119,10 +116,6 @@ impl EditorBuffer {
 
     pub fn sync_cursor_goal_from_position(&mut self) {
         self.cursor_goal_visual_col = self.cursor_visual_col();
-    }
-
-    pub fn invalidate_breadcrumbs(&mut self) {
-        self.cached_breadcrumbs = None;
     }
 
     pub fn place_cursor(&mut self, row: usize, char_col: usize) {

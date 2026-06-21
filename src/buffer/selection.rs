@@ -37,7 +37,6 @@ impl EditorBuffer {
             }
             self.selection_start = None;
             self.modified = true;
-            self.invalidate_breadcrumbs();
             self.sync_syntax_states(self.cursor_row);
             self.sync_rendered_spans(self.cursor_row);
             self.invalidate_max_visual_width();

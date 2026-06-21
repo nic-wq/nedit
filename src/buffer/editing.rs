@@ -35,7 +35,6 @@ impl EditorBuffer {
         }
         self.sync_cursor_goal_from_position();
         self.modified = true;
-        self.invalidate_breadcrumbs();
         self.sync_syntax_states(self.cursor_row);
         self.sync_rendered_spans(self.cursor_row);
         self.invalidate_max_visual_width();
@@ -81,7 +80,6 @@ impl EditorBuffer {
 
         self.content.remove(start_idx..end_idx);
         self.modified = true;
-        self.invalidate_breadcrumbs();
         self.sync_syntax_states(self.cursor_row);
         self.sync_rendered_spans(self.cursor_row);
         self.invalidate_max_visual_width();
