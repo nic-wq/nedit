@@ -529,6 +529,7 @@ impl App {
                 PathBuf::from("docs/lua.md"),
                 PathBuf::from("docs/binds.md"),
             ];
+            self.fuzzy_idx = 0;
             return;
         }
 
