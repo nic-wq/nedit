@@ -368,10 +368,15 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         })
         .collect();
 
+    let border_color = if app.focus == Focus::Explorer {
+        colors.accent
+    } else {
+        colors.surface
+    };
     let block = Block::default()
         .title(format!(" {} ", app.i18n.t("explorer")))
         .borders(Borders::RIGHT)
-        .border_style(Style::default().fg(colors.surface));
+        .border_style(Style::default().fg(border_color));
 
     f.render_widget(List::new(items).block(block).bg(colors.bg), area);
 }
