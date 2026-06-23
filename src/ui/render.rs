@@ -17,7 +17,7 @@ use super::welcome::draw_welcome_screen;
 use super::{centered_rect, get_colors, UIColors};
 
 fn syntect_foreground_or(fg: syntect::highlighting::Color, fallback: Color) -> Color {
-    if fg.a == 0 {
+    if fg.a == 0 || (fg.r == 0 && fg.g == 0 && fg.b == 0) {
         fallback
     } else {
         Color::Rgb(fg.r, fg.g, fg.b)
@@ -577,7 +577,7 @@ fn draw_editor(
         } else {
             Some(text)
         }
-    });
+    }).or_else(|| buffer.get_word_at_cursor());
     let selected_match_chars = selected_match_text
         .as_ref()
         .map(|text| text.chars().collect::<Vec<_>>());

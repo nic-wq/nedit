@@ -69,6 +69,46 @@ impl EditorBuffer {
         self.sync_cursor_goal_from_position();
     }
 
+    pub fn get_word_at_cursor(&self) -> Option<String> {
+        if self.content.len_chars() == 0 {
+            return None;
+        }
+        let char_idx = self
+            .to_char_idx(self.cursor_row, self.cursor_col)
+            .min(self.content.len_chars().saturating_sub(1));
+        let c = self.content.char(char_idx);
+
+        if !(c.is_alphanumeric() || c == '_') {
+            return None;
+        }
+
+        let mut start_idx = char_idx;
+        let mut end_idx = char_idx;
+
+        while start_idx > 0 {
+            let c = self.content.char(start_idx - 1);
+            if c.is_alphanumeric() || c == '_' {
+                start_idx -= 1;
+            } else {
+                break;
+            }
+        }
+        while end_idx < self.content.len_chars() {
+            let c = self.content.char(end_idx);
+            if c.is_alphanumeric() || c == '_' {
+                end_idx += 1;
+            } else {
+                break;
+            }
+        }
+
+        if start_idx != end_idx {
+            Some(self.content.slice(start_idx..end_idx).to_string())
+        } else {
+            None
+        }
+    }
+
     pub fn select_word(&mut self) {
         if self.content.len_chars() == 0 {
             return;
