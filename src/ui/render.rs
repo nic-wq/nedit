@@ -474,7 +474,9 @@ fn draw_editor(
     };
 
     let line_count = buffer.content.len_lines();
-    let mut syntax_highlighter = syntax_set.map(|syntax_set| {
+    let mut syntax_highlighter = syntax_set
+        .filter(|_| buffer.content.len_bytes() <= 5_242_880)
+        .map(|syntax_set| {
         let syntax = buffer
             .path
             .as_ref()
