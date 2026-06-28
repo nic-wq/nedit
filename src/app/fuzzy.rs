@@ -1,9 +1,130 @@
 use std::fs;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use walkdir::WalkDir;
 
 use super::{App, FuzzyMode};
+
+// Pre-processed query pattern to avoid per-candidate lowercasing/allocation
+struct PreparedPattern {
+    ascii_lower: Option<Vec<u8>>,
+    chars: Vec<char>,
+}
+
+impl PreparedPattern {
+    fn new(q: &str) -> Self {
+        let lower = q.to_lowercase();
+        let ascii_lower = if lower.is_ascii() {
+            Some(lower.as_bytes().to_vec())
+        } else {
+            None
+        };
+        let chars = lower.chars().collect();
+        Self { ascii_lower, chars }
+    }
+
+    fn is_empty(&self) -> bool {
+        if let Some(ref a) = self.ascii_lower {
+            a.is_empty()
+        } else {
+            self.chars.is_empty()
+        }
+    }
+}
+
+// Fast ASCII subsequence check without allocation
+fn is_subsequence_ascii(q: &[u8], t: &[u8]) -> bool {
+    if q.is_empty() {
+        return true;
+    }
+    let mut qi = 0;
+    for &b in t {
+        if b.to_ascii_lowercase() == q[qi] {
+            qi += 1;
+            if qi == q.len() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_subsequence_chars(q: &[char], target: &str) -> bool {
+    if q.is_empty() {
+        return true;
+    }
+    let mut qi = 0;
+    for c in target.chars().flat_map(|c| c.to_lowercase()) {
+        if c == q[qi] {
+            qi += 1;
+            if qi == q.len() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn prepared_matches_name(p: &PreparedPattern, name: &str) -> bool {
+    if let Some(ref a) = p.ascii_lower {
+        if name.is_ascii() {
+            return is_subsequence_ascii(a, name.as_bytes());
+        }
+    }
+    is_subsequence_chars(&p.chars, name)
+}
+
+// Binary file extensions to skip during indexing and content search
+const BINARY_EXTENSIONS: &[&str] = &[
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg",
+    ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar",
+    ".o", ".so", ".a", ".dylib", ".dll", ".exe", ".bin",
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".mp3", ".mp4", ".wav", ".avi", ".mov", ".mkv", ".flac",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot",
+];
+
+// Skip binary files and files > 1MB for content search
+fn is_searchable_file(path: &Path) -> bool {
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let ext_lower = ext.to_lowercase();
+        let ext_with_dot = format!(".{}", ext_lower);
+        if BINARY_EXTENSIONS.iter().any(|&e| e == ext_with_dot.as_str()) {
+            return false;
+        }
+    }
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() > 1_048_576 {
+            return false;
+        }
+    }
+    true
+}
+
+// Case-insensitive substring search without allocation (fast path for ASCII)
+fn contains_ascii_insensitive(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    if !haystack.is_ascii() || !needle.is_ascii() {
+        return haystack.to_lowercase().contains(&needle.to_lowercase());
+    }
+    let needle = needle.as_bytes();
+    let haystack = haystack.as_bytes();
+    let mut hi = 0;
+    while hi + needle.len() <= haystack.len() {
+        if needle
+            .iter()
+            .zip(&haystack[hi..])
+            .all(|(&n, &h)| n == h.to_ascii_lowercase())
+        {
+            return true;
+        }
+        hi += 1;
+    }
+    false
+}
 
 impl App {
     pub(crate) fn format_search_dir_for_query(&self, path: &Path, prefer_home: bool) -> String {
@@ -171,12 +292,25 @@ impl App {
     ) -> Vec<(PathBuf, usize, String)> {
         let mut results = Vec::new();
         for path in files {
-            if let Ok(content) = fs::read_to_string(&path) {
-                for (i, line) in content.lines().enumerate() {
-                    if line.to_lowercase().contains(query) {
-                        results.push((path.clone(), i, line.to_string()));
-                        if results.len() >= limit {
-                            return results;
+            if results.len() >= limit {
+                break;
+            }
+            // Skip binary files and files > 1MB
+            if !is_searchable_file(&path) {
+                continue;
+            }
+            // Read line-by-line with BufReader to avoid loading entire files
+            // and enable early exit at the first match per file
+            if let Ok(file) = std::fs::File::open(&path) {
+                let reader = std::io::BufReader::new(file);
+                for (i, line_result) in reader.lines().enumerate() {
+                    if results.len() >= limit {
+                        return results;
+                    }
+                    if let Ok(line) = line_result {
+                        if contains_ascii_insensitive(&line, query) {
+                            results.push((path.clone(), i, line));
+                            break; // One match per file is enough
                         }
                     }
                 }
@@ -185,26 +319,22 @@ impl App {
         results
     }
 
-    fn fuzzy_file_name_matches(path: &Path, query: &str) -> bool {
-        if query.is_empty() {
+    fn fuzzy_file_name_matches(path: &Path, pattern: &PreparedPattern) -> bool {
+        // Avoid per-candidate lowercasing by using the pre-processed pattern
+        if pattern.is_empty() {
             return true;
         }
-
         let name = path
             .file_name()
             .unwrap_or_default()
-            .to_string_lossy()
-            .to_lowercase();
-        let mut it = query.chars();
-        let mut curr = it.next();
-        for c in name.chars() {
-            if let Some(target) = curr {
-                if c == target {
-                    curr = it.next();
-                }
-            }
-        }
-        curr.is_none()
+            .to_string_lossy();
+        prepared_matches_name(pattern, &name)
+    }
+
+    // Debounce: schedule fuzzy update, executes after 80ms of typing pause
+    pub fn schedule_fuzzy_update(&mut self, reset_idx: bool) {
+        self.fuzzy_input_timestamp = Some(std::time::Instant::now());
+        self.fuzzy_input_reset_idx = reset_idx;
     }
 
     pub fn toggle_fuzzy(&mut self, mode: FuzzyMode) {
@@ -314,9 +444,12 @@ impl App {
         if let Some(rx) = &self.content_search_receiver {
             let mut message_received = false;
             let mut latest_results = None;
-            while let Ok((query, results)) = rx.try_recv() {
+            while let Ok((query, seq, results)) = rx.try_recv() {
                 message_received = true;
-                if query == self.fuzzy_query.to_lowercase() {
+                // Ignore stale results from superseded searches
+                if seq >= self.content_search_seq
+                    && query == self.fuzzy_query.to_lowercase()
+                {
                     latest_results = Some(results);
                 }
             }
@@ -330,6 +463,25 @@ impl App {
                     self.update_fuzzy(true);
                 }
                 self.needs_redraw = true;
+            }
+        }
+
+        // Collect results from background file finder thread (Ctrl+O)
+        if let Some(rx) = &self.fuzzy_files_receiver {
+            if let Ok(results) = rx.try_recv() {
+                self.fuzzy_files_receiver = None;
+                self.fuzzy_results = results;
+                self.needs_redraw = true;
+            }
+        }
+
+        // Debounce: run update_fuzzy only after typing pauses for 80ms
+        if let Some(ts) = self.fuzzy_input_timestamp {
+            if ts.elapsed() >= std::time::Duration::from_millis(80) {
+                let reset = self.fuzzy_input_reset_idx;
+                self.fuzzy_input_timestamp = None;
+                self.fuzzy_input_reset_idx = false;
+                self.update_fuzzy(reset);
             }
         }
     }
@@ -549,19 +701,38 @@ impl App {
                     return;
                 }
 
+                // Background: run file finder in a thread to keep UI responsive
+                if self.fuzzy_files_receiver.is_some() {
+                    return; // search already in progress, skip
+                }
+
                 if let Some((query, search_root)) = self.resolve_file_search_scope() {
-                    self.fuzzy_results = Self::scoped_search_files(search_root)
-                        .filter(|path| Self::fuzzy_file_name_matches(path, &query))
-                        .take(self.fuzzy_limit)
-                        .collect();
+                    let pattern = PreparedPattern::new(&query);
+                    let limit = self.fuzzy_limit;
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    self.fuzzy_files_receiver = Some(rx);
+                    std::thread::spawn(move || {
+                        let results: Vec<PathBuf> = Self::scoped_search_files(search_root)
+                            .filter(|p| Self::fuzzy_file_name_matches(p, &pattern))
+                            .take(limit)
+                            .collect();
+                        let _ = tx.send(results);
+                    });
                 } else {
-                    self.fuzzy_results = self
-                        .all_files
-                        .iter()
-                        .filter(|p| Self::fuzzy_file_name_matches(p, &query))
-                        .cloned()
-                        .take(self.fuzzy_limit)
-                        .collect();
+                    let pattern = PreparedPattern::new(&query);
+                    let files = self.all_files.clone();
+                    let limit = self.fuzzy_limit;
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    self.fuzzy_files_receiver = Some(rx);
+                    std::thread::spawn(move || {
+                        let results: Vec<PathBuf> = files
+                            .iter()
+                            .filter(|p| Self::fuzzy_file_name_matches(p, &pattern))
+                            .cloned()
+                            .take(limit)
+                            .collect();
+                        let _ = tx.send(results);
+                    });
                 }
             } else if self.fuzzy_mode == FuzzyMode::Content {
                 self.fuzzy_results = self.scoped_dir_suggestions().unwrap_or_default();
@@ -586,6 +757,8 @@ impl App {
                     }
                     let files = self.all_files.clone();
                     let query_for_thread = self.fuzzy_query.to_lowercase();
+                    self.content_search_seq += 1;
+                    let seq = self.content_search_seq;
 
                     let (tx, rx) = std::sync::mpsc::channel();
                     self.content_search_receiver = Some(rx);
@@ -604,7 +777,7 @@ impl App {
                                 limit,
                             )
                         };
-                        let _ = tx.send((query_for_thread, results));
+                        let _ = tx.send((query_for_thread, seq, results));
                     });
                 }
             }
@@ -615,7 +788,7 @@ impl App {
                 self.fuzzy_lines = Vec::new();
                 for i in 0..buffer.content.len_lines() {
                     let line = buffer.content.line(i).to_string();
-                    if query.is_empty() || line.to_lowercase().contains(&query) {
+                    if query.is_empty() || contains_ascii_insensitive(&line, &query) {
                         self.fuzzy_lines.push((i, line));
                     }
                     if self.fuzzy_lines.len() >= self.fuzzy_limit {

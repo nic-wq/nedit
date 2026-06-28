@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
+use std::time::{Instant, UNIX_EPOCH};
 
 use notify::{Config as NotifyConfig, RecommendedWatcher, Watcher};
 use ratatui::layout::Rect;
@@ -58,7 +58,11 @@ pub struct App {
     pub indexed_files_receiver: Option<Receiver<Vec<PathBuf>>>,
     pub explorer_refresh_receiver: Option<Receiver<(Vec<crate::explorer::FileItem>, usize)>>,
     pub explorer_needs_refresh: bool,
-    pub content_search_receiver: Option<Receiver<(String, Vec<(PathBuf, usize, String)>)>>,
+    pub content_search_receiver: Option<Receiver<(String, u64, Vec<(PathBuf, usize, String)>)>>,
+    pub content_search_seq: u64,
+    pub fuzzy_files_receiver: Option<Receiver<Vec<PathBuf>>>,
+    pub fuzzy_input_timestamp: Option<Instant>,
+    pub fuzzy_input_reset_idx: bool,
     pub explorer_area: Rect,
     pub editor_area: Rect,
     pub fuzzy_limit: usize,
@@ -174,6 +178,10 @@ impl App {
             explorer_refresh_receiver: None,
             explorer_needs_refresh: false,
             content_search_receiver: None,
+            content_search_seq: 0,
+            fuzzy_files_receiver: None,
+            fuzzy_input_timestamp: None,
+            fuzzy_input_reset_idx: false,
             explorer_area: Rect::default(),
             editor_area: Rect::default(),
             fuzzy_limit: 20,

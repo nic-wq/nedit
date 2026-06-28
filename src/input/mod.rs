@@ -861,11 +861,11 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char(c) => {
             app.fuzzy_query.push(c);
-            app.update_fuzzy(true);
+            app.schedule_fuzzy_update(true); // debounce: run after 80ms pause
         }
         KeyCode::Backspace => {
             app.fuzzy_query.pop();
-            app.update_fuzzy(true);
+            app.schedule_fuzzy_update(true); // debounce: run after 80ms pause
         }
         _ => {}
     }
