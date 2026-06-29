@@ -13,10 +13,18 @@ pub struct Config {
     pub theme: String,
     #[serde(default = "default_true")]
     pub show_indent_guides: bool,
+    #[serde(default = "default_true")]
+    pub preview_enabled: bool,
+    #[serde(default = "default_preview_max_size")]
+    pub preview_max_size: usize,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_preview_max_size() -> usize {
+    3 * 1024 * 1024 // 3 MB
 }
 
 fn default_theme() -> String {
@@ -73,6 +81,8 @@ impl Config {
             keybinds,
             theme: default_theme(),
             show_indent_guides: true,
+            preview_enabled: true,
+            preview_max_size: default_preview_max_size(),
         }
     }
 
@@ -106,6 +116,20 @@ impl Config {
             .and_then(toml::Value::as_bool)
         {
             config.show_indent_guides = enabled;
+        }
+
+        if let Some(enabled) = value
+            .get("preview_enabled")
+            .and_then(toml::Value::as_bool)
+        {
+            config.preview_enabled = enabled;
+        }
+
+        if let Some(size) = value
+            .get("preview_max_size")
+            .and_then(toml::Value::as_integer)
+        {
+            config.preview_max_size = size as usize;
         }
 
         if let Some(keybinds) = value.get("keybinds").and_then(toml::Value::as_table) {

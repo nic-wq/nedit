@@ -83,6 +83,10 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
             {
                 app.focus = Focus::Editor;
+                // Limpar preview se clicou no editor
+                if let Some(idx) = app.preview_buffer_idx {
+                    app.clear_preview(idx);
+                }
                 let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
                 let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
                 if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
@@ -113,13 +117,14 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 if target_idx < app.explorer.items.len() {
                     app.explorer.selected_idx = target_idx;
                 }
+                app.update_preview_from_explorer_selection();
             }
         }
-        MouseEventKind::Drag(button) if button == event::MouseButton::Left => {
-            if app
+        MouseEventKind::Drag(button) if button == event::MouseButton::Left
+            && app
                 .editor_area
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
-            {
+            => {
                 let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
                 let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
                 if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
@@ -133,7 +138,6 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                     buffer.place_cursor(row, target_col);
                 }
             }
-        }
         _ => {}
     }
 }
@@ -215,6 +219,12 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         }
     }
     if app.config.matches(key, "toggle_focus") {
+        // Limpar preview ao sair do explorer para o editor
+        if app.focus == Focus::Explorer {
+            if let Some(idx) = app.preview_buffer_idx.take() {
+                app.clear_preview(idx);
+            }
+        }
         app.focus = match app.focus {
             Focus::Explorer => Focus::Editor,
             Focus::Editor => Focus::Explorer,
@@ -286,7 +296,7 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
                 app.switch_tab_relative(1);
                 return;
             }
-            (KeyCode::Char(c), KeyModifiers::ALT) if c.is_digit(10) => {
+            (KeyCode::Char(c), KeyModifiers::ALT) if c.is_ascii_digit() => {
                 let idx = c.to_digit(10).unwrap() as usize;
                 if idx > 0 {
                     app.switch_tab(idx - 1);
@@ -400,11 +410,10 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 }
                 handle_unsaved_changes_completion(app);
             }
-            KeyCode::Char(c) => {
-                if app.fuzzy_mode != crate::app::FuzzyMode::UnsavedChanges {
+            KeyCode::Char(c)
+                if app.fuzzy_mode != crate::app::FuzzyMode::UnsavedChanges => {
                     app.fuzzy_query.push(c);
                 }
-            }
             _ => {}
         }
         if key.code != KeyCode::Enter {
@@ -603,7 +612,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::Move {
                 if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    if path == std::path::PathBuf::from("..") {
+                    if path == *".." {
                         if let Some(parent) = app
                             .move_dir
                             .as_ref()
@@ -887,6 +896,7 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
                     .saturating_sub(height)
                     .saturating_add(1);
             }
+            app.update_preview_from_explorer_selection();
         }
         KeyCode::Down => {
             app.explorer.next();
@@ -902,24 +912,31 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
                 // Wrapped
                 app.explorer.scroll_offset = 0;
             }
+            app.update_preview_from_explorer_selection();
         }
         KeyCode::Enter => {
             if let Some(item) = app.explorer.get_selected() {
+                let path = item.path.clone();
+                let is_dir = item.is_dir;
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
-                    if item.is_dir {
-                        app.set_explorer_root(item.path.clone());
+                    if is_dir {
+                        app.set_explorer_root(path);
                     }
-                } else if item.is_dir {
+                } else if is_dir {
                     app.explorer.toggle_expand();
                     app.refresh_explorer();
                 } else {
-                    app.open_file(item.path.clone());
+                    app.open_file(path);
                 }
             }
         }
         KeyCode::Backspace => {
             app.explorer.go_up_root();
             app.refresh_explorer();
+            // Limpar preview ao navegar para diretório pai
+            if let Some(idx) = app.preview_buffer_idx {
+                app.clear_preview(idx);
+            }
         }
         KeyCode::Char(c) if is_explorer_file_options_shortcut(c, key.modifiers) => {
             let is_dir = app.explorer.get_selected().map(|i| i.is_dir).unwrap_or(false);

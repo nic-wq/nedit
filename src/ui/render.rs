@@ -245,7 +245,11 @@ fn draw_header_status_bar(
         return;
     };
 
-    let metrics = file_metrics(buffer);
+    let metrics = if buffer.is_preview {
+        format!("[PREVIEW] {}", file_metrics(buffer))
+    } else {
+        file_metrics(buffer)
+    };
 
     let right_line = Line::from(vec![Span::styled(
         format!(" {} ", metrics),
@@ -277,7 +281,8 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     let mut spans = Vec::new();
     for (i, buffer) in app.buffers.iter().enumerate() {
         let is_live_script = Some(i) == app.live_script_buffer_idx;
-        if is_live_script {
+        let is_preview = buffer.is_preview;
+        if is_live_script || is_preview {
             continue;
         }
 
@@ -1007,11 +1012,11 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::FileOptions => format!(" 󰘳  {} ", app.i18n.t("file_options")),
         FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
-        FuzzyMode::RunScript => format!(" 󰢱  Run Lua Script "),
-        FuzzyMode::EditScript => format!(" 󰝎  Edit Lua Script "),
-        FuzzyMode::DeleteScript => format!(" 󰆴  Delete Lua Script "),
-        FuzzyMode::DocSelect => format!(" 󰈔  Select Documentation "),
-        FuzzyMode::NewFolder => format!(" 󰉋  New Folder Name "),
+        FuzzyMode::RunScript => " 󰢱  Run Lua Script ".to_string(),
+        FuzzyMode::EditScript => " 󰝎  Edit Lua Script ".to_string(),
+        FuzzyMode::DeleteScript => " 󰆴  Delete Lua Script ".to_string(),
+        FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
+        FuzzyMode::NewFolder => " 󰉋  New Folder Name ".to_string(),
         FuzzyMode::UnsavedChanges => format!(" 󰆓  {} ", app.i18n.t("unsaved_changes")),
     };
 

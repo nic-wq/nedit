@@ -71,9 +71,7 @@ impl EditorBuffer {
                 char_idx += 1;
             }
         } else {
-            if char_idx > 0 {
-                char_idx -= 1;
-            }
+            char_idx = char_idx.saturating_sub(1);
             while char_idx > 0 && !self.content.char(char_idx).is_alphanumeric() {
                 char_idx -= 1;
             }

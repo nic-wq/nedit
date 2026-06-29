@@ -22,12 +22,19 @@ pub struct EditorBuffer {
     pub history: Vec<Rope>,
     pub history_idx: usize,
     pub is_read_only: bool,
+    pub is_preview: bool,
     pub autocomplete_options: Vec<String>,
     pub autocomplete_idx: usize,
     pub show_autocomplete_list: bool,
     pub syntax_states: Vec<Option<(syntect::parsing::ParseState, syntect::highlighting::HighlightState)>>,
     pub rendered_spans: Vec<Option<Vec<(ratatui::style::Color, String)>>>,
     pub max_visual_width: Option<usize>,
+}
+
+impl Default for EditorBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EditorBuffer {
@@ -46,6 +53,7 @@ impl EditorBuffer {
             history: vec![content.clone()],
             history_idx: 0,
             is_read_only: false,
+            is_preview: false,
             autocomplete_options: Vec::new(),
             autocomplete_idx: 0,
             show_autocomplete_list: false,
@@ -75,6 +83,7 @@ impl EditorBuffer {
             history: vec![content.clone()],
             history_idx: 0,
             is_read_only: false,
+            is_preview: false,
             autocomplete_options: Vec::new(),
             autocomplete_idx: 0,
             show_autocomplete_list: false,

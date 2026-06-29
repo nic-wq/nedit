@@ -76,6 +76,8 @@ pub struct App {
     pub pending_action: Option<crate::app::types::PendingAction>,
     pub pending_buffer_idx: Option<usize>,
     pub needs_redraw: bool,
+    pub preview_buffer_idx: Option<usize>,
+    pub saved_buffer_idx: usize,
 }
 
 impl App {
@@ -195,6 +197,8 @@ impl App {
             pending_action: None,
             pending_buffer_idx: None,
             needs_redraw: true,
+            preview_buffer_idx: None,
+            saved_buffer_idx: 0,
         };
 
         if let Some(watcher) = &mut app.watcher {

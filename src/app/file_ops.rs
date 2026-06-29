@@ -22,6 +22,11 @@ impl App {
             return;
         }
 
+        // Limpar preview se existir antes de abrir um arquivo real
+        if let Some(preview_idx) = self.preview_buffer_idx.take() {
+            self.clear_preview(preview_idx);
+        }
+
         for (i, buf) in self.buffers.iter().enumerate() {
             if let Some(p) = &buf.path {
                 if p == &path {
@@ -540,5 +545,122 @@ impl App {
         }
 
         self.refresh_explorer();
+    }
+
+    /// Atualiza o preview baseado na seleção atual do explorer.
+    /// Chamado quando o usuário navega (Up/Down) no explorer sobre arquivos.
+    pub fn update_preview_from_explorer_selection(&mut self) {
+        // Só preview se explorer está visível e focado
+        if !self.show_explorer || self.focus != Focus::Explorer {
+            return;
+        }
+
+        // Se preview está desabilitado na config, não faz nada
+        if !self.config.preview_enabled {
+            if let Some(idx) = self.preview_buffer_idx {
+                self.clear_preview(idx);
+            }
+            return;
+        }
+
+        let Some(item) = self.explorer.get_selected() else { return };
+
+        // Só preview em arquivos (não diretórios)
+        if item.is_dir {
+            if let Some(idx) = self.preview_buffer_idx {
+                self.clear_preview(idx);
+            }
+            return;
+        }
+
+        // Verificar se já está fazendo preview DESTE arquivo
+        if let Some(idx) = self.preview_buffer_idx {
+            if let Some(buf) = self.buffers.get(idx) {
+                if buf.path.as_ref() == Some(&item.path) {
+                    return; // já é o preview atual
+                }
+            }
+        }
+
+        // Verificar se o arquivo já está aberto como aba REAL
+        for (i, buf) in self.buffers.iter().enumerate() {
+            if !buf.is_preview && buf.path.as_ref() == Some(&item.path) {
+                // Arquivo já está aberto — apenas exibir na aba existente
+                if let Some(preview_idx) = self.preview_buffer_idx {
+                    self.clear_preview(preview_idx);
+                }
+                self.current_buffer_idx = i;
+                self.is_welcome = false;
+                self.needs_redraw = true;
+                return;
+            }
+        }
+
+        // Verificar limite de tamanho para preview
+        if let Ok(metadata) = std::fs::metadata(&item.path) {
+            if metadata.len() > self.config.preview_max_size as u64 {
+                if let Some(idx) = self.preview_buffer_idx {
+                    self.clear_preview(idx);
+                }
+                return;
+            }
+        }
+
+        // Carregar preview
+        match EditorBuffer::from_path(item.path.clone()) {
+            Ok(mut buf) => {
+                buf.is_preview = true;
+                buf.is_read_only = true;
+
+                if let Some(preview_idx) = self.preview_buffer_idx {
+                    // Substituir preview existente no lugar
+                    self.buffers[preview_idx] = buf;
+                    self.current_buffer_idx = preview_idx;
+                } else {
+                    // Salvar buffer atual para restaurar depois
+                    self.saved_buffer_idx = self.current_buffer_idx;
+                    // Criar novo buffer preview
+                    self.buffers.push(buf);
+                    self.preview_buffer_idx = Some(self.buffers.len() - 1);
+                    self.current_buffer_idx = self.buffers.len() - 1;
+                }
+
+                self.is_welcome = false;
+                self.needs_redraw = true;
+            }
+            Err(_) => {
+                // Se não conseguir carregar, limpar preview
+                if let Some(idx) = self.preview_buffer_idx {
+                    self.clear_preview(idx);
+                }
+            }
+        }
+    }
+
+    /// Limpa o preview atual e restaura o buffer anterior.
+    pub fn clear_preview(&mut self, preview_idx: usize) {
+        if preview_idx >= self.buffers.len() || !self.buffers[preview_idx].is_preview {
+            self.preview_buffer_idx = None;
+            return;
+        }
+
+        // Remover o preview buffer
+        self.buffers.remove(preview_idx);
+        self.preview_buffer_idx = None;
+
+        // Ajustar saved_buffer_idx se necessário
+        if self.saved_buffer_idx > preview_idx && self.saved_buffer_idx > 0 {
+            self.saved_buffer_idx -= 1;
+        }
+
+        // Restaurar buffer anterior
+        if self.buffers.is_empty() {
+            self.is_welcome = true;
+            self.current_buffer_idx = 0;
+        } else {
+            self.current_buffer_idx = self.saved_buffer_idx.min(self.buffers.len().saturating_sub(1));
+        }
+
+        self.needs_redraw = true;
     }
 }

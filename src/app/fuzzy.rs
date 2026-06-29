@@ -90,7 +90,7 @@ fn is_searchable_file(path: &Path) -> bool {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         let ext_lower = ext.to_lowercase();
         let ext_with_dot = format!(".{}", ext_lower);
-        if BINARY_EXTENSIONS.iter().any(|&e| e == ext_with_dot.as_str()) {
+        if BINARY_EXTENSIONS.contains(&ext_with_dot.as_str()) {
             return false;
         }
     }
@@ -728,8 +728,7 @@ impl App {
                         let results: Vec<PathBuf> = files
                             .iter()
                             .filter(|p| Self::fuzzy_file_name_matches(p, &pattern))
-                            .cloned()
-                            .take(limit)
+                            .take(limit).cloned()
                             .collect();
                         let _ = tx.send(results);
                     });
@@ -824,10 +823,9 @@ impl App {
             self.fuzzy_idx = self.fuzzy_themes.len().saturating_sub(1);
         }
 
-        if self.fuzzy_mode == FuzzyMode::Themes && !self.fuzzy_themes.is_empty() {
-            if self.fuzzy_idx < self.fuzzy_themes.len() {
+        if self.fuzzy_mode == FuzzyMode::Themes && !self.fuzzy_themes.is_empty()
+            && self.fuzzy_idx < self.fuzzy_themes.len() {
                 self.current_theme = self.fuzzy_themes[self.fuzzy_idx].clone();
             }
-        }
     }
 }
