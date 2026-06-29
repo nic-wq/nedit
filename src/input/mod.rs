@@ -6,11 +6,10 @@ use crossterm::event::{
 
 use crate::app::{App, Focus};
 
-#[allow(unused_imports)]
 pub use templates::LUA_TEMPLATE;
 
 pub fn handle_events(app: &mut App) -> anyhow::Result<()> {
-    // We use a short poll duration (16ms ~ 60fps) to keep the UI responsive 
+    // We use a short poll duration (16ms ~ 60fps) to keep the UI responsive
     // without consuming excessive CPU when idle.
     if !event::poll(std::time::Duration::from_millis(16))? {
         return Ok(());
@@ -123,21 +122,21 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
         MouseEventKind::Drag(event::MouseButton::Left)
             if app
                 .editor_area
-                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
-            => {
-                let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
-                let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
-                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                    if buffer.selection_start.is_none() {
-                        buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
-                    }
-                    let target_row = buffer.scroll_row + rel_row;
-                    let target_col =
-                        buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
-                    let row = target_row.min(buffer.content.len_lines().saturating_sub(1));
-                    buffer.place_cursor(row, target_col);
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row)) =>
+        {
+            let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
+            let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
+            if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                if buffer.selection_start.is_none() {
+                    buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
                 }
+                let target_row = buffer.scroll_row + rel_row;
+                let target_col =
+                    buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
+                let row = target_row.min(buffer.content.len_lines().saturating_sub(1));
+                buffer.place_cursor(row, target_col);
             }
+        }
         _ => {}
     }
 }
@@ -382,7 +381,9 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             KeyCode::Backspace if !app.fuzzy_query.is_empty() => {
                 app.fuzzy_query.pop();
             }
-            KeyCode::Char('s') | KeyCode::Char('S') if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges => {
+            KeyCode::Char('s') | KeyCode::Char('S')
+                if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges =>
+            {
                 if let Some(idx) = app.pending_buffer_idx {
                     if idx < app.buffers.len() {
                         let has_path = app.buffers[idx].path.is_some();
@@ -399,7 +400,9 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 }
                 handle_unsaved_changes_completion(app);
             }
-            KeyCode::Char('d') | KeyCode::Char('D') if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges => {
+            KeyCode::Char('d') | KeyCode::Char('D')
+                if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges =>
+            {
                 if let Some(idx) = app.pending_buffer_idx {
                     if idx < app.buffers.len() {
                         app.buffers[idx].modified = false;
@@ -407,10 +410,9 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 }
                 handle_unsaved_changes_completion(app);
             }
-            KeyCode::Char(c)
-                if app.fuzzy_mode != crate::app::FuzzyMode::UnsavedChanges => {
-                    app.fuzzy_query.push(c);
-                }
+            KeyCode::Char(c) if app.fuzzy_mode != crate::app::FuzzyMode::UnsavedChanges => {
+                app.fuzzy_query.push(c);
+            }
             _ => {}
         }
         if key.code != KeyCode::Enter {
@@ -429,36 +431,35 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             app.is_fuzzy = false;
         }
         KeyCode::Tab if app.fuzzy_mode == crate::app::FuzzyMode::Move => {
-                if let (Some(old_path), Some(new_dir)) =
-                    (app.pending_path.take(), app.move_dir.take())
-                {
-                    let new_path = new_dir.join(old_path.file_name().unwrap());
-                    match std::fs::rename(&old_path, &new_path) {
-                        Ok(()) => {
-                            app.update_buffer_paths(&old_path, &new_path);
-                            app.refresh_explorer();
-                            app.show_notification(
-                                format!("Moved to {}", new_path.display()),
-                                crate::app::NotificationType::Info,
-                            );
-                        }
-                        Err(err) => {
-                            app.show_notification(
-                                format!("Error moving file: {}", err),
-                                crate::app::NotificationType::Error,
-                            );
-                        }
+            if let (Some(old_path), Some(new_dir)) = (app.pending_path.take(), app.move_dir.take())
+            {
+                let new_path = new_dir.join(old_path.file_name().unwrap());
+                match std::fs::rename(&old_path, &new_path) {
+                    Ok(()) => {
+                        app.update_buffer_paths(&old_path, &new_path);
+                        app.refresh_explorer();
+                        app.show_notification(
+                            format!("Moved to {}", new_path.display()),
+                            crate::app::NotificationType::Info,
+                        );
+                    }
+                    Err(err) => {
+                        app.show_notification(
+                            format!("Error moving file: {}", err),
+                            crate::app::NotificationType::Error,
+                        );
                     }
                 }
-                app.is_fuzzy = false;
+            }
+            app.is_fuzzy = false;
         }
         KeyCode::Up if app.fuzzy_idx > 0 => {
-                app.fuzzy_idx -= 1;
-                if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
-                    if let Some(theme) = app.fuzzy_themes.get(app.fuzzy_idx) {
-                        app.apply_theme(theme.clone());
-                    }
+            app.fuzzy_idx -= 1;
+            if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
+                if let Some(theme) = app.fuzzy_themes.get(app.fuzzy_idx) {
+                    app.apply_theme(theme.clone());
                 }
+            }
         }
         KeyCode::Down => {
             let max = match app.fuzzy_mode {
@@ -794,7 +795,8 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         if buffer.cursor_row < buffer.scroll_row {
                             buffer.scroll_row = buffer.cursor_row;
                         } else if buffer.cursor_row >= buffer.scroll_row + height {
-                            buffer.scroll_row = buffer.cursor_row.saturating_sub(height).saturating_add(1);
+                            buffer.scroll_row =
+                                buffer.cursor_row.saturating_sub(height).saturating_add(1);
                         }
                     }
                 }
@@ -822,7 +824,8 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         if buffer.cursor_row < buffer.scroll_row {
                             buffer.scroll_row = buffer.cursor_row;
                         } else if buffer.cursor_row >= buffer.scroll_row + height {
-                            buffer.scroll_row = buffer.cursor_row.saturating_sub(height).saturating_add(1);
+                            buffer.scroll_row =
+                                buffer.cursor_row.saturating_sub(height).saturating_add(1);
                         }
                     }
                 }
@@ -932,7 +935,11 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Char(c) if is_explorer_file_options_shortcut(c, key.modifiers) => {
-            let is_dir = app.explorer.get_selected().map(|i| i.is_dir).unwrap_or(false);
+            let is_dir = app
+                .explorer
+                .get_selected()
+                .map(|i| i.is_dir)
+                .unwrap_or(false);
             app.toggle_fuzzy(crate::app::FuzzyMode::FileOptions);
             let mut options = vec![
                 std::path::PathBuf::from("Rename"),
@@ -1121,7 +1128,7 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
                     .as_secs()
             );
             let path = scripts_dir.join(name);
-            let _ = std::fs::write(&path, "-- New Lua Script\n");
+            let _ = std::fs::write(&path, LUA_TEMPLATE);
             app.open_file(path);
         }
         "Run Lua Script" => {
