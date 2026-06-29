@@ -1,5 +1,6 @@
 mod actions;
 mod context;
+#[allow(clippy::module_inception)]
 mod lua;
 
 pub use actions::{LuaAction, RevertAction, ScriptRequest, ScriptResponse, ScriptUndo};

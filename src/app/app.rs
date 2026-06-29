@@ -58,6 +58,7 @@ pub struct App {
     pub indexed_files_receiver: Option<Receiver<Vec<PathBuf>>>,
     pub explorer_refresh_receiver: Option<Receiver<(Vec<crate::explorer::FileItem>, usize)>>,
     pub explorer_needs_refresh: bool,
+    #[allow(clippy::type_complexity)]
     pub content_search_receiver: Option<Receiver<(String, u64, Vec<(PathBuf, usize, String)>)>>,
     pub content_search_seq: u64,
     pub fuzzy_files_receiver: Option<Receiver<Vec<PathBuf>>>,

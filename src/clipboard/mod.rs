@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 mod clipboard;
 
 // We abstract clipboard operations to handle cross-platform differences and 

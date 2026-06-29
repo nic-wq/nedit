@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 mod app;
 mod file_ops;
 mod fuzzy;

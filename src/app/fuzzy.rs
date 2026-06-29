@@ -350,9 +350,8 @@ impl App {
                 let content = self.buffers[self.current_buffer_idx].content.to_string();
                 if let Some(first_line) = content.lines().next() {
                     let trimmed = first_line.trim();
-                    if trimmed.starts_with("-- Name: ") {
-                        let name = trimmed[9..].trim();
-                        self.fuzzy_query = self.slugify(name);
+                    if let Some(name) = trimmed.strip_prefix("-- Name: ") {
+                        self.fuzzy_query = self.slugify(name.trim());
                     }
                 }
             }
@@ -591,8 +590,8 @@ impl App {
                         let name = if let Ok(content) = fs::read_to_string(entry.path()) {
                             if let Some(first_line) = content.lines().next() {
                                 let trimmed = first_line.trim();
-                                if trimmed.starts_with("-- ") {
-                                    trimmed[3..].trim().to_string()
+                                if let Some(name) = trimmed.strip_prefix("-- ") {
+                                    name.trim().to_string()
                                 } else {
                                     stem.clone()
                                 }
@@ -635,8 +634,8 @@ impl App {
                         let name = if let Ok(content) = fs::read_to_string(entry.path()) {
                             if let Some(first_line) = content.lines().next() {
                                 let trimmed = first_line.trim();
-                                if trimmed.starts_with("-- ") {
-                                    trimmed[3..].trim().to_string()
+                                if let Some(name) = trimmed.strip_prefix("-- ") {
+                                    name.trim().to_string()
                                 } else {
                                     stem.clone()
                                 }

@@ -31,6 +31,12 @@ fn default_theme() -> String {
     "NEdit Dark".to_string()
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Config {
     pub fn load() -> Self {
         let config_dir = dirs::config_dir()
@@ -39,13 +45,13 @@ impl Config {
         let config_path = config_dir.join("config.toml");
 
         if let Ok(content) = fs::read_to_string(&config_path) {
-            return Self::from_toml_with_defaults(&content).unwrap_or_else(|_| Self::default());
+            return Self::from_toml_with_defaults(&content).unwrap_or_else(|_| Self::new());
         }
 
-        Self::default()
+        Self::new()
     }
 
-    pub fn default() -> Self {
+    pub fn new() -> Self {
         let mut keybinds = HashMap::new();
         // We provide a comprehensive set of default keybindings so the editor is 
         // immediately usable "out of the box" without requiring initial configuration.
@@ -88,7 +94,7 @@ impl Config {
 
     pub fn get_keybind(&self, action: &str) -> String {
         self.keybinds.get(action).cloned().unwrap_or_else(|| {
-            Self::default()
+            Self::new()
                 .keybinds
                 .get(action)
                 .cloned()
@@ -97,7 +103,7 @@ impl Config {
     }
 
     fn from_toml_with_defaults(content: &str) -> Result<Self, toml::de::Error> {
-        let mut config = Self::default();
+        let mut config = Self::new();
         let value = toml::from_str::<toml::Value>(content)?;
 
         if let Some(enabled) = value

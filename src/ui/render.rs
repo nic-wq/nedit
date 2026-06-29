@@ -1255,8 +1255,8 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                             if let Ok(content) = std::fs::read_to_string(path) {
                                 if let Some(first) = content.lines().next() {
                                     let trimmed = first.trim();
-                                    if trimmed.starts_with("-- ") {
-                                        trimmed[3..].trim().to_string()
+                                    if let Some(name) = trimmed.strip_prefix("-- ") {
+                                        name.trim().to_string()
                                     } else {
                                         stem
                                     }

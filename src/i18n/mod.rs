@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 mod i18n;
 
 // The i18n module centralizes all user-facing strings, enabling easy localization
