@@ -379,10 +379,8 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 app.pending_buffer_idx = None;
             }
             KeyCode::Enter => {}
-            KeyCode::Backspace => {
-                if !app.fuzzy_query.is_empty() {
-                    app.fuzzy_query.pop();
-                }
+            KeyCode::Backspace if !app.fuzzy_query.is_empty() => {
+                app.fuzzy_query.pop();
             }
             KeyCode::Char('s') | KeyCode::Char('S') if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges => {
                 if let Some(idx) = app.pending_buffer_idx {
@@ -430,8 +428,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             app.clear_notification();
             app.is_fuzzy = false;
         }
-        KeyCode::Tab => {
-            if app.fuzzy_mode == crate::app::FuzzyMode::Move {
+        KeyCode::Tab if app.fuzzy_mode == crate::app::FuzzyMode::Move => {
                 if let (Some(old_path), Some(new_dir)) =
                     (app.pending_path.take(), app.move_dir.take())
                 {
@@ -454,17 +451,14 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     }
                 }
                 app.is_fuzzy = false;
-            }
         }
-        KeyCode::Up => {
-            if app.fuzzy_idx > 0 {
+        KeyCode::Up if app.fuzzy_idx > 0 => {
                 app.fuzzy_idx -= 1;
                 if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
                     if let Some(theme) = app.fuzzy_themes.get(app.fuzzy_idx) {
                         app.apply_theme(theme.clone());
                     }
                 }
-            }
         }
         KeyCode::Down => {
             let max = match app.fuzzy_mode {
