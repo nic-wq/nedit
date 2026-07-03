@@ -179,11 +179,20 @@ impl App {
     }
 
     pub fn toggle_explorer(&mut self) {
-        self.show_explorer = !self.show_explorer;
-        if self.show_explorer {
+        if !self.show_explorer {
+            // Hidden → show and focus explorer
+            self.show_explorer = true;
             self.refresh_explorer();
             self.focus = Focus::Explorer;
-        } else if self.focus == Focus::Explorer {
+        } else if self.focus == Focus::Editor {
+            // Visible + editor focused → just focus explorer
+            self.focus = Focus::Explorer;
+        } else {
+            // Visible + explorer focused → hide explorer, return to editor
+            if let Some(idx) = self.preview_buffer_idx.take() {
+                self.clear_preview(idx);
+            }
+            self.show_explorer = false;
             self.focus = Focus::Editor;
         }
     }

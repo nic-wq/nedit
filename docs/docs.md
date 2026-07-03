@@ -59,40 +59,40 @@ On first launch, NEdit creates the following directory structure:
 
 ### General (Configurable via `[keybinds]`)
 
-| Shortcut | Action |
-|----------|--------|
-| `CTRL + Q` | Quit |
-| `CTRL + E` | Toggle Explorer |
-| `CTRL + O` | Fuzzy Finder (Files) |
-| `CTRL + P` | Command Palette |
-| `CTRL + F` | Local Search (Current file) |
-| `CTRL + G` | Global Search (All files) |
-| `CTRL + ALT + T` | Theme Selection |
-| `CTRL + H` | Open Documentation Menu |
-| `CTRL + N` | New File (editor) / New Folder (explorer) |
-| `SHIFT + TAB` | Toggle Focus (Editor ↔ Explorer) |
+| Shortcut         | Action                                    |
+| ---------------- | ----------------------------------------- |
+| `CTRL + Q`       | Quit                                      |
+| `CTRL + B`       | Toggle Explorer (smart toggle)            |
+| `CTRL + O`       | Fuzzy Finder (Files)                      |
+| `CTRL + P`       | Command Palette                           |
+| `CTRL + F`       | Local Search (Current file)               |
+| `CTRL + G`       | Global Search (All files)                 |
+| `CTRL + ALT + T` | Theme Selection                           |
+| `CTRL + H`       | Open Documentation Menu                   |
+| `CTRL + N`       | New File (editor) / New Folder (explorer) |
+| `SHIFT + TAB`    | Toggle Focus (Editor ↔ Explorer)          |
 
 ### Editor (Configurable via `[keybinds]`)
 
-| Shortcut | Action |
-|----------|--------|
-| `CTRL + S` | Save File |
-| `CTRL + Z` | Undo |
-| `CTRL + Y` | Redo |
+| Shortcut   | Action              |
+| ---------- | ------------------- |
+| `CTRL + S` | Save File           |
+| `CTRL + Z` | Undo                |
+| `CTRL + Y` | Redo                |
 | `CTRL + L` | Select Current Line |
-| `CTRL + A` | Select All |
-| `CTRL + C` | Copy |
-| `CTRL + V` | Paste |
-| `CTRL + X` | Cut |
-| `CTRL + W` | Close Tab |
+| `CTRL + A` | Select All          |
+| `CTRL + C` | Copy                |
+| `CTRL + V` | Paste               |
+| `CTRL + X` | Cut                 |
+| `CTRL + W` | Close Tab           |
 
 ### Explorer (Configurable via `[keybinds]`)
 
-| Shortcut | Action |
-|----------|--------|
-| `SHIFT + O` | File Options (Rename/Move/Delete) — *only when Explorer is focused* |
-| `CTRL + ENTER` | Set selected directory as root |
-| `BACKSPACE` | Go to parent directory |
+| Shortcut       | Action                                                              |
+| -------------- | ------------------------------------------------------------------- |
+| `SHIFT + O`    | File Options (Rename/Move/Delete) — *only when Explorer is focused* |
+| `CTRL + ENTER` | Set selected directory as root                                      |
+| `BACKSPACE`    | Go to parent directory                                              |
 
 ### Hardcoded Shortcuts (Not Configurable)
 
@@ -100,57 +100,57 @@ These shortcuts are built into NEdit and cannot be remapped:
 
 #### Cursor Navigation (Editor)
 
-| Shortcut | Action |
-|----------|--------|
-| `UP` / `DOWN` / `LEFT` / `RIGHT` | Move cursor |
-| `SHIFT + UP/DOWN/LEFT/RIGHT` | Extend selection |
-| `CTRL + LEFT` | Move to previous word |
-| `CTRL + RIGHT` | Move to next word |
-| `HOME` | Move to beginning of line |
-| `END` | Move to end of line |
-| `CTRL + BACKSPACE` / `CTRL + H` | Delete word backward |
+| Shortcut                         | Action                    |
+| -------------------------------- | ------------------------- |
+| `UP` / `DOWN` / `LEFT` / `RIGHT` | Move cursor               |
+| `SHIFT + UP/DOWN/LEFT/RIGHT`     | Extend selection          |
+| `CTRL + LEFT`                    | Move to previous word     |
+| `CTRL + RIGHT`                   | Move to next word         |
+| `HOME`                           | Move to beginning of line |
+| `END`                            | Move to end of line       |
+| `CTRL + BACKSPACE` / `CTRL + H`  | Delete word backward      |
 
 #### Tab Management
 
-| Shortcut | Action |
-|----------|--------|
-| `CTRL + TAB` | Switch to next tab |
-| `CTRL + SHIFT + TAB` | Switch to previous tab |
-| `CTRL + ALT + LEFT` | Switch to previous tab |
-| `CTRL + ALT + RIGHT` | Switch to next tab |
-| `ALT + 1` through `ALT + 9` | Switch to tab 1–9 |
+| Shortcut                    | Action                 |
+| --------------------------- | ---------------------- |
+| `CTRL + TAB`                | Switch to next tab     |
+| `CTRL + SHIFT + TAB`        | Switch to previous tab |
+| `CTRL + ALT + LEFT`         | Switch to previous tab |
+| `CTRL + ALT + RIGHT`        | Switch to next tab     |
+| `ALT + 1` through `ALT + 9` | Switch to tab 1–9      |
 
 #### Autocomplete
 
-| Shortcut | Action |
-|----------|--------|
+| Shortcut        | Action                         |
+| --------------- | ------------------------------ |
 | `SHIFT + RIGHT` | Accept autocomplete suggestion |
-| `ESC` | Hide autocomplete suggestion |
+| `ESC`           | Hide autocomplete suggestion   |
 
 #### Fuzzy Finder
 
-| Shortcut | Action |
-|----------|--------|
-| `ESC` | Cancel / close fuzzy finder |
-| `UP` / `DOWN` | Navigate results |
-| `ENTER` | Confirm selection |
-| `BACKSPACE` | Delete last character in query |
+| Shortcut      | Action                         |
+| ------------- | ------------------------------ |
+| `ESC`         | Cancel / close fuzzy finder    |
+| `UP` / `DOWN` | Navigate results               |
+| `ENTER`       | Confirm selection              |
+| `BACKSPACE`   | Delete last character in query |
 
 #### Unsaved Changes Prompt
 
-| Shortcut | Action |
-|----------|--------|
-| `S` | Save and continue |
-| `D` | Discard changes |
+| Shortcut   | Action            |
+| ---------- | ----------------- |
+| `S`        | Save and continue |
+| `D`        | Discard changes   |
 
 #### Mouse
 
-| Action | Behavior |
-|--------|----------|
-| Scroll `UP` / `DOWN` | Scroll editor by 3 rows |
-| Left click (editor) | Place cursor at position. Double-click (within 500ms) selects word under cursor. |
-| Left click (explorer) | Select file/folder at row |
-| Click and drag (editor) | Extend text selection |
+| Action                  | Behavior                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| Scroll `UP` / `DOWN`    | Scroll editor by 3 rows                                                          |
+| Left click (editor)     | Place cursor at position. Double-click (within 500ms) selects word under cursor. |
+| Left click (explorer)   | Select file/folder at row                                                        |
+| Click and drag (editor) | Extend text selection                                                            |
 
 ## UI Features
 
@@ -239,17 +239,17 @@ Error and info messages appear as a popup bar above the status bar. They auto-di
 
 ## File Explorer
 
-The file explorer (`CTRL+E`) shows a tree view of your project or the current directory.
+The file explorer (`CTRL+B`) shows a tree view of your project or the current directory.
 
 ### Navigation
 
-| Shortcut | Action |
-|----------|--------|
-| `UP` / `DOWN` | Move selection |
-| `ENTER` | Open file / Toggle directory expansion |
-| `BACKSPACE` | Go to parent directory |
-| `CTRL + ENTER` | Set selected directory as root |
-| `SHIFT + O` | Open file options menu |
+| Shortcut       | Action                                 |
+| -------------- | -------------------------------------- |
+| `UP` / `DOWN`  | Move selection                         |
+| `ENTER`        | Open file / Toggle directory expansion |
+| `BACKSPACE`    | Go to parent directory                 |
+| `CTRL + ENTER` | Set selected directory as root         |
+| `SHIFT + O`    | Open file options menu                 |
 
 ### Features
 
@@ -272,24 +272,24 @@ The fuzzy finder is a central interaction pattern used for file opening, searchi
 
 ### Modes
 
-| Mode | Trigger | Description |
-|------|---------|-------------|
-| **Files** | `CTRL + O` | Fuzzy file finder — search files in the project tree |
-| **Content** | `CTRL + G` | Global full-text search across all project files |
-| **Local** | `CTRL + F` | Search within the current file |
-| **Themes** | `CTRL + ALT + T` | Select and preview color themes |
-| **Command Palette** | `CTRL + P` | Execute editor commands (22 actions — see below) |
-| **Save As** | Via Command Palette | Save current file with a new name/path |
-| **File Options** | `SHIFT + O` (explorer) | Rename, Move, Delete, or Set as Root |
-| **Rename** | Via File Options | Rename a file or directory |
-| **Delete Confirm** | Via File Options | Confirm file deletion |
-| **Move** | Via File Options | Move file to another directory |
-| **New Folder** | Via File Options | Create a new folder |
-| **Unsaved Changes** | On close/quit | Save, Discard, or Cancel prompt |
-| **Doc Select** | `CTRL + H` | Choose between General docs, Lua API, or Keybinds |
-| **Run Script** | Via Command Palette | Select and run a Lua script |
-| **Edit Script** | Via Command Palette | Select and edit a Lua script |
-| **Delete Script** | Via Command Palette | Delete a Lua script |
+| Mode                | Trigger                | Description                                          |
+| ------------------- | ---------------------- | ---------------------------------------------------- |
+| **Files**           | `CTRL + O`             | Fuzzy file finder — search files in the project tree |
+| **Content**         | `CTRL + G`             | Global full-text search across all project files     |
+| **Local**           | `CTRL + F`             | Search within the current file                       |
+| **Themes**          | `CTRL + ALT + T`       | Select and preview color themes                      |
+| **Command Palette** | `CTRL + P`             | Execute editor commands (22 actions — see below)     |
+| **Save As**         | Via Command Palette    | Save current file with a new name/path               |
+| **File Options**    | `SHIFT + O` (explorer) | Rename, Move, Delete, or Set as Root                 |
+| **Rename**          | Via File Options       | Rename a file or directory                           |
+| **Delete Confirm**  | Via File Options       | Confirm file deletion                                |
+| **Move**            | Via File Options       | Move file to another directory                       |
+| **New Folder**      | Via File Options       | Create a new folder                                  |
+| **Unsaved Changes** | On close/quit          | Save, Discard, or Cancel prompt                      |
+| **Doc Select**      | `CTRL + H`             | Choose between General docs, Lua API, or Keybinds    |
+| **Run Script**      | Via Command Palette    | Select and run a Lua script                          |
+| **Edit Script**     | Via Command Palette    | Select and edit a Lua script                         |
+| **Delete Script**   | Via Command Palette    | Delete a Lua script                                  |
 
 ### Global Search Details (`CTRL + G`)
 
@@ -305,30 +305,30 @@ The fuzzy finder is a central interaction pattern used for file opening, searchi
 
 The command palette (`CTRL+P`) provides access to 22 actions:
 
-| Command | Default Keybind |
-|---------|-----------------|
-| Save | `CTRL+S` |
-| New File | `CTRL+N` |
-| Open File | `CTRL+O` |
-| Close Tab | `CTRL+W` |
-| Toggle Explorer | `CTRL+E` |
-| Global Search | `CTRL+G` |
-| Local Search | `CTRL+F` |
-| Switch Theme | `CTRL+ALT+T` |
-| New Lua Script | — |
-| Run Lua Script | — |
-| Edit Lua Script | — |
-| Delete Lua Script | — |
-| Open Live Script | — |
-| Undo Last Script | — |
-| Quit | `CTRL+Q` |
-| Undo | `CTRL+Z` |
-| Redo | `CTRL+Y` |
-| Copy | `CTRL+C` |
-| Paste | `CTRL+V` |
-| Cut | `CTRL+X` |
-| Select All | `CTRL+A` |
-| Open Help | `CTRL+H` |
+| Command           | Default Keybind   |
+| ----------------- | ----------------- |
+| Save              | `CTRL+S`          |
+| New File          | `CTRL+N`          |
+| Open File         | `CTRL+O`          |
+| Close Tab         | `CTRL+W`          |
+| Toggle Explorer   | `CTRL+B`          |
+| Global Search     | `CTRL+G`          |
+| Local Search      | `CTRL+F`          |
+| Switch Theme      | `CTRL+ALT+T`      |
+| New Lua Script    | —                 |
+| Run Lua Script    | —                 |
+| Edit Lua Script   | —                 |
+| Delete Lua Script | —                 |
+| Open Live Script  | —                 |
+| Undo Last Script  | —                 |
+| Quit              | `CTRL+Q`          |
+| Undo              | `CTRL+Z`          |
+| Redo              | `CTRL+Y`          |
+| Copy              | `CTRL+C`          |
+| Paste             | `CTRL+V`          |
+| Cut               | `CTRL+X`          |
+| Select All        | `CTRL+A`          |
+| Open Help         | `CTRL+H`          |
 
 ## Theme System
 
@@ -353,16 +353,16 @@ The command palette (`CTRL+P`) provides access to 22 actions:
 
 NEdit maps Syntect theme settings to 8 UI colors with Catppuccin-like fallbacks:
 
-| UI Element | Syntect Setting (fallback chain) |
-|------------|----------------------------------|
-| `bg` | `background` |
-| `fg` | `foreground` |
-| `sel` | `selection` |
-| `accent` | `accent` → `caret` → `selection_foreground` → `foreground` |
-| `surface` | `gutter` → `line_highlight` → `selection` → `background` |
-| `error` | `highlight` → `find_highlight` → `accent` |
-| `indent_guide` | `gutter` → `line_highlight` → `selection` |
-| `active_indent_guide` | Same as `accent` |
+| UI Element            | Syntect Setting (fallback chain)                           |
+| --------------------- | ---------------------------------------------------------- |
+| `bg`                  | `background`                                               |
+| `fg`                  | `foreground`                                               |
+| `sel`                 | `selection`                                                |
+| `accent`              | `accent` → `caret` → `selection_foreground` → `foreground` |
+| `surface`             | `gutter` → `line_highlight` → `selection` → `background`   |
+| `error`               | `highlight` → `find_highlight` → `accent`                  |
+| `indent_guide`        | `gutter` → `line_highlight` → `selection`                  |
+| `active_indent_guide` | Same as `accent`                                           |
 
 ## Internationalization (i18n)
 
@@ -387,34 +387,34 @@ quit = "Sair"
 
 ### Available Translation Keys
 
-| Key | Default (English) | Context |
-|-----|-------------------|---------|
-| `welcome_to_nedit` | `Welcome to NEdit` | Welcome screen heading |
-| `select_themes` | `to select themes` | Shortcut hint |
-| `for_help` | `for help` | Shortcut hint |
-| `explorer` | `Explorer` | Mode label |
-| `no_name` | `[No Name]` | Untitled buffer |
-| `read_only` | `[READ ONLY]` | Read-only indicator |
-| `theme` | `Theme` | Theme mode label |
-| `row` | `Row` | Cursor position label |
-| `col` | `Col` | Cursor position label |
-| `new_file` | `New File` | Mode label |
-| `file_explorer` | `File Explorer` | Mode label |
-| `open_file_fuzzy` | `Open File (Fuzzy)` | Mode label |
-| `global_search` | `Global Search` | Mode label |
-| `select_theme` | `Select Theme` | Mode label |
-| `global_search_content` | `Global Search (Content)` | Mode label |
-| `local_search_file` | `Local Search (Current File)` | Mode label |
-| `fuzzy_finder_files` | `Fuzzy Finder (Files)` | Mode label |
-| `select_color_theme` | `Select Color Theme` | Mode label |
-| `save_as` | `Save As` | Mode label |
-| `rename` | `Rename File` | Mode label |
-| `delete_confirm` | `Delete File?` | Mode label |
-| `file_options` | `File Options` | Mode label |
-| `command_palette` | `Command Palette` | Mode label |
-| `move_file` | `Move File` | Mode label |
-| `unsaved_changes` | `Unsaved Changes` | Mode label |
-| `full_docs` | *(embedded docs.md)* | Documentation content |
+| Key                     | Default (English)             | Context                |
+| ----------------------- | ----------------------------- | ---------------------- |
+| `welcome_to_nedit`      | `Welcome to NEdit`            | Welcome screen heading |
+| `select_themes`         | `to select themes`            | Shortcut hint          |
+| `for_help`              | `for help`                    | Shortcut hint          |
+| `explorer`              | `Explorer`                    | Mode label             |
+| `no_name`               | `[No Name]`                   | Untitled buffer        |
+| `read_only`             | `[READ ONLY]`                 | Read-only indicator    |
+| `theme`                 | `Theme`                       | Theme mode label       |
+| `row`                   | `Row`                         | Cursor position label  |
+| `col`                   | `Col`                         | Cursor position label  |
+| `new_file`              | `New File`                    | Mode label             |
+| `file_explorer`         | `File Explorer`               | Mode label             |
+| `open_file_fuzzy`       | `Open File (Fuzzy)`           | Mode label             |
+| `global_search`         | `Global Search`               | Mode label             |
+| `select_theme`          | `Select Theme`                | Mode label             |
+| `global_search_content` | `Global Search (Content)`     | Mode label             |
+| `local_search_file`     | `Local Search (Current File)` | Mode label             |
+| `fuzzy_finder_files`    | `Fuzzy Finder (Files)`        | Mode label             |
+| `select_color_theme`    | `Select Color Theme`          | Mode label             |
+| `save_as`               | `Save As`                     | Mode label             |
+| `rename`                | `Rename File`                 | Mode label             |
+| `delete_confirm`        | `Delete File?`                | Mode label             |
+| `file_options`          | `File Options`                | Mode label             |
+| `command_palette`       | `Command Palette`             | Mode label             |
+| `move_file`             | `Move File`                   | Mode label             |
+| `unsaved_changes`       | `Unsaved Changes`             | Mode label             |
+| `full_docs`             | *(embedded docs.md)*          | Documentation content  |
 
 ## Icon System
 

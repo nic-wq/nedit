@@ -62,7 +62,7 @@ impl Config {
         keybinds.insert("global_search".to_string(), "ctrl+g".to_string());
         keybinds.insert("local_search".to_string(), "ctrl+f".to_string());
         keybinds.insert("save".to_string(), "ctrl+s".to_string());
-        keybinds.insert("toggle_explorer".to_string(), "ctrl+e".to_string());
+        keybinds.insert("toggle_explorer".to_string(), "ctrl+b".to_string());
         keybinds.insert("theme_select".to_string(), "ctrl+alt+t".to_string());
         keybinds.insert("toggle_focus".to_string(), "shift+backtab".to_string());
         keybinds.insert("close_tab".to_string(), "ctrl+w".to_string());
