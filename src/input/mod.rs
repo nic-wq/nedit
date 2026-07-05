@@ -967,13 +967,6 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
     }
 
     match (key.code, key.modifiers) {
-        (KeyCode::Right, m)
-            if !app.buffers[current_idx].autocomplete_options.is_empty()
-                && m == KeyModifiers::SHIFT =>
-        {
-            app.buffers[current_idx].accept_autocomplete();
-            return;
-        }
         (KeyCode::Esc, _) if app.buffers[current_idx].show_autocomplete_list => {
             app.buffers[current_idx].show_autocomplete_list = false;
         }
@@ -1038,11 +1031,15 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
             }
         }
         (KeyCode::Enter, _) if !app.buffers[current_idx].is_read_only => {
-            let buffer = &mut app.buffers[current_idx];
-            if buffer.selection_start.is_some() {
-                buffer.delete_selection();
+            let buf = &mut app.buffers[current_idx];
+            if !buf.autocomplete_options.is_empty() {
+                buf.accept_autocomplete();
+                return;
             }
-            buffer.insert_char('\n');
+            if buf.selection_start.is_some() {
+                buf.delete_selection();
+            }
+            buf.insert_char('\n');
         }
         (KeyCode::Backspace, _) if !app.buffers[current_idx].is_read_only => {
             let buffer = &mut app.buffers[current_idx];
@@ -1075,6 +1072,10 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
         }
         (KeyCode::Tab, KeyModifiers::NONE) if !app.buffers[current_idx].is_read_only => {
             let buffer = &mut app.buffers[current_idx];
+            if !buffer.autocomplete_options.is_empty() {
+                buffer.accept_autocomplete();
+                return;
+            }
             for _ in 0..4 {
                 buffer.insert_char(' ');
             }
