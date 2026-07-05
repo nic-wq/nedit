@@ -1,79 +1,13 @@
 use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use walkdir::WalkDir;
 
+use super::matcher::{FuzzyFileResult, FuzzyMatcher};
 use super::{App, FuzzyMode};
-
-// Pre-processed query pattern to avoid per-candidate lowercasing/allocation
-struct PreparedPattern {
-    ascii_lower: Option<Vec<u8>>,
-    chars: Vec<char>,
-}
-
-impl PreparedPattern {
-    fn new(q: &str) -> Self {
-        let lower = q.to_lowercase();
-        let ascii_lower = if lower.is_ascii() {
-            Some(lower.as_bytes().to_vec())
-        } else {
-            None
-        };
-        let chars = lower.chars().collect();
-        Self { ascii_lower, chars }
-    }
-
-    fn is_empty(&self) -> bool {
-        if let Some(ref a) = self.ascii_lower {
-            a.is_empty()
-        } else {
-            self.chars.is_empty()
-        }
-    }
-}
-
-// Fast ASCII subsequence check without allocation
-fn is_subsequence_ascii(q: &[u8], t: &[u8]) -> bool {
-    if q.is_empty() {
-        return true;
-    }
-    let mut qi = 0;
-    for &b in t {
-        if b.to_ascii_lowercase() == q[qi] {
-            qi += 1;
-            if qi == q.len() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn is_subsequence_chars(q: &[char], target: &str) -> bool {
-    if q.is_empty() {
-        return true;
-    }
-    let mut qi = 0;
-    for c in target.chars().flat_map(|c| c.to_lowercase()) {
-        if c == q[qi] {
-            qi += 1;
-            if qi == q.len() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn prepared_matches_name(p: &PreparedPattern, name: &str) -> bool {
-    if let Some(ref a) = p.ascii_lower {
-        if name.is_ascii() {
-            return is_subsequence_ascii(a, name.as_bytes());
-        }
-    }
-    is_subsequence_chars(&p.chars, name)
-}
 
 // Binary file extensions to skip during indexing and content search
 const BINARY_EXTENSIONS: &[&str] = &[
@@ -126,7 +60,113 @@ fn contains_ascii_insensitive(haystack: &str, needle: &str) -> bool {
     false
 }
 
+/// Probe the filesystem directly for files matching a path-like query.
+///
+/// This provides **instant** results without waiting for the full file index.
+/// If the query looks like a path (contains `/` or could be a partial path),
+/// we do a `read_dir()` on the parent directory and filter by basename prefix.
+///
+/// Returns `(relative_path, full_path)` pairs.
+fn probe_filesystem(root: &Path, query: &str) -> Vec<(String, PathBuf)> {
+    if query.is_empty() || query.starts_with('@') {
+        return Vec::new();
+    }
+
+    // Normalise — strip trailing slashes for predictable parent logic.
+    let normalised = query.trim_end_matches('/');
+    if normalised.is_empty() {
+        return Vec::new();
+    }
+
+    let abs = root.join(normalised);
+
+    // Case 1: the query points to an existing directory → list its files.
+    if let Ok(entries) = fs::read_dir(&abs) {
+        return entries
+            .flatten()
+            .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+            .filter(|e| {
+                let fname = e.file_name();
+                let name = fname.to_string_lossy();
+                !name.starts_with('.')
+            })
+            .take(30)
+            .map(|e| {
+                let full = e.path();
+                let name = e.file_name().to_string_lossy().to_string();
+                let rel = format!("{}/{}", normalised, name);
+                (rel, full)
+            })
+            .collect();
+    }
+
+    // Case 2: the query is a partial path — find parent, filter by prefix.
+    let parent = match abs.parent() {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+    let basename = match abs.file_name().and_then(|n| n.to_str()) {
+        Some(b) => b,
+        None => return Vec::new(),
+    };
+    let rel_parent = match parent.strip_prefix(root) {
+        Ok(p) => p.to_string_lossy().replace('\\', "/"),
+        Err(_) => return Vec::new(), // parent is outside the project root
+    };
+
+    let lower_needle = basename.to_lowercase();
+    let Ok(entries) = fs::read_dir(parent) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter(|e| {
+            let fname = e.file_name();
+            let name = fname.to_string_lossy();
+            !name.starts_with('.') && name.to_lowercase().starts_with(&lower_needle)
+        })
+        .take(30)
+        .map(|e| {
+            let full = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            let rel = if rel_parent.is_empty() {
+                name
+            } else {
+                format!("{}/{}", rel_parent, name)
+            };
+            (rel, full)
+        })
+        .collect()
+}
+
 impl App {
+    fn cancel_pending_file_search(&mut self) {
+        if let Some(cancel) = &self.fuzzy_files_cancel {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        self.fuzzy_files_cancel = None;
+        self.fuzzy_files_receiver = None;
+    }
+
+    fn sync_visible_file_results(&mut self) {
+        let mut seen = std::collections::HashSet::new();
+        self.fuzzy_file_results
+            .sort_by_key(|r| std::cmp::Reverse(r.score));
+        self.fuzzy_file_results
+            .retain(|result| seen.insert(result.full_path.clone()));
+        self.fuzzy_file_results.truncate(self.fuzzy_limit);
+        self.fuzzy_results = self
+            .fuzzy_file_results
+            .iter()
+            .map(|r| r.full_path.clone())
+            .collect();
+        self.fuzzy_idx = self
+            .fuzzy_idx
+            .min(self.fuzzy_results.len().saturating_sub(1));
+    }
+
     pub(crate) fn format_search_dir_for_query(&self, path: &Path, prefer_home: bool) -> String {
         if prefer_home {
             if let Ok(home) = std::env::var("HOME") {
@@ -319,18 +359,6 @@ impl App {
         results
     }
 
-    fn fuzzy_file_name_matches(path: &Path, pattern: &PreparedPattern) -> bool {
-        // Avoid per-candidate lowercasing by using the pre-processed pattern
-        if pattern.is_empty() {
-            return true;
-        }
-        let name = path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        prepared_matches_name(pattern, &name)
-    }
-
     // Debounce: schedule fuzzy update, executes after 80ms of typing pause
     pub fn schedule_fuzzy_update(&mut self, reset_idx: bool) {
         self.fuzzy_input_timestamp = Some(std::time::Instant::now());
@@ -383,6 +411,7 @@ impl App {
 
     pub(crate) fn invalidate_file_index(&mut self) {
         self.all_files = std::sync::Arc::new(Vec::new());
+        self.fuzzy_file_results = Vec::new();
         self.all_files_ready = false;
     }
 
@@ -465,11 +494,35 @@ impl App {
             }
         }
 
-        // Collect results from background file finder thread (Ctrl+O)
+        // Collect incremental batches from background file finder (Ctrl+O).
+        // The thread sends multiple batches during iteration and the sender drops
+        // when it exits — we accumulate, sort, and truncate on each batch.
         if let Some(rx) = &self.fuzzy_files_receiver {
-            if let Ok(results) = rx.try_recv() {
-                self.fuzzy_files_receiver = None;
-                self.fuzzy_results = results;
+            use std::sync::mpsc::TryRecvError;
+            let mut got_batch = false;
+            loop {
+                match rx.try_recv() {
+                    Ok(batch) => {
+                        got_batch = true;
+                        for (rel, full, score, positions) in batch {
+                            self.fuzzy_file_results.push(FuzzyFileResult {
+                                relative_path: rel,
+                                full_path: full,
+                                score,
+                                match_positions: positions,
+                            });
+                        }
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        // Thread finished: stop polling this channel.
+                        self.fuzzy_files_receiver = None;
+                        break;
+                    }
+                }
+            }
+            if got_batch {
+                self.sync_visible_file_results();
                 self.needs_redraw = true;
             }
         }
@@ -497,7 +550,7 @@ impl App {
         let explorer_root = self.explorer.root.clone();
 
         std::thread::spawn(move || {
-            let files: Vec<PathBuf> = WalkDir::new(&root)
+            let files: Vec<(String, PathBuf)> = WalkDir::new(&root)
                 .into_iter()
                 .filter_entry(|e| {
                     let path = e.path();
@@ -509,7 +562,15 @@ impl App {
                 })
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
-                .map(|e| e.path().to_path_buf())
+                .map(|e| {
+                    let full = e.path().to_path_buf();
+                    let relative = full
+                        .strip_prefix(&root)
+                        .unwrap_or(&full)
+                        .to_string_lossy()
+                        .to_string();
+                    (relative, full)
+                })
                 .collect();
             let _ = tx.send(files);
         });
@@ -693,43 +754,137 @@ impl App {
             self.fuzzy_global_results = Vec::new();
             if self.fuzzy_mode == FuzzyMode::Files {
                 if let Some(suggestions) = self.scoped_dir_suggestions() {
+                    self.cancel_pending_file_search();
                     self.fuzzy_results = suggestions;
+                    self.fuzzy_file_results = Vec::new();
                     if reset_idx {
                         self.fuzzy_idx = 0;
                     }
                     return;
                 }
 
-                // Background: run file finder in a thread to keep UI responsive
-                if self.fuzzy_files_receiver.is_some() {
-                    return; // search already in progress, skip
+                if query.is_empty() {
+                    self.cancel_pending_file_search();
+                    self.fuzzy_results = Vec::new();
+                    self.fuzzy_file_results = Vec::new();
+                    if reset_idx {
+                        self.fuzzy_idx = 0;
+                    }
+                    return;
                 }
 
-                if let Some((query, search_root)) = self.resolve_file_search_scope() {
-                    let pattern = PreparedPattern::new(&query);
-                    let limit = self.fuzzy_limit;
-                    let (tx, rx) = std::sync::mpsc::channel();
-                    self.fuzzy_files_receiver = Some(rx);
+                // Cancel the previous worker before replacing the visible state.
+                self.cancel_pending_file_search();
+                self.fuzzy_file_results.clear();
+                self.fuzzy_results.clear();
+
+                // ------------------------------------------------------------------
+                // 1. Prefix probing: instant results via direct filesystem access.
+                // ------------------------------------------------------------------
+                let probe_hits = probe_filesystem(&self.explorer.root, &query);
+                if !probe_hits.is_empty() {
+                    let mut m = FuzzyMatcher::new(&query);
+                    let scored: Vec<FuzzyFileResult> = probe_hits
+                        .iter()
+                        .filter_map(|(rel, full)| {
+                            let fm = m.match_target(rel);
+                            if fm.matched {
+                                Some(FuzzyFileResult {
+                                    relative_path: rel.clone(),
+                                    full_path: full.clone(),
+                                    score: fm.score,
+                                    match_positions: fm.match_positions,
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    self.fuzzy_file_results = scored;
+                    self.sync_visible_file_results();
+                    if reset_idx {
+                        self.fuzzy_idx = 0;
+                    }
+                    self.needs_redraw = true;
+                } else {
+                    self.needs_redraw = true;
+                }
+
+                // ------------------------------------------------------------------
+                // 2. Cancel any previous search so stale results don't arrive later.
+                // ------------------------------------------------------------------
+                self.fuzzy_files_seq += 1;
+                let cancel = Arc::new(AtomicBool::new(false));
+                self.fuzzy_files_cancel = Some(cancel.clone());
+
+                // ------------------------------------------------------------------
+                // 3. Start a new background search that sends incremental batches.
+                // ------------------------------------------------------------------
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.fuzzy_files_receiver = Some(rx);
+                let limit = self.fuzzy_limit;
+                let query_for_thread = query.clone();
+
+                if let Some((query_scope, search_root)) = self.resolve_file_search_scope() {
+                    // Scoped search: walk + score in one thread, send batches.
                     std::thread::spawn(move || {
-                        let results: Vec<PathBuf> = Self::scoped_search_files(search_root)
-                            .filter(|p| Self::fuzzy_file_name_matches(p, &pattern))
-                            .take(limit)
-                            .collect();
-                        let _ = tx.send(results);
+                        let mut batch: Vec<(String, PathBuf, i32, Vec<usize>)> = Vec::new();
+                        let mut count = 0;
+                        for full in Self::scoped_search_files(search_root.clone()) {
+                            if cancel.load(Ordering::Relaxed) {
+                                return;
+                            }
+                            let relative = full
+                                .strip_prefix(&search_root)
+                                .unwrap_or(&full)
+                                .to_string_lossy()
+                                .to_string();
+                            let mut m = FuzzyMatcher::new(&query_scope);
+                            let fm = m.match_target(&relative);
+                            if fm.matched {
+                                batch.push((relative, full, fm.score, fm.match_positions));
+                                count += 1;
+                            }
+                            // Send batch every 15 results or at limit.
+                            if batch.len() >= 15 || count >= limit {
+                                let _ = tx.send(batch);
+                                batch = Vec::new();
+                            }
+                            if count >= limit {
+                                // Flush remaining
+                                if !batch.is_empty() {
+                                    let _ = tx.send(batch);
+                                }
+                                return;
+                            }
+                        }
+                        // Flush final partial batch.
+                        if !batch.is_empty() {
+                            let _ = tx.send(batch);
+                        }
                     });
                 } else {
-                    let pattern = PreparedPattern::new(&query);
+                    // Full search against the already-collected file index.
                     let files = self.all_files.clone();
-                    let limit = self.fuzzy_limit;
-                    let (tx, rx) = std::sync::mpsc::channel();
-                    self.fuzzy_files_receiver = Some(rx);
                     std::thread::spawn(move || {
-                        let results: Vec<PathBuf> = files
-                            .iter()
-                            .filter(|p| Self::fuzzy_file_name_matches(p, &pattern))
-                            .take(limit).cloned()
-                            .collect();
-                        let _ = tx.send(results);
+                        let mut m = FuzzyMatcher::new(&query_for_thread);
+                        let mut batch: Vec<(String, PathBuf, i32, Vec<usize>)> = Vec::new();
+                        for (rel, full) in files.iter() {
+                            if cancel.load(Ordering::Relaxed) {
+                                return;
+                            }
+                            let fm = m.match_target(rel);
+                            if fm.matched {
+                                batch.push((rel.clone(), full.clone(), fm.score, fm.match_positions));
+                                if batch.len() >= 15 {
+                                    let _ = tx.send(batch);
+                                    batch = Vec::new();
+                                }
+                            }
+                        }
+                        if !batch.is_empty() {
+                            let _ = tx.send(batch);
+                        }
                     });
                 }
             } else if self.fuzzy_mode == FuzzyMode::Content {
@@ -770,7 +925,7 @@ impl App {
                             )
                         } else {
                             Self::search_content_in_files(
-                                files.iter().cloned(),
+                                files.iter().map(|(_, full)| full.clone()),
                                 &query_for_search,
                                 limit,
                             )

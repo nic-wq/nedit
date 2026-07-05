@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::{Instant, UNIX_EPOCH};
@@ -9,6 +10,7 @@ use ratatui::layout::Rect;
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
+use crate::app::matcher::FuzzyFileResult;
 use crate::buffer::EditorBuffer;
 use crate::config::Config;
 use crate::explorer::FileExplorer;
@@ -35,9 +37,10 @@ pub struct App {
     pub fuzzy_mode: crate::app::FuzzyMode,
     pub fuzzy_query: String,
     pub fuzzy_results: Vec<PathBuf>,
+    pub fuzzy_file_results: Vec<FuzzyFileResult>,
     pub fuzzy_lines: Vec<(usize, String)>,
     pub fuzzy_global_results: Vec<(PathBuf, usize, String)>,
-    pub all_files: Arc<Vec<PathBuf>>,
+    pub all_files: Arc<Vec<(String, PathBuf)>>,
     pub all_files_ready: bool,
     pub fuzzy_idx: usize,
     pub original_theme: String,
@@ -55,13 +58,16 @@ pub struct App {
     pub watcher: Option<RecommendedWatcher>,
     pub fs_event_receiver: Receiver<notify::Result<notify::Event>>,
     pub syntax_set_receiver: Option<Receiver<SyntaxSet>>,
-    pub indexed_files_receiver: Option<Receiver<Vec<PathBuf>>>,
+    pub indexed_files_receiver: Option<Receiver<Vec<(String, PathBuf)>>>,
     pub explorer_refresh_receiver: Option<Receiver<(Vec<crate::explorer::FileItem>, usize)>>,
     pub explorer_needs_refresh: bool,
     #[allow(clippy::type_complexity)]
     pub content_search_receiver: Option<Receiver<(String, u64, Vec<(PathBuf, usize, String)>)>>,
     pub content_search_seq: u64,
-    pub fuzzy_files_receiver: Option<Receiver<Vec<PathBuf>>>,
+    #[allow(clippy::type_complexity)]
+    pub fuzzy_files_receiver: Option<Receiver<Vec<(String, PathBuf, i32, Vec<usize>)>>>,
+    pub fuzzy_files_seq: u64,
+    pub fuzzy_files_cancel: Option<Arc<AtomicBool>>,
     pub fuzzy_input_timestamp: Option<Instant>,
     pub fuzzy_input_reset_idx: bool,
     pub explorer_area: Rect,
@@ -157,6 +163,7 @@ impl App {
             fuzzy_mode: crate::app::FuzzyMode::Files,
             fuzzy_query: String::new(),
             fuzzy_results: Vec::new(),
+            fuzzy_file_results: Vec::new(),
             fuzzy_lines: Vec::new(),
             fuzzy_global_results: Vec::new(),
             all_files: Arc::new(Vec::new()),
@@ -183,6 +190,8 @@ impl App {
             content_search_receiver: None,
             content_search_seq: 0,
             fuzzy_files_receiver: None,
+            fuzzy_files_seq: 0,
+            fuzzy_files_cancel: None,
             fuzzy_input_timestamp: None,
             fuzzy_input_reset_idx: false,
             explorer_area: Rect::default(),

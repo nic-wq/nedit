@@ -1293,6 +1293,56 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                     })
                     .collect()
             }
+        } else if app.fuzzy_mode == FuzzyMode::Files {
+            if app.fuzzy_file_results.is_empty() {
+                vec![]
+            } else {
+                let safe_start = start_idx.min(app.fuzzy_file_results.len().saturating_sub(1));
+                let end_idx = (safe_start + list_height).min(app.fuzzy_file_results.len());
+                app.fuzzy_file_results[safe_start..end_idx]
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, fr)| {
+                        let i = safe_start + idx;
+                        let is_selected = i == app.fuzzy_idx;
+
+                        let icon = app.icon_registry.get_icon(&fr.full_path, fr.full_path.is_dir(), false);
+
+                        // Build highlighted spans for the relative path.
+                        let match_set: std::collections::HashSet<usize> =
+                            fr.match_positions.iter().copied().collect();
+                        let mut spans = Vec::new();
+                        spans.push(Span::raw(format!(" {} ", icon)));
+
+                        for (ci, ch) in fr.relative_path.char_indices() {
+                            let style = if is_selected {
+                                if match_set.contains(&ci) {
+                                    Style::default()
+                                        .bg(colors.sel)
+                                        .fg(colors.fg)
+                                        .add_modifier(Modifier::BOLD)
+                                } else {
+                                    Style::default().bg(colors.sel).fg(colors.fg)
+                                }
+                            } else {
+                                if match_set.contains(&ci) {
+                                    Style::default().fg(colors.accent).add_modifier(Modifier::BOLD)
+                                } else {
+                                    Style::default().fg(colors.fg)
+                                }
+                            };
+                            spans.push(Span::styled(ch.to_string(), style));
+                        }
+
+                        let line_style = if is_selected {
+                            Style::default().bg(colors.sel).fg(colors.accent)
+                        } else {
+                            Style::default().fg(colors.fg)
+                        };
+                        ListItem::new(Line::from(spans)).style(line_style)
+                    })
+                    .collect()
+            }
         } else if app.fuzzy_results.is_empty() {
             vec![]
         } else {

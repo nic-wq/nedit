@@ -3,6 +3,7 @@ mod app;
 mod file_ops;
 mod fuzzy;
 mod live_script;
+pub mod matcher;
 mod scripting;
 mod theme;
 pub mod types;
