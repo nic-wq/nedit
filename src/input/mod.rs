@@ -241,34 +241,19 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    if app.config.matches(key, "live_script_next") {
-        if app.live_script_mode {
-            if let (Some(target), Some(script)) =
-                (app.target_buffer_idx, app.live_script_buffer_idx)
-            {
-                app.current_buffer_idx = if app.current_buffer_idx == target {
-                    script
-                } else {
-                    target
-                };
+    // Ctrl+Alt+←/→: toggle painel no live script (funciona de qualquer buffer)
+    if app.live_script_mode {
+        match (key.code, key.modifiers) {
+            (KeyCode::Left, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                app.toggle_live_script_pane();
+                return;
             }
-        }
-        return;
-    }
-
-    if app.config.matches(key, "live_script_prev") {
-        if app.live_script_mode {
-            if let (Some(target), Some(script)) =
-                (app.target_buffer_idx, app.live_script_buffer_idx)
-            {
-                app.current_buffer_idx = if app.current_buffer_idx == script {
-                    target
-                } else {
-                    script
-                };
+            (KeyCode::Right, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                app.toggle_live_script_pane();
+                return;
             }
+            _ => {}
         }
-        return;
     }
 
     let can_switch_tabs = !app.live_script_mode

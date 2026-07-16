@@ -75,11 +75,6 @@ impl Config {
         keybinds.insert("select_line".to_string(), "ctrl+l".to_string());
         keybinds.insert("open_help".to_string(), "ctrl+h".to_string());
         keybinds.insert("run_live_script".to_string(), "f9".to_string());
-        keybinds.insert(
-            "live_script_next".to_string(),
-            "shift+alt+right".to_string(),
-        );
-        keybinds.insert("live_script_prev".to_string(), "shift+alt+left".to_string());
         keybinds.insert("set_as_root".to_string(), "ctrl+enter".to_string());
 
         Self {
@@ -179,8 +174,6 @@ impl Config {
             "select_line",
             "open_help",
             "run_live_script",
-            "live_script_next",
-            "live_script_prev",
             "set_as_root",
         ]
     }

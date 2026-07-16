@@ -812,18 +812,12 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         " WELCOME "
     } else if app.is_fuzzy {
         " FUZZY "
+    } else if app.live_script_mode && app.focus == Focus::Editor {
+        " LIVE SCRIPT "
     } else {
         match app.focus {
             Focus::Explorer => " EXPLORER ",
-            Focus::Editor => {
-                if app.live_script_mode
-                    && Some(app.current_buffer_idx) == app.live_script_buffer_idx
-                {
-                    " SCRIPT "
-                } else {
-                    " EDITOR "
-                }
-            }
+            Focus::Editor => " EDITOR ",
         }
     };
     let mode_color = colors.accent;
@@ -907,6 +901,16 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         ]
     } else if app.is_fuzzy {
         vec![("Enter".to_string(), "Select"), ("Esc".to_string(), "Close")]
+    } else if app.live_script_mode && app.focus == Focus::Editor {
+        vec![
+            (app.config.get_keybind("run_live_script").to_uppercase(), "Run"),
+            ("Ctrl+Alt+←".to_string(), "Prev Pane"),
+            ("Ctrl+Alt+→".to_string(), "Next Pane"),
+            (
+                app.config.get_keybind("command_palette").to_uppercase(),
+                "Palette",
+            ),
+        ]
     } else if app.focus == Focus::Explorer {
         vec![
             ("Enter".to_string(), "Open"),

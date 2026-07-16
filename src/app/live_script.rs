@@ -25,6 +25,22 @@ impl App {
         self.ensure_syntax_set_loading();
     }
 
+    /// Toggles focus between the target buffer and the script buffer in live script mode.
+    /// Does nothing if live_script_mode is not active or either buffer index is missing.
+    pub fn toggle_live_script_pane(&mut self) {
+        if !self.live_script_mode {
+            return;
+        }
+        if let (Some(target), Some(script)) = (self.target_buffer_idx, self.live_script_buffer_idx)
+        {
+            self.current_buffer_idx = if self.current_buffer_idx == target {
+                script
+            } else {
+                target
+            };
+        }
+    }
+
     pub fn handle_fs_events(&mut self) {
         let mut changed = false;
         let mut processed = 0usize;
