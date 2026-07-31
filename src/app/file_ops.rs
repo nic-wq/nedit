@@ -336,6 +336,66 @@ impl App {
         base.join(path)
     }
 
+    pub fn create_path_from_input(&mut self, raw: &str) {
+        let trimmed = raw.trim_end_matches('/');
+        let is_folder = raw.ends_with('/') || raw.is_empty();
+
+        let resolved = self.resolve_input_path(trimmed);
+        if resolved.exists() {
+            self.show_notification(
+                format!("Path already exists: {}", resolved.display()),
+                NotificationType::Error,
+            );
+            return;
+        }
+
+        if let Some(parent) = resolved.parent() {
+            if !parent.exists() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    self.show_notification(
+                        format!("Error creating parent directories: {}", e),
+                        NotificationType::Error,
+                    );
+                    return;
+                }
+            }
+        }
+
+        if is_folder {
+            match std::fs::create_dir(&resolved) {
+                Ok(()) => {
+                    self.show_notification(
+                        format!("Folder created: {}", resolved.display()),
+                        NotificationType::Info,
+                    );
+                }
+                Err(e) => {
+                    self.show_notification(
+                        format!("Error creating folder: {}", e),
+                        NotificationType::Error,
+                    );
+                }
+            }
+        } else {
+            match std::fs::File::create(&resolved) {
+                Ok(_) => {
+                    self.open_file(resolved);
+                    self.show_notification(
+                        format!("File created: {}", trimmed),
+                        NotificationType::Info,
+                    );
+                }
+                Err(e) => {
+                    self.show_notification(
+                        format!("Error creating file: {}", e),
+                        NotificationType::Error,
+                    );
+                }
+            }
+        }
+        self.refresh_explorer();
+    }
+
     pub fn update_buffer_paths(&mut self, old_path: &Path, new_path: &Path) {
         for buffer in &mut self.buffers {
             if let Some(path) = &buffer.path {

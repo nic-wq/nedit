@@ -223,18 +223,42 @@ impl EditorBuffer {
         None
     }
 
+    /// Commit the current buffer content as a new history entry.
+    ///
+    /// Call this **after** a successful mutation. `history[history_idx]` is always
+    /// a snapshot of a stable content state (including the initial load).
     pub(crate) fn push_history(&mut self) {
-        // If the user performs a new action after an undo, we truncate the "future" 
-        // history to maintain a linear and predictable undo/redo timeline.
-        if self.history_idx < self.history.len() - 1 {
+        // Drop redo states when branching from the middle of the timeline.
+        if self.history_idx + 1 < self.history.len() {
             self.history.truncate(self.history_idx + 1);
         }
         self.history.push(self.content.clone());
         if self.history.len() > 100 {
             self.history.remove(0);
-        } else {
-            self.history_idx += 1;
         }
+        self.history_idx = self.history.len() - 1;
+    }
+
+    /// Keep cursor, scroll and selection inside the current content bounds.
+    /// Required after undo/redo, which restore text without restoring caret state.
+    pub(crate) fn clamp_cursor_to_content(&mut self) {
+        let line_count = self.content.len_lines().max(1);
+        self.cursor_row = self.cursor_row.min(line_count - 1);
+        let max_col = self.line_max_char_col(self.cursor_row);
+        self.cursor_col = self.cursor_col.min(max_col);
+        self.sync_cursor_goal_from_position();
+
+        if self.scroll_row >= line_count {
+            self.scroll_row = line_count - 1;
+        }
+        if self.scroll_col > self.cursor_col {
+            self.scroll_col = self.cursor_col;
+        }
+
+        // Selection anchors are not stored in history; drop them after content rewinds.
+        self.selection_start = None;
+        self.autocomplete_options.clear();
+        self.show_autocomplete_list = false;
     }
 
     pub fn sync_syntax_states(&mut self, from_row: usize) {

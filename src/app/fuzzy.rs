@@ -153,7 +153,10 @@ impl App {
     fn sync_visible_file_results(&mut self) {
         let mut seen = std::collections::HashSet::new();
         self.fuzzy_file_results
-            .sort_by_key(|r| std::cmp::Reverse(r.score));
+            .sort_by(|a, b| {
+                b.score.cmp(&a.score)
+                    .then_with(|| a.relative_path.matches('/').count().cmp(&b.relative_path.matches('/').count()))
+            });
         self.fuzzy_file_results
             .retain(|result| seen.insert(result.full_path.clone()));
         self.fuzzy_file_results.truncate(self.fuzzy_limit);
@@ -745,7 +748,7 @@ impl App {
             return;
         }
 
-        if self.fuzzy_mode == FuzzyMode::NewFolder {
+        if self.fuzzy_mode == FuzzyMode::Create {
             self.fuzzy_results = Vec::new();
             return;
         }

@@ -991,7 +991,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::SaveAs
             | FuzzyMode::Rename
             | FuzzyMode::DeleteConfirm
-            | FuzzyMode::NewFolder
+            | FuzzyMode::Create
             | FuzzyMode::UnsavedChanges
     );
 
@@ -1020,7 +1020,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::EditScript => " 󰝎  Edit Lua Script ".to_string(),
         FuzzyMode::DeleteScript => " 󰆴  Delete Lua Script ".to_string(),
         FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
-        FuzzyMode::NewFolder => " 󰉋  New Folder Name ".to_string(),
+        FuzzyMode::Create => " 󰉋  New Name (trailing / = folder) ".to_string(),
         FuzzyMode::UnsavedChanges => format!(" 󰆓  {} ", app.i18n.t("unsaved_changes")),
     };
 
@@ -1323,10 +1323,10 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                                 if match_set.contains(&ci) {
                                     Style::default()
                                         .bg(colors.sel)
-                                        .fg(colors.fg)
+                                        .fg(colors.accent)
                                         .add_modifier(Modifier::BOLD)
                                 } else {
-                                    Style::default().bg(colors.sel).fg(colors.fg)
+                                    Style::default().bg(colors.sel).fg(colors.accent)
                                 }
                             } else {
                                 if match_set.contains(&ci) {
@@ -1339,7 +1339,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                         }
 
                         let line_style = if is_selected {
-                            Style::default().bg(colors.sel).fg(colors.accent)
+                            Style::default().bg(colors.sel).fg(colors.accent).add_modifier(Modifier::BOLD)
                         } else {
                             Style::default().fg(colors.fg)
                         };

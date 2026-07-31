@@ -59,6 +59,15 @@ mod score {
     /// Smaller bonus when a contiguous match starts at an interior
     /// path segment (after a `/` that is not the one before the basename).
     pub const PATH_SEGMENT_PREFIX: i32 = 30;
+    /// Bonus for positions in the basename (last path segment),
+    /// used as a tiebreaker when picking the first character's start.
+    pub const BASENAME_POSITION: i32 = 50;
+    /// Bonus when all matched characters are within a single path segment
+    /// (no '/' between first and last matched position).
+    pub const SINGLE_SEGMENT: i32 = 10;
+    /// Bonus when all matched characters are within the basename
+    /// (last path segment, after the final '/').
+    pub const BASENAME_ONLY: i32 = 20;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,8 +351,14 @@ fn score_term(
         };
     }
 
+    // Pre-compute the basename start (used throughout).
+    let last_slash = target_chars.iter().rposition(|&c| c == '/');
+    let basename_start = last_slash.map(|i| i + 1).unwrap_or(0);
+
     // ------------------------------------------------------------------
     // 1.  Pick the best starting position for the first query char.
+    //     Positions inside the basename are strongly preferred so that
+    //     filename matches always beat directory-name matches.
     // ------------------------------------------------------------------
     let first_char = query[0];
     let rest = &query[1..];
@@ -359,8 +374,13 @@ fn score_term(
             continue;
         }
         let initial_score = score_first_char(candidate, target_chars);
-        if initial_score > best_first_score {
-            best_first_score = initial_score;
+        let effective_score = if candidate >= basename_start {
+            initial_score + score::BASENAME_POSITION
+        } else {
+            initial_score
+        };
+        if effective_score > best_first_score {
+            best_first_score = effective_score;
             best_first_ti = Some(candidate);
         }
     }
@@ -430,11 +450,37 @@ fn score_term(
             };
         }
 
-        // Exact basename match: query is a prefix and the next character
-        // is a file-extension dot, word separator, etc.
+        // Exact basename match (position-0 variant): query matches at
+        // the start of the full path and the next character is a
+        // file-extension dot or word separator.
         let at_start = positions[0] == 0;
         if at_start && query_len < target_chars.len() {
             let next = target_chars[query_len];
+            if next == '.' || next == '-' || next == '_' || next == ' ' {
+                match_score += score::EXACT_BASENAME_MATCH;
+                return FuzzyMatch {
+                    matched: true,
+                    score: match_score,
+                    match_positions: positions,
+                };
+            }
+        }
+
+        // Exact basename match (basename variant): query matches the
+        // entire basename (e.g. "app.rs" in "src/app/app.rs").
+        if positions[0] == basename_start && query_len == target_chars.len() - basename_start {
+            match_score += score::EXACT_BASENAME_MATCH;
+            return FuzzyMatch {
+                matched: true,
+                score: match_score,
+                match_positions: positions,
+            };
+        }
+
+        // Exact basename match (basename prefix variant): query is a
+        // basename prefix followed by a separator.
+        if positions[0] == basename_start && query_len < target_chars.len() - basename_start {
+            let next = target_chars[basename_start + query_len];
             if next == '.' || next == '-' || next == '_' || next == ' ' {
                 match_score += score::EXACT_BASENAME_MATCH;
                 return FuzzyMatch {
@@ -449,14 +495,26 @@ fn score_term(
         let start = positions[0];
         let starts_segment = start == 0 || (start > 0 && target_chars[start - 1] == '/');
         if starts_segment {
-            let last_slash = target_chars.iter().rposition(|&c| c == '/');
-            let basename_start = last_slash.map(|i| i + 1).unwrap_or(0);
             if start == basename_start {
                 match_score += score::BASENAME_PREFIX;
             } else {
                 match_score += score::PATH_SEGMENT_PREFIX;
             }
         }
+    }
+
+    // Bonus: all matched positions within a single path segment
+    if query_len > 1 {
+        let first_pos = positions[0];
+        let last_pos = positions[positions.len() - 1];
+        if !target_chars[first_pos..=last_pos].contains(&'/') {
+            match_score += score::SINGLE_SEGMENT;
+        }
+    }
+
+    // Bonus: all matched positions within the basename (last segment)
+    if positions[0] >= basename_start {
+        match_score += score::BASENAME_ONLY;
     }
 
     FuzzyMatch {
@@ -710,12 +768,34 @@ mod tests {
     }
 
     #[test]
-    fn directory_segment_prefix_beats_mid_segment() {
-        let dir = fuzzy_match("ts", "crates/ts-parser/src/lib.rs");
+    fn basename_mid_segment_beats_directory_prefix() {
+        // Basename matches (even mid-segment) should outrank directory-prefix matches.
         let intra = fuzzy_match("ts", "crates/pkg.ts");
-        assert!(dir.matched && intra.matched);
-        assert!(dir.score > intra.score,
-            "ts-parser ({}) > pkg.ts ({})", dir.score, intra.score);
+        let dir = fuzzy_match("ts", "crates/ts-parser/src/lib.rs");
+        assert!(intra.matched && dir.matched);
+        assert!(intra.score > dir.score,
+            "pkg.ts ({}) > ts-parser ({})", intra.score, dir.score);
+    }
+
+    #[test]
+    fn exact_basename_match_outranks_partial() {
+        // Query "app.rs" should rank src/app/app.rs above src/app/mod.rs.
+        let exact = fuzzy_match("app.rs", "src/app/app.rs");
+        let partial = fuzzy_match("app.rs", "src/app/mod.rs");
+        assert!(exact.matched && partial.matched);
+        assert!(exact.score > partial.score,
+            "app.rs ({}) > mod.rs ({})", exact.score, partial.score);
+    }
+
+    #[test]
+    fn basename_outranks_same_prefix_in_directory() {
+        // Query "matcher" should rank "matcher.rs" (basename) above
+        // a file inside a "matcher" directory.
+        let base = fuzzy_match("matcher", "src/app/matcher.rs");
+        let dir = fuzzy_match("matcher", "src/matcher/lib.rs");
+        assert!(base.matched && dir.matched);
+        assert!(base.score > dir.score,
+            "matcher.rs ({}) > lib.rs ({})", base.score, dir.score);
     }
 
     #[test]

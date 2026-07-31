@@ -9,11 +9,10 @@ impl EditorBuffer {
 
     pub fn paste(&mut self) {
         if let Some(text) = crate::clipboard::paste() {
-            // We push history before the operation to allow the user to undo the entire paste
-            // as a single atomic action.
-            self.push_history();
             let old_row = self.cursor_row;
-            self.delete_selection();
+            // Replace selection without recording history mid-paste so the whole
+            // replace+insert is a single undo step.
+            self.clear_selection_content();
             let char_idx = self.content.line_to_char(self.cursor_row) + self.cursor_col;
             self.content.insert(char_idx, &text);
             let new_rope = ropey::Rope::from_str(&text);
@@ -26,6 +25,7 @@ impl EditorBuffer {
             }
             self.sync_cursor_goal_from_position();
             self.modified = true;
+            self.push_history();
             self.sync_syntax_states(old_row);
             self.sync_rendered_spans(old_row);
             self.invalidate_max_visual_width();

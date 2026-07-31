@@ -22,7 +22,9 @@ pub enum FuzzyMode {
     EditScript,
     DeleteScript,
     DocSelect,
-    NewFolder,
+    /// Create a file or folder relative to the explorer selection.
+    /// Trailing `/` creates a folder; otherwise creates an empty file and opens it.
+    Create,
     UnsavedChanges,
 }
 

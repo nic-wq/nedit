@@ -18,25 +18,33 @@ impl EditorBuffer {
         }
     }
 
-    pub fn delete_selection(&mut self) {
-        if let Some(start) = self.selection_start {
-            self.push_history();
-            let start_idx = self.to_char_idx(start.0, start.1);
-            let end_idx = self.to_char_idx(self.cursor_row, self.cursor_col);
-            let (s, e) = if start_idx < end_idx {
-                (start_idx, end_idx)
-            } else {
-                (end_idx, start_idx)
-            };
-            self.content.remove(s..e);
+    /// Remove the selected range without recording history.
+    /// Used when the deletion is part of a larger edit (type-over, paste)
+    /// so the whole operation becomes a single undo step.
+    pub(crate) fn clear_selection_content(&mut self) -> bool {
+        let Some(start) = self.selection_start.take() else {
+            return false;
+        };
+        let start_idx = self.to_char_idx(start.0, start.1);
+        let end_idx = self.to_char_idx(self.cursor_row, self.cursor_col);
+        let (s, e) = if start_idx < end_idx {
+            (start_idx, end_idx)
+        } else {
+            (end_idx, start_idx)
+        };
+        self.content.remove(s..e);
+        if start_idx < end_idx {
+            self.cursor_row = start.0;
+            self.cursor_col = start.1;
+            self.sync_cursor_goal_from_position();
+        }
+        true
+    }
 
-            if start_idx < end_idx {
-                self.cursor_row = start.0;
-                self.cursor_col = start.1;
-                self.sync_cursor_goal_from_position();
-            }
-            self.selection_start = None;
+    pub fn delete_selection(&mut self) {
+        if self.clear_selection_content() {
             self.modified = true;
+            self.push_history();
             self.sync_syntax_states(self.cursor_row);
             self.sync_rendered_spans(self.cursor_row);
             self.invalidate_max_visual_width();

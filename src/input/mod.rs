@@ -175,11 +175,9 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         return;
     }
     if app.config.matches(key, "new_file") {
-        if app.focus == Focus::Explorer {
-            app.toggle_fuzzy(crate::app::FuzzyMode::NewFolder);
-        } else {
-            app.new_file();
-        }
+        // Same create flow from editor or explorer — path is relative to the
+        // explorer selection (or root), so focus no longer changes the action.
+        app.toggle_fuzzy(crate::app::FuzzyMode::Create);
         return;
     }
     if app.config.matches(key, "close_tab") {
@@ -350,7 +348,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         app.fuzzy_mode,
         crate::app::FuzzyMode::Rename
             | crate::app::FuzzyMode::SaveAs
-            | crate::app::FuzzyMode::NewFolder
+            | crate::app::FuzzyMode::Create
             | crate::app::FuzzyMode::UnsavedChanges
     ) {
         match key.code {
@@ -468,7 +466,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::EditScript => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::DeleteScript => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::DocSelect => app.fuzzy_results.len(),
-                crate::app::FuzzyMode::NewFolder => 0,
+                crate::app::FuzzyMode::Create => 0,
                 crate::app::FuzzyMode::UnsavedChanges => 0,
             };
             if max > 0 && app.fuzzy_idx < max - 1 {
@@ -501,6 +499,17 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     };
                     app.pending_path = Some(item.path.clone());
                     match choice.to_string_lossy().as_ref() {
+                        "New File" => {
+                            app.fuzzy_mode = crate::app::FuzzyMode::Create;
+                            app.fuzzy_query.clear();
+                            app.pending_path = None;
+                        }
+                        "New Folder" => {
+                            // Prefill trailing slash so Enter creates a directory.
+                            app.fuzzy_mode = crate::app::FuzzyMode::Create;
+                            app.fuzzy_query = "/".to_string();
+                            app.pending_path = None;
+                        }
                         "Rename" => {
                             app.fuzzy_mode = crate::app::FuzzyMode::Rename;
                             app.fuzzy_query = item.name.clone();
@@ -699,21 +708,9 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     app.open_doc(doc_type);
                 }
                 return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::NewFolder {
-                if !app.fuzzy_query.is_empty() {
-                    let path = app.resolve_input_path(&app.fuzzy_query);
-                    if let Err(e) = std::fs::create_dir_all(&path) {
-                        app.show_notification(
-                            format!("Error creating folder: {}", e),
-                            crate::app::NotificationType::Error,
-                        );
-                    } else {
-                        app.show_notification(
-                            format!("Folder created: {}", app.fuzzy_query),
-                            crate::app::NotificationType::Info,
-                        );
-                        app.refresh_explorer();
-                    }
+            } else if app.fuzzy_mode == crate::app::FuzzyMode::Create {
+                if !app.fuzzy_query.trim().is_empty() {
+                    app.create_path_from_input(&app.fuzzy_query.clone());
                 }
                 app.is_fuzzy = false;
                 return;
@@ -927,6 +924,8 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
                 .unwrap_or(false);
             app.toggle_fuzzy(crate::app::FuzzyMode::FileOptions);
             let mut options = vec![
+                std::path::PathBuf::from("New File"),
+                std::path::PathBuf::from("New Folder"),
                 std::path::PathBuf::from("Rename"),
                 std::path::PathBuf::from("Move"),
                 std::path::PathBuf::from("Delete"),
@@ -1007,9 +1006,8 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
             if !app.buffers[current_idx].is_read_only =>
         {
             let buffer = &mut app.buffers[current_idx];
-            if buffer.selection_start.is_some() {
-                buffer.delete_selection();
-            }
+            // Clear selection without a history entry so replace+insert is one undo.
+            buffer.clear_selection_content();
             buffer.insert_char(c);
             if app.config.autocomplete_enabled {
                 buffer.update_autocomplete();
@@ -1021,9 +1019,7 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
                 buf.accept_autocomplete();
                 return;
             }
-            if buf.selection_start.is_some() {
-                buf.delete_selection();
-            }
+            buf.clear_selection_content();
             buf.insert_char('\n');
         }
         (KeyCode::Backspace, _) if !app.buffers[current_idx].is_read_only => {
@@ -1081,7 +1077,16 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
 fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
     match cmd {
         "Save" => app.save_current_buffer(),
-        "New File" => app.new_file(),
+        "New File" => {
+            app.toggle_fuzzy(crate::app::FuzzyMode::Create);
+            return true;
+        }
+        "New Folder" => {
+            app.toggle_fuzzy(crate::app::FuzzyMode::Create);
+            app.fuzzy_query = "/".to_string();
+            return true;
+        }
+        "New Untitled" => app.new_file(),
         "Open File" => {
             app.toggle_fuzzy(crate::app::FuzzyMode::Files);
             return true;
