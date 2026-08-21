@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 use std::path::Path;
@@ -479,8 +479,18 @@ fn draw_editor(
     };
 
     let line_count = buffer.content.len_lines();
+    // Markdown highlighting via syntect is ~100x slower than plain text for
+    // small files like AGENTS.md (19 lines: 127ms vs 1.2ms). Disable it until
+    // the syntax is optimized - plain text is far more usable.
+    let is_markdown = buffer
+        .path
+        .as_ref()
+        .and_then(|p| p.extension())
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
+        .unwrap_or(false);
     let mut syntax_highlighter = syntax_set
-        .filter(|_| buffer.content.len_bytes() <= 5_242_880)
+        .filter(|_| !is_markdown && buffer.content.len_bytes() <= 5_242_880)
         .map(|syntax_set| {
         let syntax = buffer
             .path
@@ -995,11 +1005,20 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             | FuzzyMode::UnsavedChanges
             | FuzzyMode::ExternalChange
     );
+    let is_two_line_popup = matches!(
+        app.fuzzy_mode,
+        FuzzyMode::UnsavedChanges | FuzzyMode::ExternalChange | FuzzyMode::DeleteConfirm
+    );
 
     let area = if is_small {
-        let centered_y = (f.area().height.saturating_sub(3)) / 2;
-        let centered_x = (f.area().width.saturating_sub(70)) / 2;
-        Rect::new(centered_x, centered_y, 70.min(f.area().width), 3)
+        let (w, h) = if is_two_line_popup {
+            (70, 6)
+        } else {
+            (70, 3)
+        };
+        let centered_y = (f.area().height.saturating_sub(h)) / 2;
+        let centered_x = (f.area().width.saturating_sub(w)) / 2;
+        Rect::new(centered_x, centered_y, w.min(f.area().width), h)
     } else {
         centered_rect(70, 50, f.area())
     };
@@ -1039,7 +1058,11 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         .bg(colors.bg);
 
     let constraints = if is_small {
-        vec![Constraint::Length(1)]
+        if is_two_line_popup {
+            vec![Constraint::Min(1)]
+        } else {
+            vec![Constraint::Length(1)]
+        }
     } else {
         vec![
             Constraint::Length(1),
@@ -1077,35 +1100,41 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
-        Paragraph::new(Line::from(vec![
-            Span::styled(" 󰆴 ", Style::default().fg(colors.error)),
-            Span::styled(
-                "Confirm Delete: ",
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(path_str),
-            Span::styled(
-                " (Enter: Confirm, Esc: Cancel)",
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(" 󰆴 ", Style::default().fg(colors.error)),
+                Span::styled(
+                    "Confirm Delete:",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(Span::raw(path_str)),
+            Line::from(vec![Span::styled(
+                format!("(Enter: Confirm  Esc: {})", app.i18n.t("cancel")),
                 Style::default().fg(colors.surface),
-            ),
-        ]))
+            )]),
+        ])
+        .wrap(Wrap { trim: false })
     } else if app.fuzzy_mode == FuzzyMode::UnsavedChanges {
         let filename = app.pending_buffer_idx
             .and_then(|idx| app.buffers.get(idx))
             .and_then(|buf| buf.path.as_ref())
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or_else(|| app.i18n.t("no_name").to_string());
-        Paragraph::new(Line::from(vec![
-            Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
-            Span::styled(
-                format!("Save changes to {}? ", filename),
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!(" (S: Save, D: Discard, Esc: {})", app.i18n.t("cancel")),
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
+                Span::styled(
+                    format!("Save changes to {}?", filename),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(vec![Span::styled(
+                format!("(S: Save  D: Discard  Esc: {})", app.i18n.t("cancel")),
                 Style::default().fg(colors.accent),
-            ),
-        ]))
+            )]),
+        ])
+        .wrap(Wrap { trim: true })
     } else if app.fuzzy_mode == FuzzyMode::ExternalChange {
         let filename = app
             .pending_buffer_idx
@@ -1113,22 +1142,26 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             .and_then(|buf| buf.path.as_ref())
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or_else(|| app.i18n.t("no_name").to_string());
-        Paragraph::new(Line::from(vec![
-            Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
-            Span::styled(
-                format!("{} {}? ", app.i18n.t("file_changed_externally"), filename),
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
+        // Short, two-line layout to avoid truncation on narrow terminals.
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
+                Span::styled(
+                    format!("{} — {}", filename, app.i18n.t("file_changed")),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(vec![Span::styled(
                 format!(
-                    " ({}: R, {}: K, Esc: {})",
+                    "({}: R  {}: K  Esc: {})",
                     app.i18n.t("reload"),
                     app.i18n.t("keep"),
                     app.i18n.t("cancel")
                 ),
                 Style::default().fg(colors.accent),
-            ),
-        ]))
+            )]),
+        ])
+        .wrap(Wrap { trim: true })
     } else {
         Paragraph::new(Line::from(vec![
             Span::styled(" 󰍉 ", Style::default().fg(colors.accent)),
