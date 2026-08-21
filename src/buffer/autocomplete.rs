@@ -3,16 +3,17 @@ use super::EditorBuffer;
 impl EditorBuffer {
     pub fn update_autocomplete(&mut self) {
         let prefix = self.get_current_word_prefix();
-        if prefix.is_empty() || prefix.len() < 2 {
+        if prefix.chars().count() < 2 {
             self.autocomplete_options.clear();
             self.autocomplete_idx = 0;
             return;
         }
 
         let words = self.collect_all_words();
+        let prefix_len = prefix.chars().count();
         let mut matches: Vec<(String, usize)> = words
             .into_iter()
-            .filter(|(w, _)| w.starts_with(&prefix) && w.len() > prefix.len())
+            .filter(|(w, _)| w.starts_with(&prefix) && w.chars().count() > prefix_len)
             .collect();
 
         // We sort by frequency (the second element of the tuple) to prioritize 
@@ -24,7 +25,7 @@ impl EditorBuffer {
     }
 
     pub fn get_current_word_prefix(&self) -> String {
-        let mut col = self.cursor_col;
+        let mut col = self.cursor_col.min(self.content.line(self.cursor_row).len_chars());
         let line = self.content.line(self.cursor_row);
         let mut prefix = String::new();
         while col > 0 {
@@ -40,11 +41,13 @@ impl EditorBuffer {
     }
 
     pub fn accept_autocomplete(&mut self) {
-        if let Some(opt) = self.autocomplete_options.get(self.autocomplete_idx) {
+        if let Some(opt) = self.autocomplete_options.get(self.autocomplete_idx).cloned() {
             let prefix = self.get_current_word_prefix();
-            let suffix = opt[prefix.len()..].to_string();
-            for c in suffix.chars() {
-                self.insert_char(c);
+            let prefix_len = prefix.chars().count();
+            let suffix: String = opt.chars().skip(prefix_len).collect();
+            if !suffix.is_empty() {
+                // Single undo step for the whole completion.
+                self.insert_text(&suffix);
             }
             self.autocomplete_options.clear();
             self.show_autocomplete_list = false;

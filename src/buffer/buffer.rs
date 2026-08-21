@@ -94,6 +94,7 @@ impl EditorBuffer {
     }
 
     pub fn line_text(&self, row: usize) -> String {
+        let row = row.min(self.content.len_lines().saturating_sub(1));
         let mut line = self.content.line(row).to_string();
         if line.ends_with('\n') {
             line.pop();
@@ -105,6 +106,7 @@ impl EditorBuffer {
     }
 
     pub fn line_max_char_col(&self, row: usize) -> usize {
+        let row = row.min(self.content.len_lines().saturating_sub(1));
         let line_len = self.content.line(row).len_chars();
         let mut max_col = line_len;
         if self.content.line(row).chars().last() == Some('\n') {
@@ -148,11 +150,15 @@ impl EditorBuffer {
     }
 
     pub fn to_char_idx(&self, row: usize, col: usize) -> usize {
+        let row = row.min(self.content.len_lines().saturating_sub(1));
         let line_idx = self.content.line_to_char(row);
+        let max_col = self.line_max_char_col(row);
+        let col = col.min(max_col).min(self.content.len_chars().saturating_sub(line_idx));
         line_idx + col
     }
 
     pub fn char_to_line_col(&self, char_idx: usize) -> (usize, usize) {
+        let char_idx = char_idx.min(self.content.len_chars());
         let line = self.content.char_to_line(char_idx);
         let line_start = self.content.line_to_char(line);
         (line, char_idx - line_start)

@@ -39,6 +39,10 @@ fn handle_event(app: &mut App, event: Event, pending_mouse_drag: &mut Option<Mou
             handle_key_event(app, key);
         }
         Event::Key(_) => {}
+        Event::Paste(text) => {
+            flush_pending_mouse_drag(app, pending_mouse_drag);
+            handle_paste(app, text);
+        }
         Event::Mouse(mouse) if is_editor_left_drag(app, mouse) => {
             *pending_mouse_drag = Some(mouse);
         }
@@ -49,6 +53,37 @@ fn handle_event(app: &mut App, event: Event, pending_mouse_drag: &mut Option<Mou
         _ => {}
     }
     app.needs_redraw = true;
+}
+
+fn handle_paste(app: &mut App, text: String) {
+    if app.is_fuzzy {
+        app.fuzzy_query.push_str(&text);
+        app.schedule_fuzzy_update(true);
+        return;
+    }
+    if app.is_welcome || app.buffers.is_empty() {
+        return;
+    }
+    if app.focus != Focus::Editor {
+        return;
+    }
+    if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+        if buffer.is_read_only {
+            return;
+        }
+        // Use raw insertion so bulk paste preserves exact whitespace and is one undo.
+        buffer.insert_text(&text);
+        if app.config.autocomplete_enabled {
+            buffer.update_autocomplete();
+        }
+        // Keep cursor visible after paste.
+        let height = app.editor_area.height as usize;
+        if buffer.cursor_row < buffer.scroll_row {
+            buffer.scroll_row = buffer.cursor_row;
+        } else if buffer.cursor_row >= buffer.scroll_row + height && height > 0 {
+            buffer.scroll_row = buffer.cursor_row.saturating_sub(height).saturating_add(1);
+        }
+    }
 }
 
 fn flush_pending_mouse_drag(app: &mut App, pending_mouse_drag: &mut Option<MouseEvent>) {
@@ -1057,9 +1092,7 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
                 buffer.accept_autocomplete();
                 return;
             }
-            for _ in 0..4 {
-                buffer.insert_char(' ');
-            }
+            buffer.insert_text("    ");
         }
         _ => {}
     }

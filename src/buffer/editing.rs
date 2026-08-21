@@ -1,6 +1,47 @@
 use super::EditorBuffer;
 
 impl EditorBuffer {
+    /// Insert raw text without auto-indent — used for bracketed paste and bulk
+    /// insertions. The whole insertion is a single undo step and preserves the
+    /// exact whitespace from `text`.
+    pub fn insert_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let old_row = self.cursor_row;
+        // Replace selection atomically so paste-over-selection is one undo.
+        self.clear_selection_content();
+        let char_idx = self.content.line_to_char(self.cursor_row) + self.cursor_col;
+        self.content.insert(char_idx, text);
+        // Ropey counts lines with trailing newline as an extra empty line.
+        // Use it to place the cursor at the end of the inserted text.
+        let inserted = ropey::Rope::from_str(text);
+        let lines = inserted.len_lines();
+        if lines > 1 {
+            self.cursor_row += lines - 1;
+            // For text ending with '\n', the last Ropey line is empty (0).
+            // That is exactly where the cursor should land (col 0 on the new line).
+            let last_line_len = inserted.line(lines - 1).len_chars();
+            // Strip trailing '\n' from col counting — Ropey includes it in
+            // `line.len_chars()` for non-last lines but the last empty line
+            // already handles the `\n` case. For single-newline insertions
+            // with indent handling disabled, we keep raw measurement.
+            if inserted.line(lines - 1).chars().last() == Some('\n') {
+                self.cursor_col = last_line_len.saturating_sub(1);
+            } else {
+                self.cursor_col = last_line_len;
+            }
+        } else {
+            self.cursor_col += inserted.len_chars();
+        }
+        self.sync_cursor_goal_from_position();
+        self.modified = true;
+        self.push_history();
+        self.sync_syntax_states(old_row);
+        self.sync_rendered_spans(old_row);
+        self.invalidate_max_visual_width();
+    }
+
     pub fn insert_char(&mut self, ch: char) {
         // A newline shifts the current line and every following line down by
         // one row. Keep the original row so those cached render/syntax states

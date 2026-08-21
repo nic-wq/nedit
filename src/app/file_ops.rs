@@ -207,6 +207,11 @@ impl App {
                 }
             }
         } else {
+            // Discard preview buffer first — same as open_file — so the new
+            // untitled buffer becomes the current one and indices stay consistent.
+            if let Some(preview_idx) = self.preview_buffer_idx.take() {
+                self.clear_preview(preview_idx);
+            }
             self.buffers.push(EditorBuffer::new());
             self.current_buffer_idx = self.buffers.len() - 1;
         }

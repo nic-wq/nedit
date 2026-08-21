@@ -9,26 +9,9 @@ impl EditorBuffer {
 
     pub fn paste(&mut self) {
         if let Some(text) = crate::clipboard::paste() {
-            let old_row = self.cursor_row;
-            // Replace selection without recording history mid-paste so the whole
-            // replace+insert is a single undo step.
-            self.clear_selection_content();
-            let char_idx = self.content.line_to_char(self.cursor_row) + self.cursor_col;
-            self.content.insert(char_idx, &text);
-            let new_rope = ropey::Rope::from_str(&text);
-            let lines = new_rope.len_lines();
-            if lines > 1 {
-                self.cursor_row += lines - 1;
-                self.cursor_col = new_rope.line(lines - 1).len_chars();
-            } else {
-                self.cursor_col += new_rope.len_chars();
-            }
-            self.sync_cursor_goal_from_position();
-            self.modified = true;
-            self.push_history();
-            self.sync_syntax_states(old_row);
-            self.sync_rendered_spans(old_row);
-            self.invalidate_max_visual_width();
+            // Delegate to raw insertion so the whole paste is one undo step and
+            // whitespace is preserved without auto-indent compounding.
+            self.insert_text(&text);
         }
     }
 

@@ -32,12 +32,15 @@ impl EditorBuffer {
         } else {
             (end_idx, start_idx)
         };
-        self.content.remove(s..e);
-        if start_idx < end_idx {
-            self.cursor_row = start.0;
-            self.cursor_col = start.1;
-            self.sync_cursor_goal_from_position();
+        if s == e {
+            return false;
         }
+        self.content.remove(s..e);
+        // After removal, place cursor at the start of the former selection.
+        let (row, col) = self.char_to_line_col(s.min(self.content.len_chars()));
+        self.cursor_row = row;
+        self.cursor_col = col;
+        self.sync_cursor_goal_from_position();
         true
     }
 
@@ -52,13 +55,20 @@ impl EditorBuffer {
     }
 
     pub fn select_all(&mut self) {
+        if self.content.len_chars() == 0 && self.content.len_lines() <= 1 {
+            self.selection_start = None;
+            self.cursor_row = 0;
+            self.cursor_col = 0;
+            self.sync_cursor_goal_from_position();
+            return;
+        }
         self.selection_start = Some((0, 0));
-        let last_row = self.content.len_lines() - 1;
+        let last_row = self.content.len_lines().saturating_sub(1);
         let last_col = self.content.line(last_row).len_chars();
         self.cursor_row = last_row;
         self.cursor_col =
             if last_col > 0 && self.content.line(last_row).chars().last() == Some('\n') {
-                last_col - 1
+                last_col.saturating_sub(1)
             } else {
                 last_col
             };
@@ -146,7 +156,7 @@ impl EditorBuffer {
             while end_idx < self.content.len_chars() && is_whitespace(self.content.char(end_idx)) {
                 end_idx += 1;
             }
-        } else {
+        } else if end_idx < self.content.len_chars() {
             end_idx += 1;
         }
 
