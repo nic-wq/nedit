@@ -50,6 +50,7 @@ impl App {
                 self.current_buffer_idx = self.buffers.len() - 1;
                 self.focus = Focus::Editor;
                 self.is_welcome = false;
+                self.record_file_mtime(&path);
                 self.ensure_syntax_for_path_loading(Some(path.as_path()));
                 if self.live_script_mode {
                     self.target_buffer_idx = Some(self.current_buffer_idx);
@@ -89,19 +90,36 @@ impl App {
 
     pub fn force_close_buffer(&mut self, closing_idx: usize) {
         if closing_idx < self.buffers.len() {
+            // Remember path to forget mtime
+            let mut forget_paths = Vec::new();
+            if let Some(p) = self.buffers[closing_idx].path.clone() {
+                forget_paths.push(p);
+            }
             if self.live_script_mode {
                 let is_script = Some(closing_idx) == self.live_script_buffer_idx;
                 let is_target = Some(closing_idx) == self.target_buffer_idx;
 
                 if is_target {
+                    // close_live_script_pair will handle its own forget
                     self.close_live_script_pair(closing_idx);
+                    for p in forget_paths {
+                        self.forget_file_mtime(&p);
+                    }
+                    // Also forget the other buffers in the pair
+                    // (close_live_script_pair already forgets, but double forget is safe)
                 } else if is_script {
                     self.buffers.remove(closing_idx);
+                    for p in forget_paths {
+                        self.forget_file_mtime(&p);
+                    }
                     self.live_script_mode = false;
                     self.live_script_buffer_idx = None;
                     self.target_buffer_idx = None;
                 } else {
                     self.buffers.remove(closing_idx);
+                    for p in forget_paths {
+                        self.forget_file_mtime(&p);
+                    }
                     if let Some(idx) = self.live_script_buffer_idx {
                         if closing_idx < idx {
                             self.live_script_buffer_idx = Some(idx - 1);
@@ -115,6 +133,9 @@ impl App {
                 }
             } else {
                 self.buffers.remove(closing_idx);
+                for p in forget_paths {
+                    self.forget_file_mtime(&p);
+                }
             }
 
             if self.buffers.is_empty() {
@@ -156,6 +177,13 @@ impl App {
 
         indexes.sort_unstable();
         indexes.dedup();
+
+        // Forget mtimes before removing
+        for &idx in &indexes {
+            if let Some(p) = self.buffers.get(idx).and_then(|b| b.path.clone()) {
+                self.forget_file_mtime(&p);
+            }
+        }
 
         for idx in indexes.into_iter().rev() {
             if idx < self.buffers.len() {
@@ -307,7 +335,8 @@ impl App {
             match buffer.save() {
                 Ok(()) => {
                     self.refresh_explorer();
-                    if let Some(p) = path {
+                    if let Some(p) = path.clone() {
+                        self.record_file_mtime(&p);
                         self.show_notification(
                             format!("Saved to {}", p.display()),
                             NotificationType::Info,
@@ -402,6 +431,23 @@ impl App {
     }
 
     pub fn update_buffer_paths(&mut self, old_path: &Path, new_path: &Path) {
+        // Update mtimes map for the move/rename.
+        if let Some(mtime) = self.file_mtimes.remove(old_path) {
+            self.file_mtimes.insert(new_path.to_path_buf(), mtime);
+        }
+        // Also handle children of a moved directory.
+        let mut moved = Vec::new();
+        for (p, m) in self.file_mtimes.iter() {
+            if p.starts_with(old_path) && p != old_path {
+                if let Ok(rel) = p.strip_prefix(old_path) {
+                    moved.push((p.clone(), new_path.join(rel), *m));
+                }
+            }
+        }
+        for (old, new, m) in moved {
+            self.file_mtimes.remove(&old);
+            self.file_mtimes.insert(new, m);
+        }
         for buffer in &mut self.buffers {
             if let Some(path) = &buffer.path {
                 if path == old_path {
@@ -413,9 +459,12 @@ impl App {
                 }
             }
         }
+        // Re-stat new path.
+        self.record_file_mtime(new_path);
     }
 
     pub fn close_buffers_for_path(&mut self, removed_path: &Path) {
+        self.forget_file_mtime(removed_path);
         let live_script_indexes: Vec<usize> = [self.live_script_buffer_idx, self.target_buffer_idx]
             .into_iter()
             .flatten()

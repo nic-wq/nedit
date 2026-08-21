@@ -68,6 +68,7 @@ impl I18n {
         defaults.insert("keep".to_string(), "Keep".to_string());
         defaults.insert("new_folder".to_string(), "New Folder".to_string());
         defaults.insert("set_as_root".to_string(), "Set as Root".to_string());
+        defaults.insert("cancel".to_string(), "Cancel".to_string());
         defaults.insert("full_docs".to_string(), DOC_MAIN.to_string());
 
         let home_dir = std::env::var("HOME")

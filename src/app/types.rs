@@ -26,6 +26,7 @@ pub enum FuzzyMode {
     /// Trailing `/` creates a folder; otherwise creates an empty file and opens it.
     Create,
     UnsavedChanges,
+    ExternalChange,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

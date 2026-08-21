@@ -993,6 +993,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             | FuzzyMode::DeleteConfirm
             | FuzzyMode::Create
             | FuzzyMode::UnsavedChanges
+            | FuzzyMode::ExternalChange
     );
 
     let area = if is_small {
@@ -1022,6 +1023,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
         FuzzyMode::Create => " 󰉋  New Name (trailing / = folder) ".to_string(),
         FuzzyMode::UnsavedChanges => format!(" 󰆓  {} ", app.i18n.t("unsaved_changes")),
+        FuzzyMode::ExternalChange => format!(" 󰆓  {} ", app.i18n.t("external_change")),
     };
 
     let block = Block::default()
@@ -1092,7 +1094,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             .and_then(|idx| app.buffers.get(idx))
             .and_then(|buf| buf.path.as_ref())
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
-            .unwrap_or_else(|| "[No Name]".to_string());
+            .unwrap_or_else(|| app.i18n.t("no_name").to_string());
         Paragraph::new(Line::from(vec![
             Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
             Span::styled(
@@ -1100,7 +1102,30 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                " (S: Save, D: Discard, Esc: Cancel)",
+                format!(" (S: Save, D: Discard, Esc: {})", app.i18n.t("cancel")),
+                Style::default().fg(colors.accent),
+            ),
+        ]))
+    } else if app.fuzzy_mode == FuzzyMode::ExternalChange {
+        let filename = app
+            .pending_buffer_idx
+            .and_then(|idx| app.buffers.get(idx))
+            .and_then(|buf| buf.path.as_ref())
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .unwrap_or_else(|| app.i18n.t("no_name").to_string());
+        Paragraph::new(Line::from(vec![
+            Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
+            Span::styled(
+                format!("{} {}? ", app.i18n.t("file_changed_externally"), filename),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(
+                    " ({}: R, {}: K, Esc: {})",
+                    app.i18n.t("reload"),
+                    app.i18n.t("keep"),
+                    app.i18n.t("cancel")
+                ),
                 Style::default().fg(colors.accent),
             ),
         ]))

@@ -385,9 +385,18 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             | crate::app::FuzzyMode::SaveAs
             | crate::app::FuzzyMode::Create
             | crate::app::FuzzyMode::UnsavedChanges
+            | crate::app::FuzzyMode::ExternalChange
     ) {
         match key.code {
             KeyCode::Esc => {
+                if app.fuzzy_mode == crate::app::FuzzyMode::ExternalChange {
+                    // Keep local — update mtime to new file time to avoid re-popup.
+                    if let Some(idx) = app.pending_buffer_idx {
+                        if let Some(path) = app.buffers.get(idx).and_then(|b| b.path.clone()) {
+                            app.record_file_mtime(&path);
+                        }
+                    }
+                }
                 app.is_fuzzy = false;
                 app.fuzzy_query.clear();
                 app.pending_path = None;
@@ -413,6 +422,9 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                             return;
                         } else {
                             let _ = app.buffers[idx].save();
+                            if let Some(p) = app.buffers[idx].path.clone() {
+                                app.record_file_mtime(&p);
+                            }
                         }
                     }
                 }
@@ -428,7 +440,38 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 }
                 handle_unsaved_changes_completion(app);
             }
-            KeyCode::Char(c) if app.fuzzy_mode != crate::app::FuzzyMode::UnsavedChanges => {
+            KeyCode::Char('r') | KeyCode::Char('R')
+                if app.fuzzy_mode == crate::app::FuzzyMode::ExternalChange =>
+            {
+                if let Some(idx) = app.pending_buffer_idx {
+                    app.reload_buffer_from_disk(idx);
+                }
+                app.is_fuzzy = false;
+                app.fuzzy_query.clear();
+                app.pending_path = None;
+                app.pending_buffer_idx = None;
+            }
+            KeyCode::Char('k') | KeyCode::Char('K')
+                if app.fuzzy_mode == crate::app::FuzzyMode::ExternalChange =>
+            {
+                // Keep local version — just update mtime.
+                if let Some(idx) = app.pending_buffer_idx {
+                    if let Some(path) = app.buffers.get(idx).and_then(|b| b.path.clone()) {
+                        app.record_file_mtime(&path);
+                    }
+                }
+                app.is_fuzzy = false;
+                app.fuzzy_query.clear();
+                app.pending_path = None;
+                app.pending_buffer_idx = None;
+            }
+            KeyCode::Char(c)
+                if !matches!(
+                    app.fuzzy_mode,
+                    crate::app::FuzzyMode::UnsavedChanges
+                        | crate::app::FuzzyMode::ExternalChange
+                ) =>
+            {
                 app.fuzzy_query.push(c);
             }
             _ => {}
@@ -503,6 +546,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::DocSelect => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::Create => 0,
                 crate::app::FuzzyMode::UnsavedChanges => 0,
+                crate::app::FuzzyMode::ExternalChange => 0,
             };
             if max > 0 && app.fuzzy_idx < max - 1 {
                 app.fuzzy_idx += 1;
@@ -771,7 +815,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         let _ = std::fs::create_dir_all(&scripts_dir);
                         let path = scripts_dir.join(filename);
                         if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                            buffer.path = Some(path);
+                            buffer.path = Some(path.clone());
                             if let Err(err) = buffer.save() {
                                 app.show_notification(
                                     format!("Could not save script: {}", err),
@@ -779,6 +823,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                                 );
                                 return;
                             }
+                            app.record_file_mtime(&path);
                         }
                     } else {
                         let path = app.resolve_input_path(&filename);
@@ -786,7 +831,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                             let _ = std::fs::create_dir_all(parent);
                         }
                         if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                            buffer.path = Some(path);
+                            buffer.path = Some(path.clone());
                             if let Err(err) = buffer.save() {
                                 app.show_notification(
                                     format!("Could not save file: {}", err),
@@ -794,6 +839,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                                 );
                                 return;
                             }
+                            app.record_file_mtime(&path);
                         }
                         app.refresh_explorer();
                     }

@@ -779,7 +779,10 @@ impl App {
             return;
         }
 
-        if self.fuzzy_mode == FuzzyMode::Create {
+        if self.fuzzy_mode == FuzzyMode::Create
+            || self.fuzzy_mode == FuzzyMode::ExternalChange
+            || self.fuzzy_mode == FuzzyMode::UnsavedChanges
+        {
             self.fuzzy_results = Vec::new();
             return;
         }

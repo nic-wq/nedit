@@ -629,6 +629,7 @@ fn main() -> anyhow::Result<()> {
         app.handle_fs_events();
         app.poll_background_tasks();
         app.poll_script_messages();
+        app.check_external_modifications();
 
         if app.needs_redraw {
             terminal.draw(|f| ui::render(f, &mut app))?;

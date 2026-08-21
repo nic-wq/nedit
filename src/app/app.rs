@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
-use std::time::{Instant, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use notify::{Config as NotifyConfig, RecommendedWatcher, Watcher};
 use ratatui::layout::Rect;
@@ -85,6 +86,8 @@ pub struct App {
     pub needs_redraw: bool,
     pub preview_buffer_idx: Option<usize>,
     pub saved_buffer_idx: usize,
+    pub file_mtimes: HashMap<PathBuf, SystemTime>,
+    pub last_external_check: Instant,
 }
 
 impl App {
@@ -209,6 +212,8 @@ impl App {
             needs_redraw: true,
             preview_buffer_idx: None,
             saved_buffer_idx: 0,
+            file_mtimes: HashMap::new(),
+            last_external_check: Instant::now(),
         };
 
         if let Some(watcher) = &mut app.watcher {
@@ -551,6 +556,113 @@ impl App {
             explorer_clone.refresh_sync();
             let _ = tx.send((explorer_clone.items, explorer_clone.max_item_width));
         });
+    }
+
+    pub fn record_file_mtime(&mut self, path: &Path) {
+        if let Ok(meta) = fs::metadata(path) {
+            if let Ok(mtime) = meta.modified() {
+                self.file_mtimes.insert(path.to_path_buf(), mtime);
+                return;
+            }
+        }
+        // If file doesn't exist or mtime unreadable, forget it.
+        self.file_mtimes.remove(path);
+    }
+
+    pub fn forget_file_mtime(&mut self, path: &Path) {
+        self.file_mtimes.remove(path);
+        // Also remove any child paths (for directory moves/deletes)
+        self.file_mtimes.retain(|p, _| !p.starts_with(path));
+    }
+
+    /// Poll open buffers for external modifications.
+    /// If a file changed on disk, show a small popup (same style as UnsavedChanges)
+    /// asking to reload. Respects debounce and does not interrupt an existing fuzzy.
+    pub fn check_external_modifications(&mut self) {
+        // Debounce: check at most twice per second.
+        if self.last_external_check.elapsed() < std::time::Duration::from_millis(500) {
+            return;
+        }
+        self.last_external_check = Instant::now();
+
+        // Don't pile up popups.
+        if self.is_fuzzy {
+            return;
+        }
+
+        for idx in 0..self.buffers.len() {
+            let Some(path) = self.buffers[idx].path.clone() else {
+                continue;
+            };
+            // Skip preview buffers — they are transient.
+            if self.buffers[idx].is_preview {
+                continue;
+            }
+            let Ok(meta) = fs::metadata(&path) else {
+                // File deleted externally — forget mtime and continue.
+                // We don't auto-close; user can still save to recreate.
+                continue;
+            };
+            let Ok(mtime) = meta.modified() else {
+                continue;
+            };
+            let known = self.file_mtimes.get(&path).copied();
+            if let Some(known_mtime) = known {
+                if mtime != known_mtime {
+                    // File changed externally.
+                    self.pending_buffer_idx = Some(idx);
+                    self.pending_path = Some(path.clone());
+                    self.is_fuzzy = true;
+                    self.fuzzy_mode = crate::app::FuzzyMode::ExternalChange;
+                    self.fuzzy_query.clear();
+                    self.fuzzy_idx = 0;
+                    self.needs_redraw = true;
+                    // Update stored mtime to avoid immediate re-trigger
+                    // until user decides. If they keep local, we update to new
+                    // mtime so popup doesn't reappear constantly.
+                    // If they reload, we'll update after reloading.
+                    break;
+                }
+            } else {
+                // First time we see this path — record it.
+                self.file_mtimes.insert(path, mtime);
+            }
+        }
+    }
+
+    pub fn reload_buffer_from_disk(&mut self, idx: usize) {
+        if idx >= self.buffers.len() {
+            return;
+        }
+        let path = match self.buffers[idx].path.clone() {
+            Some(p) => p,
+            None => return,
+        };
+        if let Ok(content) = fs::read_to_string(&path) {
+            let buf = &mut self.buffers[idx];
+            buf.content = ropey::Rope::from_str(&content);
+            buf.modified = false;
+            buf.cursor_row = 0;
+            buf.cursor_col = 0;
+            buf.cursor_goal_visual_col = 0;
+            buf.selection_start = None;
+            buf.syntax_states = vec![None; buf.content.len_lines()];
+            buf.rendered_spans = vec![None; buf.content.len_lines()];
+            buf.invalidate_max_visual_width();
+            // Reset history to the reloaded state so undo doesn't jump to stale content.
+            buf.history = vec![buf.content.clone()];
+            buf.history_idx = 0;
+            self.record_file_mtime(&path);
+            self.show_notification(
+                format!("Reloaded {}", path.display()),
+                crate::app::NotificationType::Info,
+            );
+        } else {
+            self.show_notification(
+                format!("Could not reload {}", path.display()),
+                crate::app::NotificationType::Error,
+            );
+        }
     }
 }
 
