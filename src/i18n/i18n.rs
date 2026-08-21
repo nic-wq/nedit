@@ -55,6 +55,19 @@ impl I18n {
         defaults.insert("command_palette".to_string(), "Command Palette".to_string());
         defaults.insert("move_file".to_string(), "Move File".to_string());
         defaults.insert("unsaved_changes".to_string(), "Unsaved Changes".to_string());
+        defaults.insert("external_change".to_string(), "External Change".to_string());
+        defaults.insert(
+            "file_changed".to_string(),
+            "File Changed".to_string(),
+        );
+        defaults.insert(
+            "file_changed_externally".to_string(),
+            "File changed on disk. Reload?".to_string(),
+        );
+        defaults.insert("reload".to_string(), "Reload".to_string());
+        defaults.insert("keep".to_string(), "Keep".to_string());
+        defaults.insert("new_folder".to_string(), "New Folder".to_string());
+        defaults.insert("set_as_root".to_string(), "Set as Root".to_string());
         defaults.insert("full_docs".to_string(), DOC_MAIN.to_string());
 
         let home_dir = std::env::var("HOME")

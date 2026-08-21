@@ -630,6 +630,37 @@ impl App {
             return;
         }
 
+        if self.fuzzy_mode == FuzzyMode::FileOptions {
+            // Build full option list (depends on whether a directory is selected)
+            // and filter by fuzzy query so the menu is searchable.
+            let is_dir = self
+                .explorer
+                .get_selected()
+                .map(|i| i.is_dir)
+                .unwrap_or(false);
+            let mut all = vec![
+                "New File",
+                "New Folder",
+                "Rename",
+                "Move",
+                "Delete",
+            ];
+            if is_dir {
+                all.push("Set as Root");
+            }
+            self.fuzzy_results = all
+                .into_iter()
+                .filter(|c| query.is_empty() || c.to_lowercase().contains(&query))
+                .map(PathBuf::from)
+                .collect();
+            if reset_idx {
+                self.fuzzy_idx = 0;
+            } else {
+                self.fuzzy_idx = self.fuzzy_idx.min(self.fuzzy_results.len().saturating_sub(1));
+            }
+            return;
+        }
+
         if self.fuzzy_mode == FuzzyMode::RunScript {
             self.fuzzy_results = Vec::new();
             let home_dir = std::env::var("HOME")
