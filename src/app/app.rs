@@ -640,10 +640,12 @@ impl App {
         };
         if let Ok(content) = fs::read_to_string(&path) {
             let buf = &mut self.buffers[idx];
+            let saved_row = buf.cursor_row;
+            let saved_col = buf.cursor_col;
             buf.content = ropey::Rope::from_str(&content);
             buf.modified = false;
-            buf.cursor_row = 0;
-            buf.cursor_col = 0;
+            buf.cursor_row = saved_row.min(buf.content.len_lines().saturating_sub(1));
+            buf.cursor_col = saved_col.min(buf.line_max_char_col(buf.cursor_row));
             buf.cursor_goal_visual_col = 0;
             buf.selection_start = None;
             buf.syntax_states = vec![None; buf.content.len_lines()];
