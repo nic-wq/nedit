@@ -27,11 +27,12 @@ All settings are stored in `~/.config/nedit/`. The main configuration file is `c
 # ~/.config/nedit/config.toml
 
 # General settings
-autocomplete_enabled = true    # Enable/disable word autocomplete (default: true)
-theme = "NEdit Dark"           # Default theme name (default: "NEdit Dark")
-show_indent_guides = true      # Show vertical indent guide lines (default: true)
-preview_enabled = true         # Enable file preview in explorer (default: true)
-preview_max_size = 3145728     # Max file size in bytes for preview (default: 3 MB)
+autocomplete_enabled = true         # Enable/disable word autocomplete (default: true)
+theme = "NEdit Dark"                # Default theme name (default: "NEdit Dark")
+show_indent_guides = true           # Show vertical indent guide lines (default: true)
+preview_enabled = true              # Enable file preview in explorer (default: true)
+preview_max_size = 3145728          # Max file size in bytes for preview (default: 3 MB)
+highlight_matching_bracket = true   # Highlight matching bracket under cursor (default: true)
 
 [keybinds]
 # See docs/binds.md for all available actions
@@ -230,6 +231,7 @@ Error and info messages appear as a popup bar above the status bar. They auto-di
 ### Matching Bracket Highlighting
 
 - When the cursor is on a bracket (`(`, `)`, `{`, `}`, `[`, `]`), its matching partner is highlighted.
+- Disable with `highlight_matching_bracket = false` in `config.toml` (place it in the top section, before any `[[typography.rules]]` blocks — keys after an array table belong to that table in TOML).
 
 ### Clipboard
 

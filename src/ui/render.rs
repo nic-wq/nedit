@@ -553,7 +553,11 @@ fn draw_editor(
         None => return,
     };
 
-    let matching_bracket = buffer.find_matching_bracket();
+    let matching_bracket = if app.config.highlight_matching_bracket {
+        buffer.find_matching_bracket()
+    } else {
+        None
+    };
 
     let mut buffer_scroll_row = buffer.scroll_row;
     let height = area.height as usize;

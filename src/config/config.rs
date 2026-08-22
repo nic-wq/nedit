@@ -17,6 +17,8 @@ pub struct Config {
     pub preview_enabled: bool,
     #[serde(default = "default_preview_max_size")]
     pub preview_max_size: usize,
+    #[serde(default = "default_true")]
+    pub highlight_matching_bracket: bool,
 }
 
 fn default_true() -> bool {
@@ -84,6 +86,7 @@ impl Config {
             show_indent_guides: true,
             preview_enabled: true,
             preview_max_size: default_preview_max_size(),
+            highlight_matching_bracket: true,
         }
     }
 
@@ -133,6 +136,14 @@ impl Config {
             config.preview_max_size = size as usize;
         }
 
+        if let Some(enabled) = value
+            .get("highlight_matching_bracket")
+            .and_then(toml::Value::as_bool)
+            .or_else(|| find_bool_recursive(&value, "highlight_matching_bracket"))
+        {
+            config.highlight_matching_bracket = enabled;
+        }
+
         if let Some(keybinds) = value.get("keybinds").and_then(toml::Value::as_table) {
             for (action, key) in keybinds {
                 if let Some(key) = key.as_str() {
@@ -176,5 +187,32 @@ impl Config {
             "run_live_script",
             "set_as_root",
         ]
+    }
+}
+
+fn find_bool_recursive(value: &toml::Value, key: &str) -> Option<bool> {
+    match value {
+        toml::Value::Table(table) => {
+            for (k, v) in table {
+                if k == key {
+                    if let Some(b) = v.as_bool() {
+                        return Some(b);
+                    }
+                }
+                if let Some(b) = find_bool_recursive(v, key) {
+                    return Some(b);
+                }
+            }
+            None
+        }
+        toml::Value::Array(array) => {
+            for v in array {
+                if let Some(b) = find_bool_recursive(v, key) {
+                    return Some(b);
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }
