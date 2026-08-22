@@ -8,7 +8,7 @@ use ratatui::{
 };
 use std::path::Path;
 use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter};
-use syntect::parsing::{ParseState, ScopeStack};
+use syntect::parsing::{ParseState, Scope, ScopeStack};
 
 use crate::app::{App, Focus, FuzzyMode};
 use crate::buffer::{column::TAB_WIDTH, EditorBuffer};
@@ -22,6 +22,104 @@ fn syntect_foreground_or(fg: syntect::highlighting::Color, fallback: Color) -> C
     } else {
         Color::Rgb(fg.r, fg.g, fg.b)
     }
+}
+
+struct MarkdownPalette {
+    heading: Color,
+    code_span: Color,
+    emphasis: Color,
+    strong: Color,
+    url: Color,
+    bullet: Color,
+}
+
+impl MarkdownPalette {
+    fn build(theme: &syntect::highlighting::Theme, fallback: Color) -> Self {
+        let highlighter = Highlighter::new(theme);
+        let scope_color = |scope: &str| -> Color {
+            match Scope::new(scope) {
+                Ok(scope) => {
+                    let mut stack = ScopeStack::new();
+                    stack.push(scope);
+                    syntect_foreground_or(
+                        highlighter.style_for_stack(stack.as_slice()).foreground,
+                        fallback,
+                    )
+                }
+                Err(_) => fallback,
+            }
+        };
+        Self {
+            heading: scope_color("entity.name.function"),
+            code_span: scope_color("string"),
+            emphasis: scope_color("variable.parameter"),
+            strong: scope_color("keyword.control"),
+            url: scope_color("constant.character.escape"),
+            bullet: scope_color("keyword.operator"),
+        }
+    }
+
+    fn color_for(&self, capture: &str) -> Color {
+        match capture {
+            "text.title" => self.heading,
+            "text.literal" => self.code_span,
+            "text.emphasis" => self.emphasis,
+            "text.strong" => self.strong,
+            "text.uri" | "text.reference" | "string.escape" => self.url,
+            "punctuation.special" | "punctuation.delimiter" => self.bullet,
+            _ => self.heading,
+        }
+    }
+}
+
+/// Build colored spans for one markdown line from whole-document tree-sitter
+/// capture ranges. Later overlapping ranges win over earlier ones.
+fn markdown_line_spans(
+    md_ranges: &[(usize, usize, &'static str)],
+    line_start: usize,
+    line_text: &str,
+    palette: &MarkdownPalette,
+    fallback: Color,
+) -> Vec<(Color, String)> {
+    let line_end = line_start + line_text.len();
+    let mut char_colors: Vec<Color> = line_text.chars().map(|_| fallback).collect();
+
+    for &(range_start, range_end, capture) in md_ranges {
+        if range_end <= line_start || range_start >= line_end {
+            continue;
+        }
+        let clipped_start = range_start.max(line_start);
+        let clipped_end = range_end.min(line_end);
+        let rel_start = clipped_start - line_start;
+        let rel_end = clipped_end - line_start;
+        let start_idx = line_text
+            .char_indices()
+            .take_while(|(offset, _)| *offset < rel_start)
+            .count();
+        let end_idx = line_text
+            .char_indices()
+            .take_while(|(offset, _)| *offset < rel_end)
+            .count();
+        let color = palette.color_for(capture);
+        for slot in char_colors.iter_mut().skip(start_idx).take(end_idx - start_idx) {
+            *slot = color;
+        }
+    }
+
+    let mut spans = Vec::new();
+    let mut current_color = char_colors.first().copied().unwrap_or(fallback);
+    let mut current_text = String::new();
+    for (c, color) in line_text.chars().zip(char_colors) {
+        if color != current_color && !current_text.is_empty() {
+            spans.push((current_color, std::mem::take(&mut current_text)));
+            current_color = color;
+        }
+        current_text.push(c);
+    }
+    if !current_text.is_empty() {
+        spans.push((current_color, current_text));
+    }
+    spans
 }
 
 pub fn render(f: &mut Frame, app: &mut App) {
@@ -479,9 +577,10 @@ fn draw_editor(
     };
 
     let line_count = buffer.content.len_lines();
-    // Markdown highlighting via syntect is ~100x slower than plain text for
-    // small files like AGENTS.md (19 lines: 127ms vs 1.2ms). Disable it until
-    // the syntax is optimized - plain text is far more usable.
+    // Syntect's built-in Markdown grammar is pathologically slow (~100x slower
+    // than other languages due to backtracking regexes), so Markdown files are
+    // highlighted with tree-sitter instead. Every other extension keeps using
+    // syntect.
     let is_markdown = buffer
         .path
         .as_ref()
@@ -549,6 +648,25 @@ fn draw_editor(
 
         (highlighter, ps, hs)
     });
+
+    let md_highlight = if is_markdown {
+        let visible: std::ops::Range<usize> =
+            buffer_scroll_row..(buffer_scroll_row + height).min(line_count);
+        let needs_highlight = visible.clone().any(|row| {
+            matches!(buffer.rendered_spans.get(row), Some(None)) || row >= buffer.rendered_spans.len()
+        });
+        if needs_highlight {
+            let doc = buffer.content.to_string();
+            let mut ranges = super::markdown::highlight_ranges(&doc);
+            ranges.sort_by_key(|(start, _, _)| *start);
+            let palette = MarkdownPalette::build(theme, colors.fg);
+            Some((ranges, palette))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     let mut lines = Vec::new();
     let visible_width = area.width.saturating_sub(5) as usize;
@@ -651,6 +769,15 @@ fn draw_editor(
                             )
                         })
                         .collect();
+                if i < buffer.rendered_spans.len() {
+                    buffer.rendered_spans[i] = Some(result.clone());
+                }
+                result
+            } else if let (Some((ref md_ranges, ref palette)), true) =
+                (md_highlight.as_ref(), is_markdown)
+            {
+                let line_start = buffer.content.line_to_byte(i);
+                let result = markdown_line_spans(md_ranges, line_start, &original_line, palette, colors.fg);
                 if i < buffer.rendered_spans.len() {
                     buffer.rendered_spans[i] = Some(result.clone());
                 }

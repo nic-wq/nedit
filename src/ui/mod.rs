@@ -1,6 +1,7 @@
 mod colors;
 pub mod icons;
 mod layout;
+pub(crate) mod markdown;
 mod render;
 mod welcome;
 
