@@ -6,7 +6,7 @@ impl EditorBuffer {
             self.history_idx -= 1;
             // Ropey clone is O(1) (copy-on-write), so full-state undo stays cheap.
             self.content = self.history[self.history_idx].clone();
-            self.modified = true;
+            self.refresh_modified();
             // History only stores text, not caret position — clamp or render/edit will panic
             // when the restored content is shorter than the previous cursor location.
             self.clamp_cursor_to_content();
@@ -20,7 +20,7 @@ impl EditorBuffer {
         if self.history_idx + 1 < self.history.len() {
             self.history_idx += 1;
             self.content = self.history[self.history_idx].clone();
-            self.modified = true;
+            self.refresh_modified();
             self.clamp_cursor_to_content();
             self.sync_syntax_states(0);
             self.sync_rendered_spans(0);

@@ -642,8 +642,7 @@ impl App {
             let buf = &mut self.buffers[idx];
             let saved_row = buf.cursor_row;
             let saved_col = buf.cursor_col;
-            buf.content = ropey::Rope::from_str(&content);
-            buf.modified = false;
+            buf.set_content_and_mark_clean(ropey::Rope::from_str(&content));
             buf.cursor_row = saved_row.min(buf.content.len_lines().saturating_sub(1));
             buf.cursor_col = saved_col.min(buf.line_max_char_col(buf.cursor_row));
             buf.cursor_goal_visual_col = 0;
@@ -651,9 +650,6 @@ impl App {
             buf.syntax_states = vec![None; buf.content.len_lines()];
             buf.rendered_spans = vec![None; buf.content.len_lines()];
             buf.invalidate_max_visual_width();
-            // Reset history to the reloaded state so undo doesn't jump to stale content.
-            buf.history = vec![buf.content.clone()];
-            buf.history_idx = 0;
             self.record_file_mtime(&path);
             self.show_notification(
                 format!("Reloaded {}", path.display()),

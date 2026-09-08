@@ -308,7 +308,7 @@ impl App {
         };
 
         let mut buffer = EditorBuffer::new();
-        buffer.content = ropey::Rope::from_str(&content);
+        buffer.set_content_and_mark_clean(ropey::Rope::from_str(&content));
         buffer.is_read_only = true;
         buffer.path = Some(PathBuf::from(filename));
 
@@ -544,6 +544,12 @@ impl App {
                         buf.cursor_col = cursor.1;
                         buf.sync_cursor_goal_from_position();
                         buf.selection_start = None;
+                        buf.clamp_cursor_to_content();
+                        buf.push_history();
+                        buf.refresh_modified();
+                        buf.sync_syntax_states(0);
+                        buf.sync_rendered_spans(0);
+                        buf.invalidate_max_visual_width();
                     }
                 }
                 crate::lua::RevertAction::RestoreFile {
@@ -555,8 +561,13 @@ impl App {
                         // Update any open buffers with this path
                         for buf in &mut self.buffers {
                             if buf.path.as_ref() == Some(&path) {
-                                buf.content = ropey::Rope::from_str(&actual_content);
-                                buf.modified = false;
+                                buf.set_content_and_mark_clean(ropey::Rope::from_str(
+                                    &actual_content,
+                                ));
+                                buf.clamp_cursor_to_content();
+                                buf.sync_syntax_states(0);
+                                buf.sync_rendered_spans(0);
+                                buf.invalidate_max_visual_width();
                             }
                         }
                     } else {
@@ -630,8 +641,11 @@ impl App {
                         buf.cursor_row = 0;
                         buf.cursor_col = 0;
                         buf.cursor_goal_visual_col = 0;
+                        buf.push_history();
+                        buf.refresh_modified();
                         buf.sync_syntax_states(0);
                         buf.sync_rendered_spans(0);
+                        buf.invalidate_max_visual_width();
                     }
                 }
                 crate::lua::LuaAction::WriteFile(path, text) => {

@@ -18,6 +18,11 @@ pub struct EditorBuffer {
     pub scroll_row: usize,
     pub scroll_col: usize,
     pub modified: bool,
+    /// Snapshot of the content the last time the buffer was clean
+    /// (open, reload or save). `Rope::clone` is O(1) (copy-on-write via
+    /// `Arc`), so keeping this snapshot is cheap and lets us recompute
+    /// `modified` by comparison instead of setting `true` on every edit.
+    pub(crate) saved_content: Rope,
     pub selection_start: Option<(usize, usize)>,
     pub history: Vec<Rope>,
     pub history_idx: usize,
@@ -42,6 +47,7 @@ impl EditorBuffer {
         let content = Rope::from_str("");
         Self {
             content: content.clone(),
+            saved_content: content.clone(),
             path: None,
             cursor_row: 0,
             cursor_col: 0,
@@ -72,6 +78,7 @@ impl EditorBuffer {
 
         Ok(Self {
             content: content.clone(),
+            saved_content: content.clone(),
             path: Some(path),
             cursor_row: 0,
             cursor_col: 0,
@@ -140,9 +147,48 @@ impl EditorBuffer {
     pub fn save(&mut self) -> anyhow::Result<()> {
         if let Some(path) = &self.path {
             fs::write(path, self.content.to_string())?;
-            self.modified = false;
+            self.mark_clean();
         }
         Ok(())
+    }
+
+    /// Marks the current content as clean (no `*`).
+    /// `Rope::clone` is O(1), so this is cheap to call after save/reload/load.
+    pub fn mark_clean(&mut self) {
+        self.saved_content = self.content.clone();
+        self.modified = false;
+    }
+
+    /// Recomputes `modified` by comparing against the last clean state.
+    ///
+    /// Fast by construction:
+    /// - `Rope::eq` checks `len_bytes()` first (O(1)), so the vast
+    ///   majority of keystrokes (which change the size) never scan the text.
+    /// - Only when the sizes match do we walk the chunks with early-exit
+    ///   on the first differing byte, without any allocation (`to_string`).
+    #[inline]
+    pub fn refresh_modified(&mut self) {
+        self.modified = self.content != self.saved_content;
+    }
+
+    /// Replaces the content and marks it as clean (load/reload/docs).
+    /// Also resets the history so undo cannot jump to a stale state.
+    pub fn set_content_and_mark_clean(&mut self, content: Rope) {
+        self.content = content.clone();
+        self.saved_content = content;
+        self.modified = false;
+        self.history = vec![self.content.clone()];
+        self.history_idx = 0;
+    }
+
+    /// Replaces the content and recomputes `modified` (e.g. script actions/external undo).
+    pub fn set_content_and_refresh(&mut self, content: Rope) {
+        self.content = content;
+        self.refresh_modified();
+        self.push_history();
+        self.sync_syntax_states(0);
+        self.sync_rendered_spans(0);
+        self.invalidate_max_visual_width();
     }
 
     pub fn line_number_width(&self) -> usize {
@@ -311,5 +357,118 @@ impl EditorBuffer {
 
     pub fn invalidate_max_visual_width(&mut self) {
         self.max_visual_width = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EditorBuffer;
+    use ropey::Rope;
+
+    fn clean_buffer(content: &str) -> EditorBuffer {
+        let mut buf = EditorBuffer::new();
+        buf.set_content_and_mark_clean(Rope::from_str(content));
+        buf
+    }
+
+    #[test]
+    fn typing_then_deleting_back_to_original_clears_modified() {
+        let mut buf = clean_buffer("hello");
+        assert!(!buf.modified);
+        buf.move_to_line_end();
+        buf.insert_char('X');
+        assert!(buf.modified);
+        assert_eq!(buf.content.to_string(), "helloX");
+        buf.delete_backspace();
+        assert_eq!(buf.content.to_string(), "hello");
+        assert!(
+            !buf.modified,
+            "content is back to the original but `modified` stayed true"
+        );
+    }
+
+    #[test]
+    fn insert_text_then_delete_selection_back_to_original_clears_modified() {
+        let mut buf = clean_buffer("hello");
+        buf.move_to_line_end();
+        buf.insert_text(" world");
+        assert!(buf.modified);
+        buf.selection_start = Some((0, 5));
+        // The cursor is already at the end after insert_text; select the inserted suffix.
+        buf.delete_selection();
+        assert_eq!(buf.content.to_string(), "hello");
+        assert!(!buf.modified);
+    }
+
+    #[test]
+    fn same_length_replacement_keeps_modified() {
+        let mut buf = clean_buffer("hello");
+        buf.move_to_line_end();
+        buf.delete_backspace(); // "hell"
+        assert!(buf.modified);
+        buf.insert_char('o'); // back to the same size through a different path
+        assert_eq!(buf.content.to_string(), "hello");
+        assert!(!buf.modified);
+        // A real same-size replacement must stay dirty.
+        buf.delete_backspace(); // "hell"
+        buf.insert_char('O'); // "hellO" — same len, different content
+        assert_eq!(buf.content.to_string(), "hellO");
+        assert!(buf.modified);
+    }
+
+    #[test]
+    fn undo_to_original_clears_modified_and_redo_dirties_again() {
+        let mut buf = clean_buffer("abc");
+        buf.move_to_line_end();
+        buf.insert_char('z');
+        assert!(buf.modified);
+        buf.undo();
+        assert_eq!(buf.content.to_string(), "abc");
+        assert!(!buf.modified);
+        buf.redo();
+        assert_eq!(buf.content.to_string(), "abcz");
+        assert!(buf.modified);
+    }
+
+    #[test]
+    fn delete_word_then_undo_clears_modified() {
+        let mut buf = clean_buffer("hello world");
+        buf.move_to_line_end();
+        buf.delete_word();
+        assert_eq!(buf.content.to_string(), "hello ");
+        assert!(buf.modified);
+        buf.undo();
+        assert_eq!(buf.content.to_string(), "hello world");
+        assert!(!buf.modified);
+    }
+
+    #[test]
+    fn save_marks_clean_and_later_revert_clears_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.txt");
+        std::fs::write(&path, "hi").unwrap();
+        let mut buf = EditorBuffer::from_path(path).unwrap();
+        assert!(!buf.modified);
+        buf.move_to_line_end();
+        buf.insert_char('!');
+        assert!(buf.modified);
+        buf.save().unwrap();
+        assert!(!buf.modified);
+        // Edit and revert after saving: must become clean again.
+        buf.insert_char('?');
+        assert!(buf.modified);
+        buf.delete_backspace();
+        assert!(!buf.modified);
+    }
+
+    #[test]
+    fn empty_untitled_buffer_type_and_delete_stays_clean() {
+        let mut buf = EditorBuffer::new();
+        assert!(!buf.modified);
+        buf.insert_char('a');
+        assert!(buf.modified);
+        buf.delete_backspace();
+        assert_eq!(buf.content.to_string(), "");
+        assert!(!buf.modified);
     }
 }

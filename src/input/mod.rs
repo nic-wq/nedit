@@ -734,8 +734,9 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         }
                         Err(err) => {
                             let mut err_buf = crate::buffer::EditorBuffer::new();
-                            err_buf.content =
-                                ropey::Rope::from_str(&format!("Could not read script:\n{}", err));
+                            err_buf.set_content_and_mark_clean(ropey::Rope::from_str(
+                                &format!("Could not read script:\n{}", err),
+                            ));
                             err_buf.is_read_only = true;
                             app.buffers.push(err_buf);
                             app.current_buffer_idx = app.buffers.len() - 1;

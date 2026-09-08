@@ -96,7 +96,7 @@ mod tests {
 
     fn buffer_with(content: &str) -> EditorBuffer {
         let mut buf = EditorBuffer::new();
-        buf.content = Rope::from_str(content);
+        buf.set_content_and_mark_clean(Rope::from_str(content));
         buf.syntax_states = vec![None; buf.content.len_lines()];
         buf
     }

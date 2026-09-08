@@ -11,9 +11,9 @@ impl App {
         let mut buffer = crate::buffer::EditorBuffer::new();
         // We provide a basic template with common operations to lower the barrier for entry
         // and show the user how to interact with the nedit API immediately.
-        buffer.content = ropey::Rope::from_str(
+        buffer.set_content_and_mark_clean(ropey::Rope::from_str(
             "-- Name: Live Script\n-- Press F9 to run on the other buffer\n\nlocal sel = nedit.selection()\nif sel ~= \"\" then\n    nedit.write_selection(sel:upper())\nend\n",
-        );
+        ));
 
         self.buffers.push(buffer);
         self.live_script_buffer_idx = Some(self.buffers.len() - 1);

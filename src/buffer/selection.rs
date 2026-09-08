@@ -46,8 +46,8 @@ impl EditorBuffer {
 
     pub fn delete_selection(&mut self) {
         if self.clear_selection_content() {
-            self.modified = true;
             self.push_history();
+            self.refresh_modified();
             self.sync_syntax_states(self.cursor_row);
             self.sync_rendered_spans(self.cursor_row);
             self.invalidate_max_visual_width();

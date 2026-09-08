@@ -35,8 +35,8 @@ impl EditorBuffer {
             self.cursor_col += inserted.len_chars();
         }
         self.sync_cursor_goal_from_position();
-        self.modified = true;
         self.push_history();
+        self.refresh_modified();
         self.sync_syntax_states(old_row);
         self.sync_rendered_spans(old_row);
         self.invalidate_max_visual_width();
@@ -81,8 +81,8 @@ impl EditorBuffer {
             self.cursor_col += 1;
         }
         self.sync_cursor_goal_from_position();
-        self.modified = true;
         self.push_history();
+        self.refresh_modified();
         self.sync_syntax_states(edited_row);
         self.sync_rendered_spans(edited_row);
         self.invalidate_max_visual_width();
@@ -103,8 +103,8 @@ impl EditorBuffer {
                 }
             }
             self.sync_cursor_goal_from_position();
-            self.modified = true;
             self.push_history();
+            self.refresh_modified();
             self.sync_syntax_states(self.cursor_row);
             self.sync_rendered_spans(self.cursor_row);
             self.invalidate_max_visual_width();
@@ -126,8 +126,8 @@ impl EditorBuffer {
         let start_idx = self.to_char_idx(self.cursor_row, self.cursor_col);
 
         self.content.remove(start_idx..end_idx);
-        self.modified = true;
         self.push_history();
+        self.refresh_modified();
         self.sync_syntax_states(self.cursor_row);
         self.sync_rendered_spans(self.cursor_row);
         self.invalidate_max_visual_width();
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn inserting_newline_at_line_start_invalidates_shifted_render_cache() {
         let mut buf = EditorBuffer::new();
-        buf.content = Rope::from_str("olá");
+        buf.set_content_and_mark_clean(Rope::from_str("olá"));
         buf.syntax_states = vec![None; buf.content.len_lines()];
         buf.rendered_spans = vec![Some(Vec::new()); buf.content.len_lines()];
         buf.cursor_row = 0;
