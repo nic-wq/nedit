@@ -33,6 +33,7 @@ show_indent_guides = true           # Show vertical indent guide lines (default:
 preview_enabled = true              # Enable file preview in explorer (default: true)
 preview_max_size = 3145728          # Max file size in bytes for preview (default: 3 MB)
 highlight_matching_bracket = true   # Highlight matching bracket under cursor (default: true)
+notification_position = "bottom-right"  # Toast corner: top-left, top-right, bottom-left, bottom-right (default: bottom-right)
 
 [keybinds]
 # See docs/binds.md for all available actions

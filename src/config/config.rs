@@ -3,6 +3,46 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+/// Corner of the screen where notification toasts appear.
+/// Set with `notification_position` in `config.toml`, e.g. `"top-right"`.
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum NotificationPosition {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    #[default]
+    BottomRight,
+}
+
+impl NotificationPosition {
+    /// Parse a user-provided value, forgiving separators and case.
+    /// Unknown values fall back to the default (bottom-right).
+    pub fn parse(s: &str) -> Self {
+        match s
+            .trim()
+            .to_lowercase()
+            .replace(['-', '_', ' '], "")
+            .as_str()
+        {
+            "topleft" => Self::TopLeft,
+            "topright" | "top" => Self::TopRight,
+            "bottomleft" => Self::BottomLeft,
+            "bottomright" | "bottom" => Self::BottomRight,
+            _ => Self::BottomRight,
+        }
+    }
+
+    pub fn as_config_str(self) -> &'static str {
+        match self {
+            Self::TopLeft => "top-left",
+            Self::TopRight => "top-right",
+            Self::BottomLeft => "bottom-left",
+            Self::BottomRight => "bottom-right",
+        }
+    }
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct Config {
     #[serde(default = "default_true")]
@@ -19,6 +59,8 @@ pub struct Config {
     pub preview_max_size: usize,
     #[serde(default = "default_true")]
     pub highlight_matching_bracket: bool,
+    #[serde(default)]
+    pub notification_position: NotificationPosition,
 }
 
 fn default_true() -> bool {
@@ -87,6 +129,7 @@ impl Config {
             preview_enabled: true,
             preview_max_size: default_preview_max_size(),
             highlight_matching_bracket: true,
+            notification_position: NotificationPosition::default(),
         }
     }
 
@@ -142,6 +185,13 @@ impl Config {
             .or_else(|| find_bool_recursive(&value, "highlight_matching_bracket"))
         {
             config.highlight_matching_bracket = enabled;
+        }
+
+        if let Some(pos) = value
+            .get("notification_position")
+            .and_then(toml::Value::as_str)
+        {
+            config.notification_position = NotificationPosition::parse(pos);
         }
 
         if let Some(keybinds) = value.get("keybinds").and_then(toml::Value::as_table) {
@@ -214,5 +264,50 @@ fn find_bool_recursive(value: &toml::Value, key: &str) -> Option<bool> {
             None
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NotificationPosition;
+
+    #[test]
+    fn notification_position_parses_all_corners() {
+        use NotificationPosition::*;
+        assert_eq!(NotificationPosition::parse("top-left"), TopLeft);
+        assert_eq!(NotificationPosition::parse("top_right"), TopRight);
+        assert_eq!(NotificationPosition::parse("BOTTOMLEFT"), BottomLeft);
+        assert_eq!(NotificationPosition::parse("bottom-right"), BottomRight);
+        assert_eq!(NotificationPosition::parse("top"), TopRight);
+        assert_eq!(NotificationPosition::parse("bottom"), BottomRight);
+    }
+
+    #[test]
+    fn notification_position_falls_back_to_default() {
+        assert_eq!(
+            NotificationPosition::parse("center"),
+            NotificationPosition::default()
+        );
+        assert_eq!(
+            NotificationPosition::parse(""),
+            NotificationPosition::default()
+        );
+        assert_eq!(
+            NotificationPosition::default(),
+            NotificationPosition::BottomRight
+        );
+    }
+
+    #[test]
+    fn config_loads_notification_position_from_toml() {
+        let config =
+            super::Config::from_toml_with_defaults("notification_position = \"top-left\"\n")
+                .unwrap();
+        assert_eq!(config.notification_position, NotificationPosition::TopLeft);
+        let config = super::Config::from_toml_with_defaults("").unwrap();
+        assert_eq!(
+            config.notification_position,
+            NotificationPosition::BottomRight
+        );
     }
 }

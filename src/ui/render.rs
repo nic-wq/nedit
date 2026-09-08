@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 use std::path::Path;
@@ -128,21 +128,10 @@ pub fn render(f: &mut Frame, app: &mut App) {
 
     f.render_widget(Block::default().bg(colors.bg), f.area());
 
-    let chunks = if app.notification.is_some() {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(0),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
-            .split(f.area())
-    } else {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(1)])
-            .split(f.area())
-    };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(f.area());
 
     // We calculate the explorer width dynamically based on the longest filename
     // to minimize wasted space while ensuring names remain readable.
@@ -270,15 +259,12 @@ pub fn render(f: &mut Frame, app: &mut App) {
 
     draw_status_bar(f, app, chunks[1], &colors);
 
-    if let Some((ref msg, ref ntype)) = app.notification {
-        if chunks.len() > 2 {
-            draw_notification(f, msg, ntype, chunks[2], &colors);
-        }
-    }
-
     if app.is_fuzzy {
         draw_fuzzy_finder(f, app, &colors);
     }
+
+    // Toasts float above everything, including modals.
+    draw_toasts(f, app, &colors);
 }
 
 fn draw_split_separator(f: &mut Frame, area: Rect, colors: &UIColors) {
@@ -934,19 +920,128 @@ fn draw_editor(
     }
 }
 
-fn draw_notification(
-    f: &mut Frame,
-    msg: &str,
-    ntype: &crate::app::NotificationType,
-    area: Rect,
-    colors: &UIColors,
-) {
-    let (bg, icon) = match ntype {
-        crate::app::NotificationType::Error => (colors.error, " Error "),
-        crate::app::NotificationType::Info => (colors.accent, " Info "),
+/// Floating notification toasts stacked in the configured corner.
+///
+/// Each toast is borderless chrome over the editor: no filled card and no
+/// clearing halo, just a type-colored rounded border with the message wrapped
+/// to fit the screen and a progress bar on the last line that drains as the
+/// toast approaches dismissal. The toast footprint is painted with the editor
+/// background so moving toasts never leave ghost text behind.
+/// Width adapts to the longest content within bounds; toasts that would
+/// overflow the screen are dropped; expired toasts are skipped (the periodic
+/// tick prunes them right after).
+fn draw_toasts(f: &mut Frame, app: &App, colors: &UIColors) {
+    use crate::app::toast::{
+        clamp_toast_width, layout_toasts, toast_title, truncate_cells, wrap_cells, Toast,
+        MAX_TOAST_LINES, MAX_VISIBLE_TOASTS,
     };
-    let text = format!("{}{}", icon, msg);
-    f.render_widget(Paragraph::new(text).bg(bg).fg(colors.bg), area);
+
+    let area = f.area();
+    if area.width < 12 || area.height < 6 {
+        return;
+    }
+    // Newest first.
+    let live: Vec<&Toast> = app
+        .notifications
+        .iter()
+        .rev()
+        .filter(|toast| !toast.is_expired())
+        .take(MAX_VISIBLE_TOASTS)
+        .collect();
+    if live.is_empty() {
+        return;
+    }
+
+    // Uniform width from the widest content (title or longest raw line).
+    let natural = live
+        .iter()
+        .map(|toast| {
+            let title_w = UnicodeWidthStr::width(toast_title(toast.kind).as_str());
+            let msg_w = toast
+                .message
+                .split('\n')
+                .map(UnicodeWidthStr::width)
+                .max()
+                .unwrap_or(0);
+            // Borders (2) + horizontal padding (2).
+            title_w.max(msg_w).saturating_add(4) as u16
+        })
+        .max()
+        .unwrap_or(20);
+    let width = clamp_toast_width(area.width, natural);
+    let inner = (width as usize).saturating_sub(4).max(1);
+
+    // Wrap bodies and derive outer heights (top border + lines + bar + bottom).
+    let mut bodies: Vec<Vec<String>> = Vec::with_capacity(live.len());
+    let mut heights: Vec<u16> = Vec::with_capacity(live.len());
+    for toast in &live {
+        let mut lines = wrap_cells(&toast.message, inner);
+        if lines.len() > MAX_TOAST_LINES {
+            lines.truncate(MAX_TOAST_LINES);
+            if let Some(last) = lines.last_mut() {
+                let truncated = truncate_cells(last, inner.saturating_sub(1));
+                *last = format!("{truncated}…");
+            }
+        }
+        heights.push(lines.len().saturating_add(3) as u16);
+        bodies.push(lines);
+    }
+
+    let rects = layout_toasts(area, app.config.notification_position, width, &heights);
+    for (idx, rect) in rects.iter().enumerate() {
+        let toast = live[idx];
+        let kind_color = match toast.kind {
+            crate::app::NotificationType::Error => colors.error,
+            crate::app::NotificationType::Info => colors.accent,
+        };
+        // Flat editor-background patch: erases whatever was behind the toast
+        // (no ghosting) without the hard rectangular halo that `Clear` leaves,
+        // since `Clear` resets to the terminal default instead of the theme bg.
+        f.render_widget(Block::default().bg(colors.bg), *rect);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(kind_color).bg(colors.bg))
+            .style(Style::default().bg(colors.bg))
+            .title(Span::styled(
+                toast_title(toast.kind),
+                Style::default()
+                    .fg(kind_color)
+                    .bg(colors.bg)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        f.render_widget(block, *rect);
+        if rect.width < 3 || rect.height < 4 {
+            continue;
+        }
+        let text_area = Rect::new(
+            rect.x.saturating_add(2),
+            rect.y.saturating_add(1),
+            rect.width.saturating_sub(4),
+            bodies[idx].len() as u16,
+        );
+        f.render_widget(
+            Paragraph::new(bodies[idx].join("\n"))
+                .style(Style::default().fg(colors.fg).bg(colors.bg)),
+            text_area,
+        );
+        // Draining progress bar: full when born, empty at dismissal.
+        let filled = (toast.remaining_frac() * inner as f32).round() as usize;
+        let filled = filled.min(inner);
+        let bar: String = "█".repeat(filled) + &"░".repeat(inner.saturating_sub(filled));
+        let bar_area = Rect::new(
+            rect.x.saturating_add(2),
+            rect.y
+                .saturating_add(1)
+                .saturating_add(bodies[idx].len() as u16),
+            rect.width.saturating_sub(4),
+            1,
+        );
+        f.render_widget(
+            Paragraph::new(bar).style(Style::default().fg(kind_color).bg(colors.bg)),
+            bar_area,
+        );
+    }
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
@@ -1616,6 +1711,81 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
     }
 
     f.render_widget(block, area);
+}
+
+#[cfg(test)]
+mod toast_render_tests {
+    use super::{draw_toasts, get_colors};
+    use crate::app::{App, NotificationType};
+    use crate::config::NotificationPosition;
+    use ratatui::{backend::TestBackend, Terminal};
+
+    fn render_toasts(app: &App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(app);
+                draw_toasts(f, app, &colors);
+            })
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn app_with_toast(msg: &str) -> App {
+        let mut app = App::new(&[]);
+        app.show_notification(msg.to_string(), NotificationType::Info);
+        app
+    }
+
+    #[test]
+    fn toast_hugs_bottom_right_by_default() {
+        let app = app_with_toast("Hi");
+        assert_eq!(
+            app.config.notification_position,
+            NotificationPosition::BottomRight
+        );
+        // 1-line message -> width clamps to min 20, height 4 (border+line+bar+border).
+        let buf = render_toasts(&app, 80, 24);
+        assert_eq!(buf[(58, 19)].symbol(), "╭");
+        assert_eq!(buf[(77, 19)].symbol(), "╮");
+        assert_eq!(buf[(58, 22)].symbol(), "╰");
+        assert_eq!(buf[(77, 22)].symbol(), "╯");
+        // No filled card and no clearing halo: the interior blends with the
+        // editor background, only border/text/progress carry color.
+        let colors = get_colors(&app);
+        assert_eq!(buf[(60, 20)].bg, colors.bg);
+        assert_eq!(buf[(60, 20)].symbol(), "H");
+    }
+
+    #[test]
+    fn toast_follows_configured_corner() {
+        let mut app = app_with_toast("Hi");
+        app.config.notification_position = NotificationPosition::TopLeft;
+        let buf = render_toasts(&app, 80, 24);
+        assert_eq!(buf[(2, 1)].symbol(), "╭");
+        assert_eq!(buf[(2, 4)].symbol(), "╰");
+    }
+
+    #[test]
+    fn long_message_wraps_and_stays_on_screen() {
+        let app = app_with_toast(&"word ".repeat(30));
+        let buf = render_toasts(&app, 30, 10);
+        // Width clamps to the 30-col screen (1-col margins): right edge at col 28.
+        // 4 capped message lines -> height 7, bottom row at 10-1-1 = 8.
+        assert_eq!(buf[(28, 2)].symbol(), "╮");
+        assert_eq!(buf[(28, 8)].symbol(), "╯");
+    }
+
+    #[test]
+    fn expired_toasts_render_nothing() {
+        let mut app = app_with_toast("Hi");
+        // Age the toast past its duration.
+        app.notifications[0].created -= std::time::Duration::from_secs(60);
+        assert!(app.notifications[0].is_expired());
+        let buf = render_toasts(&app, 80, 24);
+        assert_eq!(buf[(58, 19)].symbol(), " ");
+    }
 }
 
 #[cfg(test)]

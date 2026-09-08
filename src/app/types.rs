@@ -35,7 +35,7 @@ pub enum PendingAction {
     Quit,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NotificationType {
     Error,
     Info,

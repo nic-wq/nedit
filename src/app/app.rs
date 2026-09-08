@@ -55,8 +55,7 @@ pub struct App {
     pub pending_path: Option<PathBuf>,
     pub pending_explorer_selection: Option<PathBuf>,
     pub move_dir: Option<PathBuf>,
-    pub notification: Option<(String, NotificationType)>,
-    pub notification_timer: u8,
+    pub notifications: Vec<crate::app::toast::Toast>,
     pub live_script_mode: bool,
     pub live_script_buffer_idx: Option<usize>,
     pub target_buffer_idx: Option<usize>,
@@ -96,23 +95,21 @@ pub struct App {
 
 impl App {
     pub fn show_notification(&mut self, message: String, ntype: NotificationType) {
-        self.notification = Some((message, ntype));
-        self.notification_timer = 5;
+        // Cap the stack so a burst of messages never covers the screen.
+        if self.notifications.len() >= crate::app::toast::MAX_TOASTS {
+            self.notifications.remove(0);
+        }
+        self.notifications
+            .push(crate::app::toast::Toast::new(message, ntype));
         self.needs_redraw = true;
     }
 
     pub fn clear_notification(&mut self) {
-        self.notification = None;
-        self.notification_timer = 0;
+        self.notifications.clear();
     }
 
     pub fn tick_notification(&mut self) {
-        if self.notification_timer > 0 {
-            self.notification_timer -= 1;
-            if self.notification_timer == 0 {
-                self.notification = None;
-            }
-        }
+        self.notifications.retain(|toast| !toast.is_expired());
     }
 
     pub fn request_redraw(&mut self) {
@@ -185,8 +182,7 @@ impl App {
             pending_path: None,
             pending_explorer_selection: None,
             move_dir: None,
-            notification: None,
-            notification_timer: 0,
+            notifications: Vec::new(),
             live_script_mode: false,
             live_script_buffer_idx: None,
             target_buffer_idx: None,

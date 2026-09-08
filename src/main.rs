@@ -645,6 +645,12 @@ fn main() -> anyhow::Result<()> {
             app.tick_notification();
             app.needs_redraw = true;
         }
+        // Keep toast progress bars animating while any toast is visible.
+        // ~4fps when idle is plenty for a draining bar and costs almost nothing.
+        if !app.notifications.is_empty() && tick_counter.is_multiple_of(16) {
+            app.tick_notification();
+            app.needs_redraw = true;
+        }
 
         if app.should_quit {
             break;
