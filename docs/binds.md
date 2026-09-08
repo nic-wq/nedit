@@ -46,11 +46,9 @@ These can be customized in the `[keybinds]` section of `~/.config/nedit/config.t
 
 ### Live Script
 
-| Action             | Default           | Description                                                  |
-| ------------------ | ----------------- | ------------------------------------------------------------ |
-| `run_live_script`  | `f9`              | Execute the live script (applies immediately to target file) |
-| `live_script_next` | `shift+alt+right` | Switch to next pane (script ↔ target file)                   |
-| `live_script_prev` | `shift+alt+left`  | Switch to previous pane (script ↔ target file)               |
+| Action            | Default | Description                                                  |
+| ----------------- | ------- | ------------------------------------------------------------ |
+| `run_live_script` | `f9`    | Execute the live script (applies immediately to target file) |
 
 ---
 
@@ -99,6 +97,8 @@ These shortcuts are built into NEdit and **cannot be remapped** through `config.
 | `CTRL + ALT + LEFT`         | Switch to previous tab |
 | `CTRL + ALT + RIGHT`        | Switch to next tab     |
 | `ALT + 1` through `ALT + 9` | Switch to tab 1–9      |
+
+In Live Script mode the script pane is pinned as the last tab, so `CTRL + ALT + RIGHT` from any file reaches it.
 
 ### Autocomplete
 
@@ -174,8 +174,6 @@ select_all = "ctrl+a"
 select_line = "ctrl+l"
 open_help = "ctrl+h"
 run_live_script = "f9"
-live_script_next = "shift+alt+right"
-live_script_prev = "shift+alt+left"
 set_as_root = "ctrl+enter"
 ```
 
@@ -191,7 +189,7 @@ Available tokens for use in `config.toml` keybind strings:
 | `alt`   | Alt / Meta key |
 | `shift` | Shift key      |
 
-Modifiers are combined with `+` (e.g., `ctrl+alt+t`, `shift+alt+right`).
+Modifiers are combined with `+` (e.g., `ctrl+alt+t`).
 
 ### Key Names
 

@@ -1158,8 +1158,8 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     } else if app.live_script_mode && app.focus == Focus::Editor {
         vec![
             (app.config.get_keybind("run_live_script").to_uppercase(), "Run"),
-            ("Ctrl+Alt+←".to_string(), "Prev Pane"),
-            ("Ctrl+Alt+→".to_string(), "Next Pane"),
+            ("Ctrl+Alt+←".to_string(), "Prev Tab"),
+            ("Ctrl+Alt+→".to_string(), "Next Tab"),
             (
                 app.config.get_keybind("command_palette").to_uppercase(),
                 "Palette",

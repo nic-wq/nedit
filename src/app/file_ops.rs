@@ -13,6 +13,63 @@ impl App {
         RecursiveMode::NonRecursive
     }
 
+    /// Append a buffer, keeping the live script pane pinned as the last tab.
+    ///
+    /// Returns the index of the inserted buffer. Outside live script mode
+    /// this is a plain push. In live script mode the buffer goes right
+    /// before the script buffer and every stored buffer index at/after the
+    /// insertion point shifts by one, so tab cycling (`Ctrl+Alt+←/→`) always
+    /// reaches the script pane as the final tab.
+    pub fn push_buffer(&mut self, buffer: EditorBuffer) -> usize {
+        let script_pos = if self.live_script_mode {
+            self.live_script_buffer_idx
+                .filter(|&idx| idx < self.buffers.len())
+        } else {
+            None
+        };
+        let Some(pos) = script_pos else {
+            self.buffers.push(buffer);
+            return self.buffers.len() - 1;
+        };
+        self.buffers.insert(pos, buffer);
+        if self.current_buffer_idx >= pos {
+            self.current_buffer_idx += 1;
+        }
+        self.live_script_buffer_idx = Some(pos + 1);
+        if let Some(idx) = self.target_buffer_idx {
+            if idx >= pos {
+                self.target_buffer_idx = Some(idx + 1);
+            }
+        }
+        if let Some(idx) = self.preview_buffer_idx {
+            if idx >= pos {
+                self.preview_buffer_idx = Some(idx + 1);
+            }
+        }
+        if self.saved_buffer_idx >= pos {
+            self.saved_buffer_idx += 1;
+        }
+        if let Some(idx) = self.pending_buffer_idx {
+            if idx >= pos {
+                self.pending_buffer_idx = Some(idx + 1);
+            }
+        }
+        pos
+    }
+
+    /// In live script mode, a newly shown buffer (anything but the script
+    /// pane itself) becomes the left-pane target, so it opens on the left
+    /// with the script on the right no matter where the open came from
+    /// (explorer, fuzzy finder, docs, new file, ...).
+    pub fn track_live_target(&mut self, idx: usize) {
+        if idx >= self.buffers.len() {
+            return;
+        }
+        if self.live_script_mode && Some(idx) != self.live_script_buffer_idx {
+            self.target_buffer_idx = Some(idx);
+        }
+    }
+
     pub fn open_file(&mut self, path: PathBuf) {
         // We handle directories by switching the explorer root instead of opening them as buffers
         // to maintain a consistent UX where the editor only deals with text content.
@@ -46,8 +103,7 @@ impl App {
 
         match EditorBuffer::from_path(path.clone()) {
             Ok(buffer) => {
-                self.buffers.push(buffer);
-                self.current_buffer_idx = self.buffers.len() - 1;
+                self.current_buffer_idx = self.push_buffer(buffer);
                 self.focus = Focus::Editor;
                 self.is_welcome = false;
                 self.record_file_mtime(&path);
@@ -242,8 +298,8 @@ impl App {
             if let Some(preview_idx) = self.preview_buffer_idx.take() {
                 self.clear_preview(preview_idx);
             }
-            self.buffers.push(EditorBuffer::new());
-            self.current_buffer_idx = self.buffers.len() - 1;
+            self.current_buffer_idx = self.push_buffer(EditorBuffer::new());
+            self.track_live_target(self.current_buffer_idx);
         }
         self.focus = Focus::Editor;
         self.is_welcome = false;
@@ -296,6 +352,7 @@ impl App {
                     self.focus = Focus::Editor;
                     self.is_welcome = false;
                     self.is_fuzzy = false;
+                    self.track_live_target(i);
                     return;
                 }
             }
@@ -314,11 +371,11 @@ impl App {
         buffer.is_read_only = true;
         buffer.path = Some(PathBuf::from(filename));
 
-        self.buffers.push(buffer);
-        self.current_buffer_idx = self.buffers.len() - 1;
+        self.current_buffer_idx = self.push_buffer(buffer);
         self.focus = Focus::Editor;
         self.is_welcome = false;
         self.is_fuzzy = false;
+        self.track_live_target(self.current_buffer_idx);
         let path = self.buffers[self.current_buffer_idx].path.clone();
         self.ensure_syntax_for_path_loading(path.as_deref());
     }
@@ -731,6 +788,7 @@ impl App {
                 self.current_buffer_idx = i;
                 self.is_welcome = false;
                 self.needs_redraw = true;
+                self.track_live_target(i);
                 return;
             }
         }
@@ -758,14 +816,15 @@ impl App {
                 } else {
                     // Salvar buffer atual para restaurar depois
                     self.saved_buffer_idx = self.current_buffer_idx;
-                    // Criar novo buffer preview
-                    self.buffers.push(buf);
-                    self.preview_buffer_idx = Some(self.buffers.len() - 1);
-                    self.current_buffer_idx = self.buffers.len() - 1;
+                    // Criar novo buffer preview (antes do script em live mode)
+                    let preview_idx = self.push_buffer(buf);
+                    self.preview_buffer_idx = Some(preview_idx);
+                    self.current_buffer_idx = preview_idx;
                 }
 
                 self.is_welcome = false;
                 self.needs_redraw = true;
+                self.track_live_target(self.current_buffer_idx);
             }
             Err(_) => {
                 // Se não conseguir carregar, limpar preview
@@ -800,6 +859,35 @@ impl App {
             self.current_buffer_idx = self.saved_buffer_idx.min(self.buffers.len().saturating_sub(1));
         }
 
+        // Removal shifts every index after the gap: stored pointers must
+        // follow, otherwise live script / target / pending indices dangle and
+        // later tabs land in the wrong place (or two roles collide on one
+        // buffer, showing the same file in both live panes).
+        let restored = self.current_buffer_idx;
+        for slot in [
+            &mut self.live_script_buffer_idx,
+            &mut self.target_buffer_idx,
+            &mut self.pending_buffer_idx,
+        ] {
+            if let Some(idx) = *slot {
+                *slot = Some(shift_index_after_remove(idx, preview_idx, restored));
+            }
+        }
+
         self.needs_redraw = true;
+    }
+}
+
+/// Shift a stored buffer index left after `buffers.remove(removed_idx)`.
+/// Indices after the gap move one slot left; an index pointing exactly at
+/// the removed buffer falls back to `fallback` (the buffer restored in its
+/// place), so pointers stay valid instead of dangling.
+fn shift_index_after_remove(idx: usize, removed_idx: usize, fallback: usize) -> usize {
+    if idx > removed_idx {
+        idx - 1
+    } else if idx == removed_idx {
+        fallback
+    } else {
+        idx
     }
 }

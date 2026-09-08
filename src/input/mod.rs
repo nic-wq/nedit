@@ -282,53 +282,36 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    // Ctrl+Alt+←/→: toggle painel no live script (funciona de qualquer buffer)
-    if app.live_script_mode {
-        match (key.code, key.modifiers) {
-            (KeyCode::Left, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
-                app.toggle_live_script_pane();
-                return;
-            }
-            (KeyCode::Right, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
-                app.toggle_live_script_pane();
-                return;
-            }
-            _ => {}
+    // Tab cycling is unified on Ctrl+Alt+←/→ (and Ctrl+Tab): it works from any
+    // buffer, including the live script pane, which is pinned as the last
+    // tab — so plain cycling always reaches the script and back.
+    match (key.code, key.modifiers) {
+        (KeyCode::Tab, KeyModifiers::CONTROL) => {
+            app.switch_tab_relative(1);
+            return;
         }
-    }
-
-    let can_switch_tabs = !app.live_script_mode
-        || app.current_buffer_idx != app.live_script_buffer_idx.unwrap_or(usize::MAX);
-
-    if can_switch_tabs {
-        match (key.code, key.modifiers) {
-            (KeyCode::Tab, KeyModifiers::CONTROL) => {
-                app.switch_tab_relative(1);
-                return;
-            }
-            (KeyCode::Tab, m)
-                if m.contains(KeyModifiers::CONTROL) && m.contains(KeyModifiers::SHIFT) =>
-            {
-                app.switch_tab_relative(-1);
-                return;
-            }
-            (KeyCode::Left, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
-                app.switch_tab_relative(-1);
-                return;
-            }
-            (KeyCode::Right, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
-                app.switch_tab_relative(1);
-                return;
-            }
-            (KeyCode::Char(c), KeyModifiers::ALT) if c.is_ascii_digit() => {
-                let idx = c.to_digit(10).unwrap() as usize;
-                if idx > 0 {
-                    app.switch_tab(idx - 1);
-                }
-                return;
-            }
-            _ => {}
+        (KeyCode::Tab, m)
+            if m.contains(KeyModifiers::CONTROL) && m.contains(KeyModifiers::SHIFT) =>
+        {
+            app.switch_tab_relative(-1);
+            return;
         }
+        (KeyCode::Left, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+            app.switch_tab_relative(-1);
+            return;
+        }
+        (KeyCode::Right, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+            app.switch_tab_relative(1);
+            return;
+        }
+        (KeyCode::Char(c), KeyModifiers::ALT) if c.is_ascii_digit() => {
+            let idx = c.to_digit(10).unwrap() as usize;
+            if idx > 0 {
+                app.switch_tab(idx - 1);
+            }
+            return;
+        }
+        _ => {}
     }
 
     if app.is_fuzzy {
@@ -806,8 +789,8 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                                 &format!("Could not read script:\n{}", err),
                             ));
                             err_buf.is_read_only = true;
-                            app.buffers.push(err_buf);
-                            app.current_buffer_idx = app.buffers.len() - 1;
+                            app.current_buffer_idx = app.push_buffer(err_buf);
+                            app.track_live_target(app.current_buffer_idx);
                             app.is_fuzzy = false;
                         }
                     }
@@ -1504,6 +1487,43 @@ mod tests {
         handle_fuzzy_input(&mut app, key(KeyCode::Left));
         handle_fuzzy_input(&mut app, key(KeyCode::Char('x')));
         assert_eq!(app.fuzzy_query, "");
+    }
+
+    #[test]
+    fn ctrl_alt_arrows_cycle_tabs_with_script_last() {
+        use crate::buffer::EditorBuffer;
+
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+        let script = app.live_script_buffer_idx.unwrap();
+        assert_eq!(script, app.buffers.len() - 1);
+
+        // From the target, Ctrl+Alt+Right lands on the script pane.
+        app.current_buffer_idx = 0;
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Right, KeyModifiers::CONTROL | KeyModifiers::ALT),
+        );
+        assert_eq!(app.current_buffer_idx, script);
+        // And wraps back around, even from the script pane itself.
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Right, KeyModifiers::CONTROL | KeyModifiers::ALT),
+        );
+        assert_eq!(app.current_buffer_idx, 0);
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Left, KeyModifiers::CONTROL | KeyModifiers::ALT),
+        );
+        assert_eq!(app.current_buffer_idx, script);
+
+        // Shift+Alt is gone: it must not switch tabs anymore.
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Right, KeyModifiers::SHIFT | KeyModifiers::ALT),
+        );
+        assert_eq!(app.current_buffer_idx, script);
     }
 
     #[test]

@@ -28,22 +28,6 @@ impl App {
         self.ensure_syntax_set_loading();
     }
 
-    /// Toggles focus between the target buffer and the script buffer in live script mode.
-    /// Does nothing if live_script_mode is not active or either buffer index is missing.
-    pub fn toggle_live_script_pane(&mut self) {
-        if !self.live_script_mode {
-            return;
-        }
-        if let (Some(target), Some(script)) = (self.target_buffer_idx, self.live_script_buffer_idx)
-        {
-            self.current_buffer_idx = if self.current_buffer_idx == target {
-                script
-            } else {
-                target
-            };
-        }
-    }
-
     pub fn handle_fs_events(&mut self) {
         let mut changed = false;
         let mut processed = 0usize;
@@ -73,8 +57,9 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::App;
+    use super::{App, Focus};
     use crate::buffer::EditorBuffer;
+    use crate::explorer::FileItem;
 
     #[test]
     fn live_script_pane_highlights_lua_without_path() {
@@ -92,5 +77,107 @@ mod tests {
         app.current_buffer_idx = idx;
         app.new_file();
         assert_eq!(app.buffers[idx].syntax_override.as_deref(), Some("lua"));
+    }
+
+    #[test]
+    fn opening_file_with_preview_keeps_script_on_the_right() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "AAA").unwrap();
+        std::fs::write(dir.path().join("b.txt"), "BBB").unwrap();
+
+        let mut app = App::new(&[]);
+        app.set_explorer_root(dir.path().to_path_buf());
+        app.open_file(dir.path().join("a.txt"));
+        app.open_live_script();
+        // [a(0), script(1)], browsing the explorer with preview on.
+        app.show_explorer = true;
+        app.focus = Focus::Explorer;
+        app.explorer.items = ["a.txt", "b.txt"]
+            .iter()
+            .map(|name| FileItem {
+                path: dir.path().join(name),
+                is_dir: false,
+                name: name.to_string(),
+                depth: 0,
+                expanded: false,
+            })
+            .collect();
+        app.explorer.selected_idx = 1;
+
+        // Browsing already shows the preview on the left pane.
+        app.update_preview_from_explorer_selection();
+        assert_eq!(app.target_buffer_idx, Some(1));
+        assert_eq!(app.live_script_buffer_idx, Some(2));
+
+        // Confirming with Enter opens the file on the left, script stays last.
+        app.open_file(dir.path().join("b.txt"));
+        assert_eq!(app.buffers.len(), 3);
+        assert_eq!(app.current_buffer_idx, 1);
+        assert_eq!(app.target_buffer_idx, Some(1));
+        assert_eq!(app.live_script_buffer_idx, Some(2));
+        assert_eq!(app.preview_buffer_idx, None);
+        assert_eq!(
+            app.buffers[1].path.as_deref(),
+            Some(dir.path().join("b.txt").as_path())
+        );
+    }
+
+    #[test]
+    fn clear_preview_repairs_live_indices() {
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+        // Simulate a preview inserted before the script: [t(0), prev(1), s(2)].
+        let preview_idx = app.push_buffer(EditorBuffer::new());
+        app.buffers[preview_idx].is_preview = true;
+        app.preview_buffer_idx = Some(preview_idx);
+        app.saved_buffer_idx = 0;
+        app.current_buffer_idx = preview_idx;
+
+        app.clear_preview(preview_idx);
+        // Script slid back to 1 instead of dangling at 2.
+        assert_eq!(app.live_script_buffer_idx, Some(1));
+        assert_eq!(app.target_buffer_idx, Some(0));
+        assert_eq!(app.preview_buffer_idx, None);
+        assert_eq!(app.current_buffer_idx, 0);
+    }
+
+    #[test]
+    fn docs_and_untitled_opens_become_live_target() {
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+        app.current_buffer_idx = 0;
+
+        app.new_file();
+        assert_eq!(app.target_buffer_idx, Some(1));
+        assert_eq!(app.live_script_buffer_idx, Some(2));
+
+        app.open_doc("general");
+        assert_eq!(app.target_buffer_idx, Some(app.current_buffer_idx));
+        assert_eq!(app.live_script_buffer_idx, Some(app.buffers.len() - 1));
+    }
+
+    #[test]
+    fn new_buffers_open_before_the_pinned_script_tab() {
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+        // [target(0), script(1)], current on the script pane.
+        assert_eq!(app.live_script_buffer_idx, Some(1));
+
+        let idx = app.push_buffer(EditorBuffer::new());
+        assert_eq!(idx, 1);
+        assert_eq!(app.live_script_buffer_idx, Some(2));
+        assert_eq!(app.buffers.len(), 3);
+        // Stored indices at/after the insertion point shifted.
+        assert_eq!(app.current_buffer_idx, 2);
+        assert_eq!(app.target_buffer_idx, Some(0));
+
+        // Closing the middle tab keeps the script last.
+        app.force_close_buffer(1);
+        assert_eq!(app.live_script_buffer_idx, Some(1));
+        assert_eq!(app.buffers.len(), 2);
+        assert_eq!(app.current_buffer_idx, 1);
     }
 }

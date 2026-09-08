@@ -49,7 +49,7 @@ Live Script is a powerful feature for interactive script development. It opens a
 ### Key Features
 - **Immediate Execution**: Press `F9` to run the script instantly on the current left-pane file.
 - **File Safety**: Live scripts can **only modify the file being worked on** (left pane). Attempts to modify other files will be rejected with an error message.
-- **Switch Views**: Use `SHIFT+ALT+RIGHT` / `SHIFT+ALT+LEFT` to switch between the target file and the script.
+- **Switch Views**: Use `CTRL+ALT+RIGHT` / `CTRL+ALT+LEFT` to cycle tabs — the script pane is pinned as the last tab, so plain cycling always reaches it and back.
 - **Tab Navigation**: Switch between different target files while keeping the script active. The script will run against whichever file is on the left.
 - **Auto-Update Target**: When you open or switch to a file in the left pane, it automatically becomes the Live Script target.
 
@@ -219,8 +219,8 @@ local files = nedit.list_dir("~")    -- Home directory
 - **Open Live Script**: Creates a split-view with a live script on the right. Press `F9` to execute.
 
 ### Switch between target file and script panes:
-  - `SHIFT+ALT+RIGHT` — Switch to next pane (from target to script or vice versa)
-  - `SHIFT+ALT+LEFT` — Switch to previous pane
+  - `CTRL+ALT+RIGHT` — Switch to next tab (wraps around to the script pane, always last)
+  - `CTRL+ALT+LEFT` — Switch to previous tab
 
 ## Known Limitations
 
