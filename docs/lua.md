@@ -143,17 +143,22 @@ local cleaned = content:gsub("%s+", " ")
 nedit.write_current_file(cleaned)
 ```
 
+### Path resolution
+
+All file functions below accept the same kinds of paths: relative paths (including `.` and `./x`) resolve against the explorer root, `~` and `~/...` expand to the home directory, and absolute paths are used as-is.
+
 ### nedit.write_file(path, text)
 
-Writes text to a specific file. The path is resolved relative to the current working directory (the directory NEdit was launched from).
+Writes text to a specific file (see [Path resolution](#path-resolution)).
 
 ```lua
 nedit.write_file("output.txt", "Hello World")
+nedit.write_file("~/notes/todo.txt", "Hello Home")
 ```
 
 ### nedit.create_file(path, text)
 
-Creates a new file with the specified content. The path is resolved relative to the current working directory.
+Creates a new file with the specified content (see [Path resolution](#path-resolution)).
 
 ```lua
 nedit.create_file("new_file.txt", "Content here")
@@ -161,7 +166,7 @@ nedit.create_file("new_file.txt", "Content here")
 
 ### nedit.delete_file(path)
 
-Deletes a file at the given path (relative to the current working directory).
+Deletes a file at the given path (see [Path resolution](#path-resolution)).
 
 ```lua
 nedit.delete_file("old_file.txt")
@@ -169,7 +174,7 @@ nedit.delete_file("old_file.txt")
 
 ### nedit.read_file(path)
 
-Reads the content of a file and returns it as a string. If the file cannot be read (doesn't exist, permission denied, etc.), an **empty string** is returned (not `nil`).
+Reads the content of a file and returns it as a string (see [Path resolution](#path-resolution)). If the file cannot be read (doesn't exist, permission denied, etc.), an **empty string** is returned (not `nil`).
 
 ```lua
 local content = nedit.read_file("data.json")
@@ -180,11 +185,13 @@ end
 
 ### nedit.list_dir(path?)
 
-Lists the contents of a directory. If `path` is `nil` or omitted, lists the current working directory. Returns an array of **filenames only** (not full paths).
+Lists the contents of a directory (see [Path resolution](#path-resolution)). If `path` is `nil` or omitted, lists the explorer root. Returns an array of **filenames only** (not full paths).
 
 ```lua
-local files = nedit.list_dir()       -- Current directory
+local files = nedit.list_dir()       -- Explorer root
+local files = nedit.list_dir(".")    -- Explorer root
 local files = nedit.list_dir("src")  -- ./src/ directory
+local files = nedit.list_dir("~")    -- Home directory
 -- Each entry is just the filename, e.g., "main.rs", not "./src/main.rs"
 ```
 

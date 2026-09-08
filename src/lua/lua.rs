@@ -1,9 +1,41 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use mlua::Lua;
 
 use super::{LuaAction, LuaContext, ScriptRequest, ScriptResponse};
+
+/// Resolves a user-provided path from a Lua script.
+///
+/// - `~` and `~/...` expand to the home directory (same convention as the
+///   fuzzy finder in `app::fuzzy`), falling back to `base` when `$HOME` is unset.
+/// - Absolute paths are used as-is.
+/// - Everything else (including `.`, `./x` and `..`) resolves against `base`,
+///   which is the explorer root, so `.` always means the current project
+///   directory regardless of the process working directory.
+pub fn resolve_lua_path(base: &Path, raw: &str) -> PathBuf {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return base.to_path_buf();
+    }
+    if trimmed == "~" {
+        return std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| base.to_path_buf());
+    }
+    if let Some(suffix) = trimmed.strip_prefix("~/") {
+        return std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| base.to_path_buf())
+            .join(suffix);
+    }
+    let candidate = Path::new(trimmed);
+    if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        base.join(candidate)
+    }
+}
 
 pub fn run_script(
     script: &str,
@@ -47,7 +79,9 @@ pub fn run_script(
             "list_dir",
             lua.create_function(move |_, path: Option<String>| {
                 let mut results = Vec::new();
-                let target = path.map(PathBuf::from).unwrap_or_else(|| c_dir.clone());
+                let target = path
+                    .map(|p| resolve_lua_path(&c_dir, &p))
+                    .unwrap_or_else(|| c_dir.clone());
                 if let Ok(entries) = std::fs::read_dir(target) {
                     for entry in entries.flatten() {
                         results.push(entry.file_name().to_string_lossy().to_string());
@@ -61,7 +95,7 @@ pub fn run_script(
         nedit.set(
             "read_file",
             lua.create_function(move |_, path: String| {
-                let p = c_dir2.join(path);
+                let p = resolve_lua_path(&c_dir2, &path);
                 std::fs::read_to_string(p).or_else(|_| Ok("".to_string()))
             })?,
         )?;
@@ -89,9 +123,10 @@ pub fn run_script(
         nedit.set(
             "write_file",
             lua.create_function(move |_, (path, text): (String, String)| {
-                act3.lock()
-                    .unwrap()
-                    .push(LuaAction::WriteFile(c_dir3.join(path), text));
+                act3.lock().unwrap().push(LuaAction::WriteFile(
+                    resolve_lua_path(&c_dir3, &path),
+                    text,
+                ));
                 Ok(())
             })?,
         )?;
@@ -101,9 +136,10 @@ pub fn run_script(
         nedit.set(
             "create_file",
             lua.create_function(move |_, (path, text): (String, String)| {
-                act4.lock()
-                    .unwrap()
-                    .push(LuaAction::CreateFile(c_dir4.join(path), text));
+                act4.lock().unwrap().push(LuaAction::CreateFile(
+                    resolve_lua_path(&c_dir4, &path),
+                    text,
+                ));
                 Ok(())
             })?,
         )?;
@@ -113,9 +149,9 @@ pub fn run_script(
         nedit.set(
             "delete_file",
             lua.create_function(move |_, path: String| {
-                act5.lock()
-                    .unwrap()
-                    .push(LuaAction::DeleteFile(c_dir5.join(path)));
+                act5.lock().unwrap().push(LuaAction::DeleteFile(resolve_lua_path(
+                    &c_dir5, &path,
+                )));
                 Ok(())
             })?,
         )?;
@@ -204,4 +240,50 @@ pub fn run_script_no_interactive(
         current_buffer_path,
         Arc::new(|_| ScriptResponse::NoResponse),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_lua_path;
+    use std::path::PathBuf;
+
+    fn base() -> PathBuf {
+        PathBuf::from("/project")
+    }
+
+    #[test]
+    fn tilde_expands_to_home() {
+        let home = std::env::var("HOME").map(PathBuf::from).unwrap();
+        assert_eq!(resolve_lua_path(&base(), "~"), home);
+        assert_eq!(resolve_lua_path(&base(), "~/notes/todo.txt"), home.join("notes/todo.txt"));
+    }
+
+    #[test]
+    fn dot_resolves_against_base() {
+        assert_eq!(resolve_lua_path(&base(), "."), base().join("."));
+        assert_eq!(resolve_lua_path(&base(), "./output.txt"), base().join("./output.txt"));
+    }
+
+    #[test]
+    fn absolute_paths_pass_through() {
+        assert_eq!(
+            resolve_lua_path(&base(), "/tmp/x.txt"),
+            PathBuf::from("/tmp/x.txt")
+        );
+    }
+
+    #[test]
+    fn relative_paths_resolve_against_base() {
+        assert_eq!(
+            resolve_lua_path(&base(), "output.txt"),
+            base().join("output.txt")
+        );
+        assert_eq!(resolve_lua_path(&base(), "a/b.txt"), base().join("a/b.txt"));
+    }
+
+    #[test]
+    fn empty_path_falls_back_to_base() {
+        assert_eq!(resolve_lua_path(&base(), ""), base());
+        assert_eq!(resolve_lua_path(&base(), "   "), base());
+    }
 }
