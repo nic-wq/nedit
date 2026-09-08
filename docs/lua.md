@@ -44,7 +44,7 @@ When you create a new script via `CTRL+P` → **New Lua Script**, NEdit seeds it
 
 ## Live Script Mode
 
-Live Script is a powerful feature for interactive script development. It opens a split-view with your target file on the left and the script on the right.
+Live Script is a powerful feature for interactive script development. It opens a split-view with your target file on the left and the script on the right. The script pane is highlighted as Lua out of the box, even though it has no file on disk yet.
 
 ### Key Features
 - **Immediate Execution**: Press `F9` to run the script instantly on the current left-pane file.

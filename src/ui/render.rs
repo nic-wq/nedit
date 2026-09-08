@@ -8,7 +8,7 @@ use ratatui::{
 };
 use std::path::Path;
 use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter};
-use syntect::parsing::{ParseState, Scope, ScopeStack};
+use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus, FuzzyMode};
@@ -485,6 +485,28 @@ fn visual_leading_indent(line: &str) -> usize {
 
 /// Returns `(active_level, scope_start, scope_end)` for the indent guide at the cursor.
 /// Active level follows the parent visual scope of the cursor line.
+/// Pick the syntect grammar for a buffer: an explicit `syntax_override` wins
+/// (used by pathless buffers like the live script pane), then the file
+/// extension, then plain text. Unknown overrides fall through gracefully.
+fn resolve_buffer_syntax<'a>(
+    syntax_set: &'a SyntaxSet,
+    buffer: &EditorBuffer,
+) -> &'a SyntaxReference {
+    buffer
+        .syntax_override
+        .as_deref()
+        .and_then(|ext| syntax_set.find_syntax_by_extension(ext))
+        .or_else(|| {
+            buffer
+                .path
+                .as_ref()
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
+                .and_then(|ext| syntax_set.find_syntax_by_extension(ext))
+        })
+        .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+}
+
 /// Vertical scope uses each line's leading indent to bound the highlighted block.
 fn active_indent_guide_scope(
     line_count: usize,
@@ -582,12 +604,7 @@ fn draw_editor(
     let mut syntax_highlighter = syntax_set
         .filter(|_| !is_markdown && buffer.content.len_bytes() <= 5_242_880)
         .map(|syntax_set| {
-        let syntax = buffer
-            .path
-            .as_ref()
-            .and_then(|p| p.extension())
-            .and_then(|e| syntax_set.find_syntax_by_extension(e.to_str().unwrap_or("")))
-            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+        let syntax = resolve_buffer_syntax(syntax_set, buffer);
 
         let highlighter = Highlighter::new(theme);
 
@@ -1711,6 +1728,46 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
     }
 
     f.render_widget(block, area);
+}
+
+#[cfg(test)]
+mod syntax_resolution_tests {
+    use super::resolve_buffer_syntax;
+    use crate::buffer::EditorBuffer;
+    use std::path::PathBuf;
+    use syntect::parsing::SyntaxSet;
+
+    #[test]
+    fn override_wins_path_wins_plain_text() {
+        let syntax_set = SyntaxSet::load_defaults_nonewlines();
+
+        // Pathless buffer with override (live script pane) -> Lua.
+        let mut script = EditorBuffer::new();
+        script.syntax_override = Some("lua".to_string());
+        assert_eq!(resolve_buffer_syntax(&syntax_set, &script).name, "Lua");
+
+        // Regular file keeps extension-based detection.
+        let mut rust_file = EditorBuffer::new();
+        rust_file.path = Some(PathBuf::from("main.rs"));
+        assert_eq!(resolve_buffer_syntax(&syntax_set, &rust_file).name, "Rust");
+
+        // Override beats a conflicting path, unknown override falls back.
+        let mut conflicted = EditorBuffer::new();
+        conflicted.path = Some(PathBuf::from("main.rs"));
+        conflicted.syntax_override = Some("lua".to_string());
+        assert_eq!(resolve_buffer_syntax(&syntax_set, &conflicted).name, "Lua");
+        let mut unknown = EditorBuffer::new();
+        unknown.path = Some(PathBuf::from("script.py"));
+        unknown.syntax_override = Some("no-such-lang".to_string());
+        assert_eq!(resolve_buffer_syntax(&syntax_set, &unknown).name, "Python");
+
+        // Neither override nor path -> plain text.
+        let plain = EditorBuffer::new();
+        assert_eq!(
+            resolve_buffer_syntax(&syntax_set, &plain).name,
+            "Plain Text"
+        );
+    }
 }
 
 #[cfg(test)]

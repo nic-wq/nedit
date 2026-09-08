@@ -232,6 +232,8 @@ impl App {
             if let Some(script_idx) = self.live_script_buffer_idx {
                 if script_idx < self.buffers.len() {
                     self.buffers[script_idx] = EditorBuffer::new();
+                    // Still the script pane: keep Lua highlighting without a path.
+                    self.buffers[script_idx].syntax_override = Some("lua".to_string());
                 }
             }
         } else {

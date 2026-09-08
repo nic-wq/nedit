@@ -9,6 +9,9 @@ impl App {
         self.target_buffer_idx = Some(self.current_buffer_idx);
 
         let mut buffer = crate::buffer::EditorBuffer::new();
+        // The script pane has no file on disk, so point the highlighter at
+        // Lua explicitly instead of falling back to plain text.
+        buffer.syntax_override = Some("lua".to_string());
         // We provide a basic template with common operations to lower the barrier for entry
         // and show the user how to interact with the nedit API immediately.
         buffer.set_content_and_mark_clean(ropey::Rope::from_str(
@@ -65,5 +68,29 @@ impl App {
             self.refresh_explorer();
             self.needs_redraw = true;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::App;
+    use crate::buffer::EditorBuffer;
+
+    #[test]
+    fn live_script_pane_highlights_lua_without_path() {
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+
+        assert!(app.live_script_mode);
+        let idx = app.live_script_buffer_idx.unwrap();
+        let buf = &app.buffers[idx];
+        assert!(buf.path.is_none());
+        assert_eq!(buf.syntax_override.as_deref(), Some("lua"));
+
+        // Resetting the pane via New File keeps Lua highlighting.
+        app.current_buffer_idx = idx;
+        app.new_file();
+        assert_eq!(app.buffers[idx].syntax_override.as_deref(), Some("lua"));
     }
 }

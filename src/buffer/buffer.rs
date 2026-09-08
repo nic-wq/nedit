@@ -23,6 +23,10 @@ pub struct EditorBuffer {
     /// `Arc`), so keeping this snapshot is cheap and lets us recompute
     /// `modified` by comparison instead of setting `true` on every edit.
     pub(crate) saved_content: Rope,
+    /// Explicit syntax override as a file extension (e.g. `"lua"`), used when
+    /// the buffer has no path to derive one from — like the live script pane.
+    /// `None` means "detect from `path`, fall back to plain text".
+    pub syntax_override: Option<String>,
     pub selection_start: Option<(usize, usize)>,
     pub history: Vec<Rope>,
     pub history_idx: usize,
@@ -55,6 +59,7 @@ impl EditorBuffer {
             scroll_row: 0,
             scroll_col: 0,
             modified: false,
+            syntax_override: None,
             selection_start: None,
             history: vec![content.clone()],
             history_idx: 0,
@@ -86,6 +91,7 @@ impl EditorBuffer {
             scroll_row: 0,
             scroll_col: 0,
             modified: false,
+            syntax_override: None,
             selection_start: None,
             history: vec![content.clone()],
             history_idx: 0,
