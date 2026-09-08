@@ -1,12 +1,8 @@
-mod templates;
-
 use crossterm::event::{
     self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
 
 use crate::app::{App, Focus};
-
-pub use templates::LUA_TEMPLATE;
 
 pub fn handle_events(app: &mut App) -> anyhow::Result<()> {
     // We use a short poll duration (16ms ~ 60fps) to keep the UI responsive
@@ -120,6 +116,10 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             }
         }
         MouseEventKind::Down(event::MouseButton::Left) => {
+            // Toasts float above everything: their close button wins the click.
+            if app.dismiss_toast_at(mouse.column, mouse.row) {
+                return;
+            }
             if app
                 .editor_area
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
@@ -591,9 +591,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::FileOptions => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::CommandPalette => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::Move => app.fuzzy_results.len(),
-                crate::app::FuzzyMode::RunScript => app.fuzzy_results.len(),
-                crate::app::FuzzyMode::EditScript => app.fuzzy_results.len(),
-                crate::app::FuzzyMode::DeleteScript => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::DocSelect => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::Create => 0,
                 crate::app::FuzzyMode::UnsavedChanges => 0,
@@ -746,86 +743,6 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     }
                 }
                 return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::RunScript {
-                if let Some(script_path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    match std::fs::read_to_string(&script_path) {
-                        Ok(script) => {
-                            let (ctx, cur_path) =
-                                if let Some(cur_buf) = app.buffers.get(app.current_buffer_idx) {
-                                    (
-                                        crate::lua::LuaContext {
-                                            current_file: cur_buf
-                                                .path
-                                                .as_ref()
-                                                .map(|p| p.to_string_lossy().to_string())
-                                                .unwrap_or_default(),
-                                            current_content: cur_buf.content.to_string(),
-                                            current_selection: cur_buf
-                                                .get_selected_text()
-                                                .unwrap_or_default(),
-                                            current_dir: app.explorer.root.clone(),
-                                            is_live_script: false,
-                                        },
-                                        &cur_buf.path,
-                                    )
-                                } else {
-                                    (
-                                        crate::lua::LuaContext {
-                                            current_file: String::new(),
-                                            current_content: String::new(),
-                                            current_selection: String::new(),
-                                            current_dir: app.explorer.root.clone(),
-                                            is_live_script: false,
-                                        },
-                                        &None,
-                                    )
-                                };
-                            app.start_script(script, ctx, cur_path.clone());
-                            app.is_fuzzy = false;
-                        }
-                        Err(err) => {
-                            let mut err_buf = crate::buffer::EditorBuffer::new();
-                            err_buf.set_content_and_mark_clean(ropey::Rope::from_str(
-                                &format!("Could not read script:\n{}", err),
-                            ));
-                            err_buf.is_read_only = true;
-                            app.current_buffer_idx = app.push_buffer(err_buf);
-                            app.track_live_target(app.current_buffer_idx);
-                            app.is_fuzzy = false;
-                        }
-                    }
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::EditScript {
-                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    app.open_file(path);
-                    app.is_fuzzy = false;
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::DeleteScript {
-                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    match std::fs::remove_file(&path) {
-                        Ok(_) => {
-                            app.close_buffers_for_path(&path);
-                            app.show_notification(
-                                format!(
-                                    "Script '{}' deleted successfully",
-                                    path.file_name().unwrap_or_default().to_string_lossy()
-                                ),
-                                crate::app::NotificationType::Info,
-                            );
-                            app.refresh_explorer();
-                        }
-                        Err(err) => {
-                            app.show_notification(
-                                format!("Error deleting script: {}", err),
-                                crate::app::NotificationType::Error,
-                            );
-                        }
-                    }
-                    app.is_fuzzy = false;
-                }
-                return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::DocSelect {
                 if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx) {
                     let path_str = path.to_string_lossy().to_string();
@@ -847,54 +764,25 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 return;
             } else if app.fuzzy_mode == crate::app::FuzzyMode::SaveAs {
                 if !app.fuzzy_query.is_empty() {
-                    let mut filename = app.fuzzy_query.trim().to_string();
-                    let content = app.buffers[app.current_buffer_idx].content.to_string();
-                    let is_lua_script = content
-                        .lines()
-                        .next()
-                        .map(|l| l.trim().starts_with("-- Name:"))
-                        .unwrap_or(false);
-                    let is_live_script = Some(app.current_buffer_idx) == app.live_script_buffer_idx;
-
-                    if is_lua_script || is_live_script {
-                        if !filename.ends_with(".lua") {
-                            filename.push_str(".lua");
-                        }
-                        let scripts_dir = std::env::var("HOME")
-                            .map(std::path::PathBuf::from)
-                            .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                            .join(".config/nedit/scripts");
-                        let _ = std::fs::create_dir_all(&scripts_dir);
-                        let path = scripts_dir.join(filename);
-                        if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                            buffer.path = Some(path.clone());
-                            if let Err(err) = buffer.save() {
-                                app.show_notification(
-                                    format!("Could not save script: {}", err),
-                                    crate::app::NotificationType::Error,
-                                );
-                                return;
-                            }
-                            app.record_file_mtime(&path);
-                        }
-                    } else {
-                        let path = app.resolve_input_path(&filename);
-                        if let Some(parent) = path.parent() {
-                            let _ = std::fs::create_dir_all(parent);
-                        }
-                        if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                            buffer.path = Some(path.clone());
-                            if let Err(err) = buffer.save() {
-                                app.show_notification(
-                                    format!("Could not save file: {}", err),
-                                    crate::app::NotificationType::Error,
-                                );
-                                return;
-                            }
-                            app.record_file_mtime(&path);
-                        }
-                        app.refresh_explorer();
+                    let filename = app.fuzzy_query.trim().to_string();
+                    // Live script panes save like any other buffer: wherever
+                    // the user points, with no forced scripts directory.
+                    let path = app.resolve_input_path(&filename);
+                    if let Some(parent) = path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
                     }
+                    if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                        buffer.path = Some(path.clone());
+                        if let Err(err) = buffer.save() {
+                            app.show_notification(
+                                format!("Could not save file: {}", err),
+                                crate::app::NotificationType::Error,
+                            );
+                            return;
+                        }
+                        app.record_file_mtime(&path);
+                    }
+                    app.refresh_explorer();
                 }
                 if app.pending_action.is_some() {
                     handle_unsaved_changes_completion(app);
@@ -1241,35 +1129,6 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
             app.toggle_fuzzy(crate::app::FuzzyMode::Themes);
             return true;
         }
-        "New Lua Script" => {
-            let home_dir = std::env::var("HOME")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let scripts_dir = home_dir.join(".config/nedit/scripts");
-            let _ = std::fs::create_dir_all(&scripts_dir);
-            let name = format!(
-                "script_{}.lua",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-            );
-            let path = scripts_dir.join(name);
-            let _ = std::fs::write(&path, LUA_TEMPLATE);
-            app.open_file(path);
-        }
-        "Run Lua Script" => {
-            app.toggle_fuzzy(crate::app::FuzzyMode::RunScript);
-            return true;
-        }
-        "Edit Lua Script" => {
-            app.toggle_fuzzy(crate::app::FuzzyMode::EditScript);
-            return true;
-        }
-        "Delete Lua Script" => {
-            app.toggle_fuzzy(crate::app::FuzzyMode::DeleteScript);
-            return true;
-        }
         "Open Live Script" => app.open_live_script(),
         "Undo Last Script" => app.undo_last_script(),
         "Quit" => app.should_quit = true,
@@ -1336,13 +1195,9 @@ fn handle_run_live_script(app: &mut App) {
             .unwrap_or_default(),
         current_content: target_buf.content.to_string(),
         current_selection: target_buf.get_selected_text().unwrap_or_default(),
-        current_dir: app.explorer.root.clone(),
-        is_live_script: true,
     };
 
-    let target_path = target_buf.path.clone();
-
-    match crate::lua::run_script_no_interactive(&script, ctx, &target_path) {
+    match crate::lua::run_script(&script, ctx) {
         Ok(actions) => {
             if actions.is_empty() {
                 app.show_notification(
@@ -1524,6 +1379,33 @@ mod tests {
             key_mods(KeyCode::Right, KeyModifiers::SHIFT | KeyModifiers::ALT),
         );
         assert_eq!(app.current_buffer_idx, script);
+    }
+
+    #[test]
+    fn clicking_toast_close_button_dismisses_it() {
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+
+        fn click(col: u16, row: u16) -> MouseEvent {
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: col,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }
+        }
+
+        let mut app = App::new(&[]);
+        app.show_notification("Hi".to_string(), crate::app::NotificationType::Info);
+        app.screen_area = Rect::new(0, 0, 80, 24);
+        // Close button of the default bottom-right "Hi" toast.
+        super::handle_mouse_event(&mut app, click(76, 19));
+        assert!(app.notifications.is_empty());
+
+        // Clicks anywhere else leave toasts alone.
+        app.show_notification("Hi".to_string(), crate::app::NotificationType::Info);
+        super::handle_mouse_event(&mut app, click(0, 0));
+        assert_eq!(app.notifications.len(), 1);
     }
 
     #[test]

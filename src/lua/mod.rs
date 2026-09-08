@@ -3,8 +3,8 @@ mod context;
 #[allow(clippy::module_inception)]
 mod lua;
 
-pub use actions::{LuaAction, RevertAction, ScriptRequest, ScriptResponse, ScriptUndo};
+pub use actions::{LuaAction, RevertAction, ScriptUndo};
 pub use context::LuaContext;
-// The lua module provides the engine for user-defined automation, supporting both 
-// background batch processing and live scripts for interactive file editing.
-pub use lua::{resolve_lua_path, run_script, run_script_no_interactive};
+// The lua module provides the engine for live scripts: user-defined
+// automation running interactively against the target file.
+pub use lua::run_script;

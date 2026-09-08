@@ -76,11 +76,10 @@ pub struct App {
     pub fuzzy_input_reset_idx: bool,
     pub explorer_area: Rect,
     pub editor_area: Rect,
+    /// Full terminal area of the last rendered frame, for overlay hit-testing.
+    pub screen_area: Rect,
     pub fuzzy_limit: usize,
     pub last_script_undo: Option<crate::lua::ScriptUndo>,
-    pub script_response_tx: Option<std::sync::mpsc::Sender<crate::lua::ScriptResponse>>,
-    pub script_request_rx: Option<std::sync::mpsc::Receiver<crate::lua::ScriptRequest>>,
-    pub script_action_rx: Option<std::sync::mpsc::Receiver<Vec<crate::lua::LuaAction>>>,
     pub last_click_time: std::time::Instant,
     pub last_click_pos: (u16, u16),
     pub icon_registry: crate::ui::icons::IconRegistry,
@@ -110,6 +109,30 @@ impl App {
 
     pub fn tick_notification(&mut self) {
         self.notifications.retain(|toast| !toast.is_expired());
+    }
+
+    /// Dismiss the toast whose close button sits at (`col`, `row`).
+    /// Returns true when a toast was dismissed (the click is consumed).
+    pub fn dismiss_toast_at(&mut self, col: u16, row: u16) -> bool {
+        let area = self.screen_area;
+        if area.width == 0 || area.height == 0 {
+            return false;
+        }
+        let hit = crate::app::toast::toast_close_hit(
+            &self.notifications,
+            area,
+            self.config.notification_position,
+            col,
+            row,
+        );
+        if let Some(idx) = hit {
+            if idx < self.notifications.len() {
+                self.notifications.remove(idx);
+                self.needs_redraw = true;
+                return true;
+            }
+        }
+        false
     }
 
     pub fn request_redraw(&mut self) {
@@ -201,11 +224,9 @@ impl App {
             fuzzy_input_reset_idx: false,
             explorer_area: Rect::default(),
             editor_area: Rect::default(),
+            screen_area: Rect::default(),
             fuzzy_limit: 20,
             last_script_undo: None,
-            script_response_tx: None,
-            script_request_rx: None,
-            script_action_rx: None,
             last_click_time: std::time::Instant::now(),
             last_click_pos: (0, 0),
             icon_registry: crate::ui::icons::IconRegistry::load(),

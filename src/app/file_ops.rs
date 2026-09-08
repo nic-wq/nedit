@@ -591,49 +591,23 @@ impl App {
         };
 
         for revert in undo.actions.into_iter().rev() {
-            match revert {
-                crate::lua::RevertAction::RestoreBufferContent {
-                    buffer_idx,
-                    content: old_content,
-                    cursor,
-                } => {
-                    if let Some(buf) = self.buffers.get_mut(buffer_idx) {
-                        buf.content = ropey::Rope::from_str(&old_content);
-                        buf.cursor_row = cursor.0;
-                        buf.cursor_col = cursor.1;
-                        buf.sync_cursor_goal_from_position();
-                        buf.selection_start = None;
-                        buf.clamp_cursor_to_content();
-                        buf.push_history();
-                        buf.refresh_modified();
-                        buf.sync_syntax_states(0);
-                        buf.sync_rendered_spans(0);
-                        buf.invalidate_max_visual_width();
-                    }
-                }
-                crate::lua::RevertAction::RestoreFile {
-                    path,
-                    content: old_content,
-                } => {
-                    if let Some(actual_content) = old_content {
-                        let _ = std::fs::write(&path, &actual_content);
-                        // Update any open buffers with this path
-                        for buf in &mut self.buffers {
-                            if buf.path.as_ref() == Some(&path) {
-                                buf.set_content_and_mark_clean(ropey::Rope::from_str(
-                                    &actual_content,
-                                ));
-                                buf.clamp_cursor_to_content();
-                                buf.sync_syntax_states(0);
-                                buf.sync_rendered_spans(0);
-                                buf.invalidate_max_visual_width();
-                            }
-                        }
-                    } else {
-                        let _ = std::fs::remove_file(&path);
-                        self.close_buffers_for_path(&path);
-                    }
-                }
+            let crate::lua::RevertAction::RestoreBufferContent {
+                buffer_idx,
+                content: old_content,
+                cursor,
+            } = revert;
+            if let Some(buf) = self.buffers.get_mut(buffer_idx) {
+                buf.content = ropey::Rope::from_str(&old_content);
+                buf.cursor_row = cursor.0;
+                buf.cursor_col = cursor.1;
+                buf.sync_cursor_goal_from_position();
+                buf.selection_start = None;
+                buf.clamp_cursor_to_content();
+                buf.push_history();
+                buf.refresh_modified();
+                buf.sync_syntax_states(0);
+                buf.sync_rendered_spans(0);
+                buf.invalidate_max_visual_width();
             }
         }
         self.show_notification(
@@ -705,32 +679,6 @@ impl App {
                         buf.sync_syntax_states(0);
                         buf.sync_rendered_spans(0);
                         buf.invalidate_max_visual_width();
-                    }
-                }
-                crate::lua::LuaAction::WriteFile(path, text) => {
-                    let prev_content = std::fs::read_to_string(&path).ok();
-                    reverts.push(crate::lua::RevertAction::RestoreFile {
-                        path: path.clone(),
-                        content: prev_content,
-                    });
-                    let _ = std::fs::write(&path, text);
-                }
-                crate::lua::LuaAction::CreateFile(path, text) => {
-                    let prev_content = std::fs::read_to_string(&path).ok();
-                    reverts.push(crate::lua::RevertAction::RestoreFile {
-                        path: path.clone(),
-                        content: prev_content,
-                    });
-                    let _ = std::fs::write(&path, text);
-                }
-                crate::lua::LuaAction::DeleteFile(path) => {
-                    let prev_content = std::fs::read_to_string(&path).ok();
-                    if let Some(content) = prev_content {
-                        reverts.push(crate::lua::RevertAction::RestoreFile {
-                            path: path.clone(),
-                            content: Some(content),
-                        });
-                        let _ = std::fs::remove_file(&path);
                     }
                 }
             }

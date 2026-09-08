@@ -50,7 +50,6 @@ On first launch, NEdit creates the following directory structure:
 ├── config.toml          # (optional) user settings
 ├── theme.txt            # Last selected theme (persisted automatically)
 ├── language.toml        # (optional) user translations
-├── scripts/             # Lua automation scripts
 ├── themes/              # Custom .tmTheme files
 ├── syntax/              # Custom .sublime-syntax files
 ├── icons/               # Custom icon mappings (.toml)
@@ -290,9 +289,6 @@ The fuzzy finder is a central interaction pattern used for file opening, searchi
 | **New Folder**      | Via File Options       | Create a new folder                                  |
 | **Unsaved Changes** | On close/quit          | Save, Discard, or Cancel prompt                      |
 | **Doc Select**      | `CTRL + H`             | Choose between General docs, Lua API, or Keybinds    |
-| **Run Script**      | Via Command Palette    | Select and run a Lua script                          |
-| **Edit Script**     | Via Command Palette    | Select and edit a Lua script                         |
-| **Delete Script**   | Via Command Palette    | Delete a Lua script                                  |
 
 ### Global Search Details (`CTRL + G`)
 
@@ -306,7 +302,7 @@ The fuzzy finder is a central interaction pattern used for file opening, searchi
 
 ### Command Palette Commands
 
-The command palette (`CTRL+P`) provides access to 22 actions:
+The command palette (`CTRL+P`) provides access to 18 actions:
 
 | Command           | Default Keybind   |
 | ----------------- | ----------------- |
@@ -318,10 +314,6 @@ The command palette (`CTRL+P`) provides access to 22 actions:
 | Global Search     | `CTRL+G`          |
 | Local Search      | `CTRL+F`          |
 | Switch Theme      | `CTRL+ALT+T`      |
-| New Lua Script    | —                 |
-| Run Lua Script    | —                 |
-| Edit Lua Script   | —                 |
-| Delete Lua Script | —                 |
 | Open Live Script  | —                 |
 | Undo Last Script  | —                 |
 | Quit              | `CTRL+Q`          |
@@ -448,19 +440,17 @@ custom = ""          # Matches .custom files
 "Save" = "󰆓"         # Override command palette icon
 ```
 
-## Lua Scripts
+## Live Scripts
 
-Lua scripts in `~/.config/nedit/scripts/` allow you to automate the editor.
+Live scripts let you automate the editor with Lua, running interactively against the target file.
 
 > [!NOTE]
 > See [docs/lua.md](lua.md) for the complete Lua API reference and [docs/binds.md](binds.md) for Live Script keyboard shortcuts.
 
 ### Quick Overview
 
-- **Regular Scripts**: Run via `CTRL+P` → **Run Lua Script**. Can modify any file.
-- **Live Scripts**: Persistent split-view script panel (`CTRL+P` → **Open Live Script**). Press `F9` to execute. Can only modify the target file.
-- **Undo Last Script**: `CTRL+P` → **Undo Last Script** reverts all changes from the last script execution (file writes, creations, and deletions).
-- **Scripts cannot modify themselves**. Use **Edit Lua Script** to edit a script.
+- **Live Scripts**: Persistent split-view script panel (`CTRL+P` → **Open Live Script**). Press `F9` to execute. Scripts can only modify the target file.
+- **Undo Last Script**: `CTRL+P` → **Undo Last Script** reverts the buffer changes from the last script execution.
 
 ## Documentation Access
 

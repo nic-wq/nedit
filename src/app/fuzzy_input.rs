@@ -30,9 +30,6 @@ impl App {
                 | FuzzyMode::FileOptions
                 | FuzzyMode::CommandPalette
                 | FuzzyMode::Move
-                | FuzzyMode::RunScript
-                | FuzzyMode::EditScript
-                | FuzzyMode::DeleteScript
                 | FuzzyMode::DocSelect
         )
     }

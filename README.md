@@ -9,7 +9,7 @@ A modern, lightweight terminal text editor written in Rust. Fast, extensible, an
 - 🎨 **Syntax Highlighting** - High-performance code highlighting with support for dozens of languages.
 - 📁 **File Explorer** - Interactive navigation with keyboard-only scrolling and file preview.
 - 📋 **Clipboard Integration** - Seamless copy/paste with system clipboard.
-- 🔧 **Lua Extensibility** - Customize and extend the editor with Lua scripts.
+- 🔧 **Lua Extensibility** - Customize and extend the editor with live Lua scripts.
 - 🌍 **Internationalization (i18n)** - Multi-language support.
 - 🐭 **Mouse Support** - Scroll independently of cursor, click to position, and drag for selection.
 - 🔍 **Fuzzy Finder & Global Search** - Quick file opening and content search across your projects.
@@ -84,7 +84,7 @@ For complete documentation, check out the [docs](docs/) directory:
 
 - [General Documentation](docs/docs.md) - Comprehensive guide covering all features.
 - [Keyboard Shortcuts](docs/binds.md) - Complete keybind reference.
-- [Lua Scripting API](docs/lua.md) - Guide to extending NEdit with Lua scripts.
+- [Lua Scripting API](docs/lua.md) - Guide to live Lua scripts.
 
 ## 🛠️ Technologies
 
@@ -118,7 +118,6 @@ All settings are stored in `~/.config/nedit/`:
 
 - `config.toml` - General settings (keybinds, theme, autocomplete).
 - `theme.txt` - Last selected theme.
-- `scripts/` - Your custom Lua scripts.
 - `themes/` - Custom .tmTheme files.
 - `syntax/` - Custom .sublime-syntax files.
 - `icons/` - Custom icon mappings.

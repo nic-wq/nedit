@@ -18,9 +18,6 @@ pub enum FuzzyMode {
     DeleteConfirm,
     CommandPalette,
     Move,
-    RunScript,
-    EditScript,
-    DeleteScript,
     DocSelect,
     /// Create a file or folder relative to the explorer selection.
     /// Trailing `/` creates a folder; otherwise creates an empty file and opens it.

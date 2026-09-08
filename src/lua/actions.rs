@@ -1,15 +1,10 @@
-use std::path::PathBuf;
-
 // We use an enum to represent script actions instead of applying them immediately.
-// This allows us to validate actions, generate descriptions for the user, 
+// This allows us to validate actions, generate descriptions for the user,
 // and implement an "undo" mechanism for script executions.
 #[derive(Clone, Debug)]
 pub enum LuaAction {
     WriteSelection(String),
     WriteCurrentFile(String),
-    WriteFile(PathBuf, String),
-    CreateFile(PathBuf, String),
-    DeleteFile(PathBuf),
 }
 
 impl LuaAction {
@@ -17,9 +12,6 @@ impl LuaAction {
         match self {
             LuaAction::WriteSelection(_) => "Replace selected text".to_string(),
             LuaAction::WriteCurrentFile(_) => "Overwrite current file".to_string(),
-            LuaAction::WriteFile(p, _) => format!("Write to {}", p.display()),
-            LuaAction::CreateFile(p, _) => format!("Create {}", p.display()),
-            LuaAction::DeleteFile(p) => format!("Delete {}", p.display()),
         }
     }
 }
@@ -31,21 +23,9 @@ pub enum RevertAction {
         content: String,
         cursor: (usize, usize),
     },
-    RestoreFile {
-        path: PathBuf,
-        content: Option<String>, // None means delete the file (if it was created by script)
-    },
 }
 
 #[derive(Clone, Debug)]
 pub struct ScriptUndo {
     pub actions: Vec<RevertAction>,
-}
-
-#[derive(Debug)]
-pub enum ScriptRequest {
-}
-
-pub enum ScriptResponse {
-    NoResponse,
 }

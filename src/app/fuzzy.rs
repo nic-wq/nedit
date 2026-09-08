@@ -628,10 +628,6 @@ impl App {
                 "Global Search",
                 "Local Search",
                 "Switch Theme",
-                "New Lua Script",
-                "Run Lua Script",
-                "Edit Lua Script",
-                "Delete Lua Script",
                 "Open Live Script",
                 "Undo Last Script",
                 "Quit",
@@ -681,94 +677,6 @@ impl App {
                 self.fuzzy_idx = 0;
             } else {
                 self.fuzzy_idx = self.fuzzy_idx.min(self.fuzzy_results.len().saturating_sub(1));
-            }
-            return;
-        }
-
-        if self.fuzzy_mode == FuzzyMode::RunScript {
-            self.fuzzy_results = Vec::new();
-            let home_dir = std::env::var("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| PathBuf::from("."));
-            let scripts_dir = home_dir.join(".config/nedit/scripts");
-            let _ = fs::create_dir_all(&scripts_dir);
-            if let Ok(entries) = fs::read_dir(&scripts_dir) {
-                for entry in entries.flatten() {
-                    if entry
-                        .path()
-                        .extension()
-                        .map(|e| e == "lua")
-                        .unwrap_or(false)
-                    {
-                        let stem = entry
-                            .path()
-                            .file_stem()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
-                        let name = if let Ok(content) = fs::read_to_string(entry.path()) {
-                            if let Some(first_line) = content.lines().next() {
-                                let trimmed = first_line.trim();
-                                if let Some(name) = trimmed.strip_prefix("-- ") {
-                                    name.trim().to_string()
-                                } else {
-                                    stem.clone()
-                                }
-                            } else {
-                                stem.clone()
-                            }
-                        } else {
-                            stem.clone()
-                        };
-                        if query.is_empty() || name.to_lowercase().contains(&query) {
-                            self.fuzzy_results.push(entry.path());
-                        }
-                    }
-                }
-            }
-            return;
-        }
-
-        if self.fuzzy_mode == FuzzyMode::EditScript || self.fuzzy_mode == FuzzyMode::DeleteScript {
-            self.fuzzy_results = Vec::new();
-            let home_dir = std::env::var("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| PathBuf::from("."));
-            let scripts_dir = home_dir.join(".config/nedit/scripts");
-            let _ = fs::create_dir_all(&scripts_dir);
-            if let Ok(entries) = fs::read_dir(&scripts_dir) {
-                for entry in entries.flatten() {
-                    if entry
-                        .path()
-                        .extension()
-                        .map(|e| e == "lua")
-                        .unwrap_or(false)
-                    {
-                        let stem = entry
-                            .path()
-                            .file_stem()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
-                        let name = if let Ok(content) = fs::read_to_string(entry.path()) {
-                            if let Some(first_line) = content.lines().next() {
-                                let trimmed = first_line.trim();
-                                if let Some(name) = trimmed.strip_prefix("-- ") {
-                                    name.trim().to_string()
-                                } else {
-                                    stem.clone()
-                                }
-                            } else {
-                                stem.clone()
-                            }
-                        } else {
-                            stem.clone()
-                        };
-                        if query.is_empty() || name.to_lowercase().contains(&query) {
-                            self.fuzzy_results.push(entry.path());
-                        }
-                    }
-                }
             }
             return;
         }

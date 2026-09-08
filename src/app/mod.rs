@@ -6,7 +6,6 @@ mod fuzzy_input;
 pub mod toast;
 mod live_script;
 pub mod matcher;
-mod scripting;
 mod theme;
 pub mod types;
 

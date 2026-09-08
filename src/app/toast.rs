@@ -166,6 +166,131 @@ pub fn wrap_cells(text: &str, width: usize) -> Vec<String> {
     out
 }
 
+/// Minimum toast width that still fits the top-border close button
+/// next to the title without overlapping it.
+pub const MIN_CLOSE_BUTTON_WIDTH: u16 = 12;
+
+/// A visible toast with everything the renderer and hit-testing need.
+#[derive(Clone, Debug)]
+pub(crate) struct ToastLayout {
+    /// Index into the source slice (chronological order).
+    pub source_idx: usize,
+    pub rect: Rect,
+    /// Inner content width in cells (rect minus borders and padding).
+    pub inner: usize,
+    /// Wrapped message lines (already capped).
+    pub body: Vec<String>,
+}
+
+/// Filter expired toasts (newest first), compute the uniform width, wrap
+/// bodies and lay out rectangles. Single source of truth shared by painting
+/// and close-button hit-testing, so clicks always match what is on screen.
+pub(crate) fn layout_visible_toasts(
+    notifications: &[Toast],
+    area: Rect,
+    pos: NotificationPosition,
+) -> Vec<ToastLayout> {
+    let live: Vec<(usize, &Toast)> = notifications
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, toast)| !toast.is_expired())
+        .take(MAX_VISIBLE_TOASTS)
+        .collect();
+    if live.is_empty() || area.width < 12 || area.height < 6 {
+        return Vec::new();
+    }
+
+    // Uniform width from the widest content (title or longest raw line).
+    let natural = live
+        .iter()
+        .map(|(_, toast)| {
+            let title_w = UnicodeWidthStr::width(toast_title(toast.kind).as_str());
+            let msg_w = toast
+                .message
+                .split('\n')
+                .map(UnicodeWidthStr::width)
+                .max()
+                .unwrap_or(0);
+            // Borders (2) + horizontal padding (2).
+            title_w.max(msg_w).saturating_add(4) as u16
+        })
+        .max()
+        .unwrap_or(MIN_TOAST_WIDTH);
+    let width = clamp_toast_width(area.width, natural);
+    let inner = (width as usize).saturating_sub(4).max(1);
+
+    let mut bodies: Vec<Vec<String>> = Vec::with_capacity(live.len());
+    let mut heights: Vec<u16> = Vec::with_capacity(live.len());
+    for (_, toast) in &live {
+        let mut lines = wrap_cells(&toast.message, inner);
+        if lines.len() > MAX_TOAST_LINES {
+            lines.truncate(MAX_TOAST_LINES);
+            if let Some(last) = lines.last_mut() {
+                let truncated = truncate_cells(last, inner.saturating_sub(1));
+                *last = format!("{truncated}…");
+            }
+        }
+        heights.push(lines.len().saturating_add(3) as u16);
+        bodies.push(lines);
+    }
+
+    layout_toasts(area, pos, width, &heights)
+        .into_iter()
+        .zip(bodies)
+        .enumerate()
+        .filter_map(|(i, (rect, body))| {
+            // Skip degenerate rects the painter would skip too.
+            if rect.width < 3 || rect.height < 4 {
+                return None;
+            }
+            Some(ToastLayout {
+                source_idx: live[i].0,
+                rect,
+                inner,
+                body,
+            })
+        })
+        .collect()
+}
+
+/// Close-button cell of a laid-out toast: 1x1 on the top border, just left
+/// of the rounded corner. `None` when the toast is too narrow for title +
+/// button to coexist.
+pub(crate) fn toast_close_cell(layout: &ToastLayout) -> Option<(u16, u16)> {
+    if layout.rect.width < MIN_CLOSE_BUTTON_WIDTH {
+        return None;
+    }
+    Some((
+        layout
+            .rect
+            .x
+            .saturating_add(layout.rect.width)
+            .saturating_sub(2),
+        layout.rect.y,
+    ))
+}
+
+/// Index (into `notifications`) of the toast whose close button sits at
+/// (`col`, `row`), if any.
+pub(crate) fn toast_close_hit(
+    notifications: &[Toast],
+    area: Rect,
+    pos: NotificationPosition,
+    col: u16,
+    row: u16,
+) -> Option<usize> {
+    layout_visible_toasts(notifications, area, pos)
+        .iter()
+        .find_map(|layout| {
+            if toast_close_cell(layout) == Some((col, row)) {
+                Some(layout.source_idx)
+            } else {
+                None
+            }
+        })
+}
+
 /// Compute overlay rectangles for stacked toasts.
 ///
 /// `heights` are the outer heights (including borders) in paint order
@@ -345,6 +470,25 @@ mod tests {
         assert_eq!(truncate_cells("hello", 3), "hel");
         assert_eq!(truncate_cells("日本語", 4), "日本");
         assert_eq!(truncate_cells("hi", 10), "hi");
+    }
+
+    #[test]
+    fn close_hit_maps_cells_to_newest_first_indices() {
+        use crate::config::NotificationPosition::BottomRight;
+        let area = Rect::new(0, 0, 80, 24);
+        let toasts = vec![
+            Toast::new("first".to_string(), NotificationType::Info),
+            Toast::new("second".to_string(), NotificationType::Info),
+        ];
+        // "Hi"-sized toasts: newest hugs the corner, older stacks above.
+        assert_eq!(toast_close_hit(&toasts, area, BottomRight, 76, 19), Some(1));
+        assert_eq!(toast_close_hit(&toasts, area, BottomRight, 76, 14), Some(0));
+        // Title text and empty space are not the button.
+        assert_eq!(toast_close_hit(&toasts, area, BottomRight, 60, 19), None);
+        assert_eq!(toast_close_hit(&toasts, area, BottomRight, 0, 0), None);
+        // No button on toasts too narrow for title + button.
+        let narrow = Rect::new(0, 0, 0, 0);
+        assert_eq!(toast_close_hit(&toasts, narrow, BottomRight, 0, 0), None);
     }
 
     #[test]

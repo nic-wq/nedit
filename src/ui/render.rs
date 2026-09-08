@@ -126,6 +126,9 @@ fn markdown_line_spans(
 pub fn render(f: &mut Frame, app: &mut App) {
     let colors = get_colors(app);
 
+    // Remember the full frame for overlay hit-testing (toast close button).
+    app.screen_area = f.area();
+
     f.render_widget(Block::default().bg(colors.bg), f.area());
 
     let chunks = Layout::default()
@@ -948,65 +951,19 @@ fn draw_editor(
 /// overflow the screen are dropped; expired toasts are skipped (the periodic
 /// tick prunes them right after).
 fn draw_toasts(f: &mut Frame, app: &App, colors: &UIColors) {
-    use crate::app::toast::{
-        clamp_toast_width, layout_toasts, toast_title, truncate_cells, wrap_cells, Toast,
-        MAX_TOAST_LINES, MAX_VISIBLE_TOASTS,
-    };
+    use crate::app::toast::{layout_visible_toasts, toast_close_cell, toast_title};
 
-    let area = f.area();
-    if area.width < 12 || area.height < 6 {
-        return;
-    }
-    // Newest first.
-    let live: Vec<&Toast> = app
-        .notifications
-        .iter()
-        .rev()
-        .filter(|toast| !toast.is_expired())
-        .take(MAX_VISIBLE_TOASTS)
-        .collect();
-    if live.is_empty() {
-        return;
-    }
-
-    // Uniform width from the widest content (title or longest raw line).
-    let natural = live
-        .iter()
-        .map(|toast| {
-            let title_w = UnicodeWidthStr::width(toast_title(toast.kind).as_str());
-            let msg_w = toast
-                .message
-                .split('\n')
-                .map(UnicodeWidthStr::width)
-                .max()
-                .unwrap_or(0);
-            // Borders (2) + horizontal padding (2).
-            title_w.max(msg_w).saturating_add(4) as u16
-        })
-        .max()
-        .unwrap_or(20);
-    let width = clamp_toast_width(area.width, natural);
-    let inner = (width as usize).saturating_sub(4).max(1);
-
-    // Wrap bodies and derive outer heights (top border + lines + bar + bottom).
-    let mut bodies: Vec<Vec<String>> = Vec::with_capacity(live.len());
-    let mut heights: Vec<u16> = Vec::with_capacity(live.len());
-    for toast in &live {
-        let mut lines = wrap_cells(&toast.message, inner);
-        if lines.len() > MAX_TOAST_LINES {
-            lines.truncate(MAX_TOAST_LINES);
-            if let Some(last) = lines.last_mut() {
-                let truncated = truncate_cells(last, inner.saturating_sub(1));
-                *last = format!("{truncated}…");
-            }
-        }
-        heights.push(lines.len().saturating_add(3) as u16);
-        bodies.push(lines);
-    }
-
-    let rects = layout_toasts(area, app.config.notification_position, width, &heights);
-    for (idx, rect) in rects.iter().enumerate() {
-        let toast = live[idx];
+    // Geometry comes from the shared layout helper, so hit-testing clicks
+    // later always matches exactly what was painted here.
+    let layouts = layout_visible_toasts(
+        &app.notifications,
+        f.area(),
+        app.config.notification_position,
+    );
+    for layout in &layouts {
+        let toast = &app.notifications[layout.source_idx];
+        let rect = layout.rect;
+        let inner = layout.inner;
         let kind_color = match toast.kind {
             crate::app::NotificationType::Error => colors.error,
             crate::app::NotificationType::Info => colors.accent,
@@ -1014,7 +971,7 @@ fn draw_toasts(f: &mut Frame, app: &App, colors: &UIColors) {
         // Flat editor-background patch: erases whatever was behind the toast
         // (no ghosting) without the hard rectangular halo that `Clear` leaves,
         // since `Clear` resets to the terminal default instead of the theme bg.
-        f.render_widget(Block::default().bg(colors.bg), *rect);
+        f.render_widget(Block::default().bg(colors.bg), rect);
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -1027,18 +984,15 @@ fn draw_toasts(f: &mut Frame, app: &App, colors: &UIColors) {
                     .bg(colors.bg)
                     .add_modifier(Modifier::BOLD),
             ));
-        f.render_widget(block, *rect);
-        if rect.width < 3 || rect.height < 4 {
-            continue;
-        }
+        f.render_widget(block, rect);
         let text_area = Rect::new(
             rect.x.saturating_add(2),
             rect.y.saturating_add(1),
             rect.width.saturating_sub(4),
-            bodies[idx].len() as u16,
+            layout.body.len() as u16,
         );
         f.render_widget(
-            Paragraph::new(bodies[idx].join("\n"))
+            Paragraph::new(layout.body.join("\n"))
                 .style(Style::default().fg(colors.fg).bg(colors.bg)),
             text_area,
         );
@@ -1050,7 +1004,7 @@ fn draw_toasts(f: &mut Frame, app: &App, colors: &UIColors) {
             rect.x.saturating_add(2),
             rect.y
                 .saturating_add(1)
-                .saturating_add(bodies[idx].len() as u16),
+                .saturating_add(layout.body.len() as u16),
             rect.width.saturating_sub(4),
             1,
         );
@@ -1058,6 +1012,12 @@ fn draw_toasts(f: &mut Frame, app: &App, colors: &UIColors) {
             Paragraph::new(bar).style(Style::default().fg(kind_color).bg(colors.bg)),
             bar_area,
         );
+        // Small close button on the top border, just left of the corner.
+        if let Some((cx, cy)) = toast_close_cell(layout) {
+            let close = Paragraph::new(app.icon_registry.get_command_icon("Close Tab"))
+                .style(Style::default().fg(kind_color).bg(colors.bg));
+            f.render_widget(close, Rect::new(cx, cy, 1, 1));
+        }
     }
 }
 
@@ -1313,9 +1273,6 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::FileOptions => format!(" 󰘳  {} ", app.i18n.t("file_options")),
         FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
-        FuzzyMode::RunScript => " 󰢱  Run Lua Script ".to_string(),
-        FuzzyMode::EditScript => " 󰝎  Edit Lua Script ".to_string(),
-        FuzzyMode::DeleteScript => " 󰆴  Delete Lua Script ".to_string(),
         FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
         FuzzyMode::Create => " 󰉋  New Name (trailing / = folder) ".to_string(),
         FuzzyMode::UnsavedChanges => format!(" 󰆓  {} ", app.i18n.t("unsaved_changes")),
@@ -1578,12 +1535,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             }
         } else if matches!(
             app.fuzzy_mode,
-            FuzzyMode::CommandPalette
-                | FuzzyMode::FileOptions
-                | FuzzyMode::RunScript
-                | FuzzyMode::EditScript
-                | FuzzyMode::DeleteScript
-                | FuzzyMode::DocSelect
+            FuzzyMode::CommandPalette | FuzzyMode::FileOptions | FuzzyMode::DocSelect
         ) {
             if app.fuzzy_results.is_empty() {
                 vec![]
@@ -1595,35 +1547,11 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                     .enumerate()
                     .map(|(idx, path)| {
                         let i = safe_start + idx;
-                        let name = if matches!(
-                            app.fuzzy_mode,
-                            FuzzyMode::RunScript | FuzzyMode::EditScript | FuzzyMode::DeleteScript
-                        ) {
-                            let stem = path
-                                .file_stem()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_string();
-                            if let Ok(content) = std::fs::read_to_string(path) {
-                                if let Some(first) = content.lines().next() {
-                                    let trimmed = first.trim();
-                                    if let Some(name) = trimmed.strip_prefix("-- ") {
-                                        name.trim().to_string()
-                                    } else {
-                                        stem
-                                    }
-                                } else {
-                                    stem
-                                }
-                            } else {
-                                stem
-                            }
-                        } else {
-                            path.file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_string()
-                        };
+                        let name = path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
                         let style = if i == app.fuzzy_idx {
                             Style::default()
                                 .bg(colors.sel)
@@ -1635,9 +1563,6 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                         let icon = match app.fuzzy_mode {
                             FuzzyMode::CommandPalette
                             | FuzzyMode::FileOptions => app.icon_registry.get_command_icon(&name),
-                            FuzzyMode::RunScript => "󰢱 ",
-                            FuzzyMode::EditScript => "󰏫 ",
-                            FuzzyMode::DeleteScript => "󰆴 ",
                             FuzzyMode::DocSelect => app.icon_registry.get_icon(path, false, false),
                             _ => "  ",
                         };
@@ -1813,6 +1738,8 @@ mod toast_render_tests {
         let colors = get_colors(&app);
         assert_eq!(buf[(60, 20)].bg, colors.bg);
         assert_eq!(buf[(60, 20)].symbol(), "H");
+        // The close button replaces the top border just left of the corner.
+        assert_ne!(buf[(76, 19)].symbol(), "─");
     }
 
     #[test]

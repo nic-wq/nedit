@@ -315,34 +315,27 @@ fn diagnose_render(app: &mut App) -> anyhow::Result<()> {
 
 fn diagnose_lua_filesystem() -> anyhow::Result<()> {
     println!("== Lua ==");
-    let dir = temp_debug_dir();
-    fs::create_dir_all(&dir)?;
-    fs::write(dir.join("input.txt"), "lua input")?;
     let script = r#"
-        local content = nedit.read_file("input.txt")
-        nedit.create_file("created.txt", content .. " ok")
-        nedit.write_selection(content)
+        local sel = nedit.selection()
+        nedit.write_selection(sel:upper())
+        nedit.write_current_file(nedit.current_content())
     "#;
     let ctx = crate::lua::LuaContext {
         current_file: String::new(),
         current_content: String::new(),
         current_selection: String::new(),
-        current_dir: dir.clone(),
-        is_live_script: false,
     };
 
     let start = Instant::now();
-    let actions =
-        lua::run_script_no_interactive(script, ctx, &None).map_err(|e| anyhow::anyhow!(e))?;
-    fs::remove_dir_all(&dir)?;
+    let actions = lua::run_script(script, ctx).map_err(|e| anyhow::anyhow!(e))?;
     let ok = actions.len() == 2;
     print_step(
-        "lua_file_api",
+        "lua_live_api",
         start.elapsed(),
         format!("ok={} actions={}", ok, actions.len()),
     );
     if !ok {
-        anyhow::bail!("Lua filesystem API smoke test failed");
+        anyhow::bail!("Lua live API smoke test failed");
     }
     println!();
     Ok(())
@@ -450,10 +443,8 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
         current_file: String::new(),
         current_content: String::new(),
         current_selection: String::new(),
-        current_dir: std::env::current_dir()?,
-        is_live_script: false,
     };
-    match lua::run_script_no_interactive(test_script, lua_ctx, &None) {
+    match lua::run_script(test_script, lua_ctx) {
         Ok(actions) => {
             print_step(
                 "lua_smoke",
@@ -628,7 +619,6 @@ fn main() -> anyhow::Result<()> {
     loop {
         app.handle_fs_events();
         app.poll_background_tasks();
-        app.poll_script_messages();
         app.check_external_modifications();
 
         if app.needs_redraw {
