@@ -2,6 +2,7 @@
 mod app;
 mod file_ops;
 mod fuzzy;
+mod fuzzy_input;
 mod live_script;
 pub mod matcher;
 mod scripting;

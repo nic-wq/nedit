@@ -9,6 +9,7 @@ use ratatui::{
 use std::path::Path;
 use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter};
 use syntect::parsing::{ParseState, Scope, ScopeStack};
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus, FuzzyMode};
 use crate::buffer::{column::TAB_WIDTH, EditorBuffer};
@@ -1126,6 +1127,39 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     );
 }
 
+/// Split the fuzzy query into spans, highlighting the active selection.
+/// Byte ranges come from char indices, so slicing is always on boundaries.
+fn fuzzy_query_spans<'a>(app: &'a App, colors: &UIColors) -> Vec<Span<'a>> {
+    match app.fuzzy_selection_bytes() {
+        Some((s, e)) if s < e => vec![
+            Span::raw(&app.fuzzy_query[..s]),
+            Span::styled(
+                &app.fuzzy_query[s..e],
+                Style::default().bg(colors.sel).fg(colors.accent),
+            ),
+            Span::raw(&app.fuzzy_query[e..]),
+        ],
+        _ => vec![Span::raw(app.fuzzy_query.as_str())],
+    }
+}
+
+/// Terminal cursor position for the fuzzy input field, if the mode shows one.
+/// DeleteConfirm/UnsavedChanges/ExternalChange have no text field.
+fn fuzzy_cursor_position(app: &App, input_area: Rect, prefix_width: usize) -> Option<(u16, u16)> {
+    if !app.fuzzy_has_editable_input() {
+        return None;
+    }
+    let cursor_byte = app.fuzzy_byte_idx(app.fuzzy_cursor);
+    let query_width = UnicodeWidthStr::width(&app.fuzzy_query[..cursor_byte]);
+    let x = input_area
+        .x
+        .saturating_add(prefix_width.saturating_add(query_width) as u16);
+    let max_x = input_area
+        .x
+        .saturating_add(input_area.width.saturating_sub(1));
+    Some((x.min(max_x), input_area.y))
+}
+
 fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
     let is_small = matches!(
         app.fuzzy_mode,
@@ -1208,64 +1242,69 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         .constraints(constraints)
         .split(area);
 
-    let input = if app.fuzzy_mode == FuzzyMode::Move {
+    let query_spans = fuzzy_query_spans(app, colors);
+    let (input, prefix_width) = if app.fuzzy_mode == FuzzyMode::Move {
         let dir_str = app
             .move_dir
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                format!(" 󰉋 {} > ", dir_str),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw(&app.fuzzy_query),
-            Span::styled(
-                " (Tab: Move here, Enter: Open folder)",
-                Style::default().fg(colors.surface),
-            ),
-        ]))
+        let prefix = format!(" 󰉋 {} > ", dir_str);
+        let prefix_width = UnicodeWidthStr::width(prefix.as_str());
+        let mut spans = vec![Span::styled(prefix, Style::default().fg(colors.accent))];
+        spans.extend(query_spans);
+        spans.push(Span::styled(
+            " (Tab: Move here, Enter: Open folder)",
+            Style::default().fg(colors.surface),
+        ));
+        (Paragraph::new(Line::from(spans)), prefix_width)
     } else if app.fuzzy_mode == FuzzyMode::DeleteConfirm {
         let path_str = app
             .pending_path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
-        Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled(" 󰆴 ", Style::default().fg(colors.error)),
-                Span::styled(
-                    "Confirm Delete:",
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(Span::raw(path_str)),
-            Line::from(vec![Span::styled(
-                format!("(Enter: Confirm  Esc: {})", app.i18n.t("cancel")),
-                Style::default().fg(colors.surface),
-            )]),
-        ])
-        .wrap(Wrap { trim: false })
+        (
+            Paragraph::new(vec![
+                Line::from(vec![
+                    Span::styled(" 󰆴 ", Style::default().fg(colors.error)),
+                    Span::styled(
+                        "Confirm Delete:",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(Span::raw(path_str)),
+                Line::from(vec![Span::styled(
+                    format!("(Enter: Confirm  Esc: {})", app.i18n.t("cancel")),
+                    Style::default().fg(colors.surface),
+                )]),
+            ])
+            .wrap(Wrap { trim: false }),
+            0,
+        )
     } else if app.fuzzy_mode == FuzzyMode::UnsavedChanges {
         let filename = app.pending_buffer_idx
             .and_then(|idx| app.buffers.get(idx))
             .and_then(|buf| buf.path.as_ref())
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or_else(|| app.i18n.t("no_name").to_string());
-        Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
-                Span::styled(
-                    format!("Save changes to {}?", filename),
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(vec![Span::styled(
-                format!("(S: Save  D: Discard  Esc: {})", app.i18n.t("cancel")),
-                Style::default().fg(colors.accent),
-            )]),
-        ])
-        .wrap(Wrap { trim: true })
+        (
+            Paragraph::new(vec![
+                Line::from(vec![
+                    Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
+                    Span::styled(
+                        format!("Save changes to {}?", filename),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![Span::styled(
+                    format!("(S: Save  D: Discard  Esc: {})", app.i18n.t("cancel")),
+                    Style::default().fg(colors.accent),
+                )]),
+            ])
+            .wrap(Wrap { trim: true }),
+            0,
+        )
     } else if app.fuzzy_mode == FuzzyMode::ExternalChange {
         let filename = app
             .pending_buffer_idx
@@ -1274,32 +1313,40 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or_else(|| app.i18n.t("no_name").to_string());
         // Short, two-line layout to avoid truncation on narrow terminals.
-        Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
-                Span::styled(
-                    format!("{} — {}", filename, app.i18n.t("file_changed")),
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(vec![Span::styled(
-                format!(
-                    "({}: R  {}: K  Esc: {})",
-                    app.i18n.t("reload"),
-                    app.i18n.t("keep"),
-                    app.i18n.t("cancel")
-                ),
-                Style::default().fg(colors.accent),
-            )]),
-        ])
-        .wrap(Wrap { trim: true })
+        (
+            Paragraph::new(vec![
+                Line::from(vec![
+                    Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
+                    Span::styled(
+                        format!("{} — {}", filename, app.i18n.t("file_changed")),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![Span::styled(
+                    format!(
+                        "({}: R  {}: K  Esc: {})",
+                        app.i18n.t("reload"),
+                        app.i18n.t("keep"),
+                        app.i18n.t("cancel")
+                    ),
+                    Style::default().fg(colors.accent),
+                )]),
+            ])
+            .wrap(Wrap { trim: true }),
+            0,
+        )
     } else {
-        Paragraph::new(Line::from(vec![
-            Span::styled(" 󰍉 ", Style::default().fg(colors.accent)),
-            Span::raw(&app.fuzzy_query),
-        ]))
+        let mut spans = vec![Span::styled(" 󰍉 ", Style::default().fg(colors.accent))];
+        spans.extend(query_spans);
+        (
+            Paragraph::new(Line::from(spans)),
+            UnicodeWidthStr::width(" 󰍉 "),
+        )
     };
     f.render_widget(input, chunks[0]);
+    if let Some((cursor_x, cursor_y)) = fuzzy_cursor_position(app, chunks[0], prefix_width) {
+        f.set_cursor_position((cursor_x, cursor_y));
+    }
 
     if !is_small {
         f.render_widget(

@@ -57,8 +57,16 @@ fn handle_event(app: &mut App, event: Event, pending_mouse_drag: &mut Option<Mou
 
 fn handle_paste(app: &mut App, text: String) {
     if app.is_fuzzy {
-        app.fuzzy_query.push_str(&text);
-        app.schedule_fuzzy_update(true);
+        if app.fuzzy_has_editable_input() {
+            // Single-line field: collapse line breaks and insert at the cursor,
+            // replacing any selection like a regular edit.
+            let sanitized = text.replace("\r\n", " ").replace(['\r', '\n'], " ");
+            app.fuzzy_clamp();
+            app.fuzzy_insert_str(&sanitized);
+            if app.fuzzy_is_live_mode() {
+                app.schedule_fuzzy_update(true);
+            }
+        }
         return;
     }
     if app.is_welcome || app.buffers.is_empty() {
@@ -378,7 +386,77 @@ fn handle_unsaved_changes_completion(app: &mut App) {
     }
 }
 
+/// Text editing keys for fuzzy modal inputs (search fields, Rename, SaveAs,
+/// Create). Returns true when the key was consumed.
+///
+/// Up/Down/Enter/Esc/Tab are intentionally left to the modal logic (result
+/// navigation, confirm, ...). Only runs for modes with an editable field —
+/// `UnsavedChanges`, `ExternalChange` and `DeleteConfirm` react to shortcut
+/// keys instead, so typing must not touch the query there.
+fn handle_fuzzy_text_keys(app: &mut App, key: KeyEvent) -> bool {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    if key.modifiers.contains(KeyModifiers::ALT) {
+        return false;
+    }
+    app.fuzzy_clamp();
+    let mut mutated = false;
+    match (key.code, ctrl, shift) {
+        (KeyCode::Left, false, extend) => app.fuzzy_move_left(extend),
+        (KeyCode::Right, false, extend) => app.fuzzy_move_right(extend),
+        (KeyCode::Left, true, extend) => app.fuzzy_move_word(-1, extend),
+        (KeyCode::Right, true, extend) => app.fuzzy_move_word(1, extend),
+        (KeyCode::Home, _, extend) => app.fuzzy_home(extend),
+        (KeyCode::End, _, extend) => app.fuzzy_end(extend),
+        (KeyCode::Delete, false, _) => {
+            app.fuzzy_delete_fwd();
+            mutated = true;
+        }
+        (KeyCode::Delete, true, _) => {
+            app.fuzzy_delete_word_fwd();
+            mutated = true;
+        }
+        (KeyCode::Backspace, false, _) => {
+            app.fuzzy_backspace();
+            mutated = true;
+        }
+        (KeyCode::Backspace, true, _) => {
+            app.fuzzy_delete_word_back();
+            mutated = true;
+        }
+        (KeyCode::Char('a') | KeyCode::Char('A'), true, _) => app.fuzzy_select_all(),
+        (KeyCode::Char('e') | KeyCode::Char('E'), true, _) => app.fuzzy_end(false),
+        (KeyCode::Char('b') | KeyCode::Char('B'), true, _) => app.fuzzy_move_left(false),
+        (KeyCode::Char('f') | KeyCode::Char('F'), true, _) => app.fuzzy_move_right(false),
+        (KeyCode::Char('u') | KeyCode::Char('U'), true, _) => {
+            app.fuzzy_kill_to_start();
+            mutated = true;
+        }
+        (KeyCode::Char('k') | KeyCode::Char('K'), true, _) => {
+            app.fuzzy_kill_to_end();
+            mutated = true;
+        }
+        (KeyCode::Char('w') | KeyCode::Char('W'), true, _) => {
+            app.fuzzy_delete_word_back();
+            mutated = true;
+        }
+        (KeyCode::Char(c), false, _) => {
+            app.fuzzy_insert_str(&c.to_string());
+            mutated = true;
+        }
+        _ => return false,
+    }
+    if mutated && app.fuzzy_is_live_mode() {
+        // Debounce: run after 80ms pause, like the generic typing path.
+        app.schedule_fuzzy_update(true);
+    }
+    true
+}
+
 fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
+    if app.fuzzy_has_editable_input() && handle_fuzzy_text_keys(app, key) {
+        return;
+    }
     if matches!(
         app.fuzzy_mode,
         crate::app::FuzzyMode::Rename
@@ -398,16 +476,13 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     }
                 }
                 app.is_fuzzy = false;
-                app.fuzzy_query.clear();
+                app.clear_fuzzy_query();
                 app.pending_path = None;
                 app.move_dir = None;
                 app.pending_action = None;
                 app.pending_buffer_idx = None;
             }
             KeyCode::Enter => {}
-            KeyCode::Backspace if !app.fuzzy_query.is_empty() => {
-                app.fuzzy_query.pop();
-            }
             KeyCode::Char('s') | KeyCode::Char('S')
                 if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges =>
             {
@@ -418,7 +493,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                             // If it has no path, we need to ask for a path first
                             app.current_buffer_idx = idx;
                             app.fuzzy_mode = crate::app::FuzzyMode::SaveAs;
-                            app.fuzzy_query.clear();
+                            app.clear_fuzzy_query();
                             return;
                         } else {
                             let _ = app.buffers[idx].save();
@@ -447,7 +522,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     app.reload_buffer_from_disk(idx);
                 }
                 app.is_fuzzy = false;
-                app.fuzzy_query.clear();
+                app.clear_fuzzy_query();
                 app.pending_path = None;
                 app.pending_buffer_idx = None;
             }
@@ -461,19 +536,12 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     }
                 }
                 app.is_fuzzy = false;
-                app.fuzzy_query.clear();
+                app.clear_fuzzy_query();
                 app.pending_path = None;
                 app.pending_buffer_idx = None;
             }
-            KeyCode::Char(c)
-                if !matches!(
-                    app.fuzzy_mode,
-                    crate::app::FuzzyMode::UnsavedChanges
-                        | crate::app::FuzzyMode::ExternalChange
-                ) =>
-            {
-                app.fuzzy_query.push(c);
-            }
+            // NOTE: text input (Char/Backspace/Delete/arrows/...) for the
+            // editable modes is handled by handle_fuzzy_text_keys above.
             _ => {}
         }
         if key.code != KeyCode::Enter {
@@ -580,28 +648,28 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                     match choice.to_string_lossy().as_ref() {
                         "New File" => {
                             app.fuzzy_mode = crate::app::FuzzyMode::Create;
-                            app.fuzzy_query.clear();
+                            app.clear_fuzzy_query();
                             app.pending_path = None;
                         }
                         "New Folder" => {
                             // Prefill trailing slash so Enter creates a directory.
                             app.fuzzy_mode = crate::app::FuzzyMode::Create;
-                            app.fuzzy_query = "/".to_string();
+                            app.set_fuzzy_query("/".to_string());
                             app.pending_path = None;
                         }
                         "Rename" => {
                             app.fuzzy_mode = crate::app::FuzzyMode::Rename;
-                            app.fuzzy_query = item.name.clone();
+                            app.set_fuzzy_query(item.name.clone());
                         }
                         "Move" => {
                             app.fuzzy_mode = crate::app::FuzzyMode::Move;
                             app.move_dir = item.path.parent().map(|p| p.to_path_buf());
-                            app.fuzzy_query.clear();
+                            app.clear_fuzzy_query();
                             app.update_fuzzy(true);
                         }
                         "Delete" => {
                             app.fuzzy_mode = crate::app::FuzzyMode::DeleteConfirm;
-                            app.fuzzy_query.clear();
+                            app.clear_fuzzy_query();
                         }
                         "Set as Root" => {
                             app.set_explorer_root(item.path.clone());
@@ -873,7 +941,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                         .map(|query| query.starts_with('~'))
                         .unwrap_or(false);
                     let path_text = app.format_search_dir_for_query(&path, prefer_home);
-                    app.fuzzy_query = format!("@{}/", path_text.trim_end_matches('/'));
+                    app.set_fuzzy_query(format!("@{}/", path_text.trim_end_matches('/')));
                     app.update_fuzzy(true);
                     return;
                 }
@@ -910,7 +978,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                             .map(|query| query.starts_with('~'))
                             .unwrap_or(false);
                         let path_text = app.format_search_dir_for_query(&path, prefer_home);
-                        app.fuzzy_query = format!("@{}/", path_text.trim_end_matches('/'));
+                        app.set_fuzzy_query(format!("@{}/", path_text.trim_end_matches('/')));
                         app.update_fuzzy(true);
                         return;
                     }
@@ -928,12 +996,17 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             }
             app.is_fuzzy = false;
         }
+        // Reachable for non-editable modes and for key combos with
+        // modifiers that handle_fuzzy_text_keys leaves alone (e.g. Alt+char).
+        // Keep it cursor-aware so the state never diverges.
         KeyCode::Char(c) => {
-            app.fuzzy_query.push(c);
+            app.fuzzy_clamp();
+            app.fuzzy_insert_str(&c.to_string());
             app.schedule_fuzzy_update(true); // debounce: run after 80ms pause
         }
         KeyCode::Backspace => {
-            app.fuzzy_query.pop();
+            app.fuzzy_clamp();
+            app.fuzzy_backspace();
             app.schedule_fuzzy_update(true); // debounce: run after 80ms pause
         }
         _ => {}
@@ -1163,7 +1236,7 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
         }
         "New Folder" => {
             app.toggle_fuzzy(crate::app::FuzzyMode::Create);
-            app.fuzzy_query = "/".to_string();
+            app.set_fuzzy_query("/".to_string());
             return true;
         }
         "New Untitled" => app.new_file(),
@@ -1307,5 +1380,140 @@ fn handle_run_live_script(app: &mut App) {
                 crate::app::NotificationType::Error,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{handle_fuzzy_input, handle_paste};
+    use crate::app::{App, FuzzyMode};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn key_mods(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
+        KeyEvent::new(code, mods)
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for c in text.chars() {
+            handle_fuzzy_input(app, key(KeyCode::Char(c)));
+        }
+    }
+
+    #[test]
+    fn fuzzy_typing_arrows_and_ctrl_a_replace() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::Files);
+        type_text(&mut app, "hello");
+        assert_eq!(app.fuzzy_query, "hello");
+        assert_eq!(app.fuzzy_cursor, 5);
+
+        // Move left twice and type mid-query.
+        handle_fuzzy_input(&mut app, key(KeyCode::Left));
+        handle_fuzzy_input(&mut app, key(KeyCode::Left));
+        handle_fuzzy_input(&mut app, key(KeyCode::Char('X')));
+        assert_eq!(app.fuzzy_query, "helXlo");
+        assert_eq!(app.fuzzy_cursor, 4);
+
+        // Ctrl+A selects everything; typing replaces it.
+        handle_fuzzy_input(
+            &mut app,
+            key_mods(KeyCode::Char('a'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(app.fuzzy_selection_range(), Some((0, 6)));
+        type_text(&mut app, "hi");
+        assert_eq!(app.fuzzy_query, "hi");
+        assert_eq!(app.fuzzy_selection_range(), None);
+
+        // Ctrl+A + Backspace clears the field.
+        handle_fuzzy_input(
+            &mut app,
+            key_mods(KeyCode::Char('a'), KeyModifiers::CONTROL),
+        );
+        handle_fuzzy_input(&mut app, key(KeyCode::Backspace));
+        assert_eq!(app.fuzzy_query, "");
+        assert_eq!(app.fuzzy_cursor, 0);
+    }
+
+    #[test]
+    fn fuzzy_shift_selection_and_delete_key() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::CommandPalette);
+        type_text(&mut app, "save");
+        handle_fuzzy_input(&mut app, key(KeyCode::Home));
+        assert_eq!(app.fuzzy_cursor, 0);
+        handle_fuzzy_input(
+            &mut app,
+            key_mods(KeyCode::Right, KeyModifiers::SHIFT),
+        );
+        handle_fuzzy_input(
+            &mut app,
+            key_mods(KeyCode::Right, KeyModifiers::SHIFT),
+        );
+        assert_eq!(app.fuzzy_selection_range(), Some((0, 2)));
+        handle_fuzzy_input(&mut app, key(KeyCode::Delete));
+        assert_eq!(app.fuzzy_query, "ve");
+        assert_eq!(app.fuzzy_cursor, 0);
+
+        // Ctrl+Right jumps words; Ctrl+W deletes the previous word.
+        handle_fuzzy_input(&mut app, key(KeyCode::End));
+        type_text(&mut app, " new file");
+        handle_fuzzy_input(
+            &mut app,
+            key_mods(KeyCode::Left, KeyModifiers::CONTROL),
+        );
+        assert_eq!(app.fuzzy_cursor, 7);
+        handle_fuzzy_input(
+            &mut app,
+            key_mods(KeyCode::Char('w'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(app.fuzzy_query, "ve file");
+    }
+
+    #[test]
+    fn fuzzy_text_modes_share_editing_keys() {
+        // Rename is a plain text field (no live list) but gets the same keys.
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::Rename);
+        type_text(&mut app, "old.rs");
+        handle_fuzzy_input(
+            &mut app,
+            key_mods(KeyCode::Char('a'), KeyModifiers::CONTROL),
+        );
+        type_text(&mut app, "new.rs");
+        assert_eq!(app.fuzzy_query, "new.rs");
+
+        // Home + Ctrl+K deletes to the end.
+        handle_fuzzy_input(&mut app, key(KeyCode::Home));
+        handle_fuzzy_input(
+            &mut app,
+            key_mods(KeyCode::Char('k'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(app.fuzzy_query, "");
+    }
+
+    #[test]
+    fn fuzzy_shortcut_modals_ignore_text_keys() {
+        // UnsavedChanges reacts to S/D shortcuts; typing must not edit text.
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::UnsavedChanges);
+        assert!(!app.fuzzy_has_editable_input());
+        handle_fuzzy_input(&mut app, key(KeyCode::Left));
+        handle_fuzzy_input(&mut app, key(KeyCode::Char('x')));
+        assert_eq!(app.fuzzy_query, "");
+    }
+
+    #[test]
+    fn fuzzy_paste_inserts_at_cursor() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::Files);
+        type_text(&mut app, "ac");
+        handle_fuzzy_input(&mut app, key(KeyCode::Left));
+        handle_paste(&mut app, "b".to_string());
+        assert_eq!(app.fuzzy_query, "abc");
+        assert_eq!(app.fuzzy_cursor, 2);
     }
 }

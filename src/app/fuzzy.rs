@@ -141,6 +141,30 @@ fn probe_filesystem(root: &Path, query: &str) -> Vec<(String, PathBuf)> {
         .collect()
 }
 
+/// All documentation options as (path, search alias) pairs.
+/// The alias keeps short queries like "lua" or "binds" matching even though
+/// the file names are longer.
+fn doc_options() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("docs.md", "docs general help"),
+        ("docs/lua.md", "lua scripts api"),
+        ("docs/binds.md", "binds keybindings shortcuts keys"),
+    ]
+}
+
+/// Filter documentation options by query (case-insensitive substring over
+/// path and alias). Empty query returns everything.
+fn filter_doc_options(query: &str) -> Vec<PathBuf> {
+    let query = query.trim().to_lowercase();
+    doc_options()
+        .into_iter()
+        .filter(|(path, alias)| {
+            query.is_empty() || path.to_lowercase().contains(&query) || alias.contains(&query)
+        })
+        .map(|(path, _)| PathBuf::from(path))
+        .collect()
+}
+
 impl App {
     fn cancel_pending_file_search(&mut self) {
         if let Some(cancel) = &self.fuzzy_files_cancel {
@@ -374,7 +398,7 @@ impl App {
         } else {
             self.is_fuzzy = true;
             self.fuzzy_mode = mode;
-            self.fuzzy_query.clear();
+            self.clear_fuzzy_query();
             self.fuzzy_limit = 20;
 
             if mode == FuzzyMode::SaveAs && !self.buffers.is_empty() {
@@ -382,7 +406,7 @@ impl App {
                 if let Some(first_line) = content.lines().next() {
                     let trimmed = first_line.trim();
                     if let Some(name) = trimmed.strip_prefix("-- Name: ") {
-                        self.fuzzy_query = self.slugify(name.trim());
+                        self.set_fuzzy_query(self.slugify(name.trim()));
                     }
                 }
             }
@@ -770,12 +794,14 @@ impl App {
         }
 
         if self.fuzzy_mode == FuzzyMode::DocSelect {
-            self.fuzzy_results = vec![
-                PathBuf::from("docs.md"),
-                PathBuf::from("docs/lua.md"),
-                PathBuf::from("docs/binds.md"),
-            ];
-            self.fuzzy_idx = 0;
+            self.fuzzy_results = filter_doc_options(&query);
+            if reset_idx {
+                self.fuzzy_idx = 0;
+            } else {
+                self.fuzzy_idx = self
+                    .fuzzy_idx
+                    .min(self.fuzzy_results.len().saturating_sub(1));
+            }
             return;
         }
 
@@ -1018,5 +1044,52 @@ impl App {
             && self.fuzzy_idx < self.fuzzy_themes.len() {
                 self.current_theme = self.fuzzy_themes[self.fuzzy_idx].clone();
             }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::filter_doc_options;
+    use super::{App, FuzzyMode};
+    use std::path::PathBuf;
+
+    #[test]
+    fn doc_select_lists_everything_on_empty_query() {
+        assert_eq!(filter_doc_options("").len(), 3);
+    }
+
+    #[test]
+    fn doc_select_filters_by_query() {
+        assert_eq!(
+            filter_doc_options("lua"),
+            vec![PathBuf::from("docs/lua.md")]
+        );
+        assert_eq!(
+            filter_doc_options("binds"),
+            vec![PathBuf::from("docs/binds.md")]
+        );
+        // Alias terms match too.
+        assert_eq!(
+            filter_doc_options("keybindings"),
+            vec![PathBuf::from("docs/binds.md")]
+        );
+        assert_eq!(
+            filter_doc_options("LUA"),
+            vec![PathBuf::from("docs/lua.md")]
+        );
+        assert!(filter_doc_options("no-such-doc").is_empty());
+    }
+
+    #[test]
+    fn doc_select_modal_filters_as_you_type() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::DocSelect);
+        assert_eq!(app.fuzzy_results.len(), 3);
+        app.set_fuzzy_query("lua".to_string());
+        app.update_fuzzy(true);
+        assert_eq!(app.fuzzy_results, vec![PathBuf::from("docs/lua.md")]);
+        app.set_fuzzy_query("xyz-no-match".to_string());
+        app.update_fuzzy(true);
+        assert!(app.fuzzy_results.is_empty());
     }
 }

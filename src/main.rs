@@ -525,7 +525,7 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
 
     let content_start = Instant::now();
     app.fuzzy_mode = FuzzyMode::Content;
-    app.fuzzy_query = "fn".to_string();
+    app.set_fuzzy_query("fn".to_string());
     app.update_fuzzy(true);
     let content_kick = content_start.elapsed();
     let content_wait = wait_for_background_tasks(&mut app);
@@ -537,7 +537,7 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     );
 
     let scoped_suggestions_start = Instant::now();
-    app.fuzzy_query = "@src".to_string();
+    app.set_fuzzy_query("@src".to_string());
     app.update_fuzzy(true);
     print_step(
         "scoped_content_dir_suggestions",
@@ -549,7 +549,7 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     }
 
     let scoped_empty_start = Instant::now();
-    app.fuzzy_query = "@src ".to_string();
+    app.set_fuzzy_query("@src ".to_string());
     app.update_fuzzy(true);
     let scoped_empty_kick = scoped_empty_start.elapsed();
     let scoped_empty_wait = wait_for_background_tasks(&mut app);
@@ -563,7 +563,7 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     }
 
     let scoped_content_start = Instant::now();
-    app.fuzzy_query = "@src fn".to_string();
+    app.set_fuzzy_query("@src fn".to_string());
     app.update_fuzzy(true);
     let scoped_content_kick = scoped_content_start.elapsed();
     let scoped_content_wait = wait_for_background_tasks(&mut app);

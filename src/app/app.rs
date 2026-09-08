@@ -37,6 +37,10 @@ pub struct App {
     pub is_fuzzy: bool,
     pub fuzzy_mode: crate::app::FuzzyMode,
     pub fuzzy_query: String,
+    /// Cursor position inside `fuzzy_query` as a char index (0 = before first char).
+    pub fuzzy_cursor: usize,
+    /// Selection anchor as a char index; `None` means no active selection.
+    pub fuzzy_sel_anchor: Option<usize>,
     pub fuzzy_results: Vec<PathBuf>,
     pub fuzzy_file_results: Vec<FuzzyFileResult>,
     pub fuzzy_lines: Vec<(usize, String)>,
@@ -165,6 +169,8 @@ impl App {
             is_fuzzy: false,
             fuzzy_mode: crate::app::FuzzyMode::Files,
             fuzzy_query: String::new(),
+            fuzzy_cursor: 0,
+            fuzzy_sel_anchor: None,
             fuzzy_results: Vec::new(),
             fuzzy_file_results: Vec::new(),
             fuzzy_lines: Vec::new(),
@@ -614,7 +620,7 @@ impl App {
                     self.pending_path = Some(path.clone());
                     self.is_fuzzy = true;
                     self.fuzzy_mode = crate::app::FuzzyMode::ExternalChange;
-                    self.fuzzy_query.clear();
+                    self.clear_fuzzy_query();
                     self.fuzzy_idx = 0;
                     self.needs_redraw = true;
                     // Update stored mtime to avoid immediate re-trigger
