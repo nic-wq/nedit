@@ -28,7 +28,7 @@ All settings are stored in `~/.config/nedit/`. The main configuration file is `c
 
 # General settings
 autocomplete_enabled = true         # Enable/disable word autocomplete (default: true)
-theme = "NEdit Dark"                # Default theme name (default: "NEdit Dark")
+theme = "NEdit Dark Complete"       # Default theme name (default: "NEdit Dark Complete")
 show_indent_guides = true           # Show vertical indent guide lines (default: true)
 preview_enabled = true              # Enable file preview in explorer (default: true)
 preview_max_size = 3145728          # Max file size in bytes for preview (default: 3 MB)
@@ -91,9 +91,9 @@ On first launch, NEdit creates the following directory structure:
 
 | Shortcut       | Action                                                              |
 | -------------- | ------------------------------------------------------------------- |
-| `SHIFT + O`    | File Options (Rename/Move/Delete) — *only when Explorer is focused* |
+| `ALT + O`    | File Options (Rename/Move/Delete) — *only when Explorer is focused* |
 | `CTRL + ENTER` | Set selected directory as root                                      |
-| `BACKSPACE`    | Go to parent directory                                              |
+| `ALT + LEFT`   | Go to parent directory                                              |
 
 ### Hardcoded Shortcuts (Not Configurable)
 
@@ -249,9 +249,9 @@ The file explorer (`CTRL+B`) shows a tree view of your project or the current di
 | -------------- | -------------------------------------- |
 | `UP` / `DOWN`  | Move selection                         |
 | `ENTER`        | Open file / Toggle directory expansion |
-| `BACKSPACE`    | Go to parent directory                 |
+| `ALT + LEFT`   | Go to parent directory                 |
 | `CTRL + ENTER` | Set selected directory as root         |
-| `SHIFT + O`    | Open file options menu                 |
+| `ALT + O`    | Open file options menu                 |
 
 ### Features
 
@@ -260,7 +260,7 @@ The file explorer (`CTRL+B`) shows a tree view of your project or the current di
 - **Auto-refresh**: The explorer watches the filesystem for changes and refreshes automatically.
 - **File Preview**: Navigating files with the arrow keys loads them as read-only preview buffers (up to 3 MB by default, configurable via `preview_max_size`). Preview buffers display `[PREVIEW]` in the header bar and cannot be edited.
   - Disable preview entirely with `preview_enabled = false` in `config.toml`.
-- **File Options** (`SHIFT + O`): Rename, Move, Delete, or Set as Root.
+- **File Options** (`ALT + O`): Rename, Move, Delete, or Set as Root.
 
 ## Fuzzy Finder
 
@@ -282,7 +282,7 @@ The fuzzy finder is a central interaction pattern used for file opening, searchi
 | **Themes**          | `CTRL + ALT + T`       | Select and preview color themes                      |
 | **Command Palette** | `CTRL + P`             | Execute editor commands (22 actions — see below)     |
 | **Save As**         | Via Command Palette    | Save current file with a new name/path               |
-| **File Options**    | `SHIFT + O` (explorer) | Rename, Move, Delete, or Set as Root                 |
+| **File Options**    | `ALT + O` (explorer) | Rename, Move, Delete, or Set as Root                 |
 | **Rename**          | Via File Options       | Rename a file or directory                           |
 | **Delete Confirm**  | Via File Options       | Confirm file deletion                                |
 | **Move**            | Via File Options       | Move file to another directory                       |
@@ -327,7 +327,7 @@ The command palette (`CTRL+P`) provides access to 18 actions:
 
 ## Theme System
 
-- **Default theme**: "NEdit Dark" (embedded in the binary).
+- **Default theme**: "NEdit Dark Complete" (embedded in the binary).
 - Themes are **Sublime Text .tmTheme** files.
 - Built-in themes ship with NEdit. Custom themes can be placed in:
   - `~/.config/nedit/themes/` — flat directory
@@ -467,7 +467,7 @@ Press `CTRL+H` to open the documentation chooser with three options:
 - **Global Config**: All settings in `~/.config/nedit/`.
 - **Dynamic Themes**: Switch themes in real-time with live preview.
 - **Translation**: 100% controlled by `language.toml`.
-- **Performance Optimization**: Large files (>5 MB) automatically disable syntax highlighting. Highlighting is cached incrementally.
+- **Performance Optimization**: Large files (>5 MB) automatically disable syntax highlighting. Highlighting is cached incrementally. Zero-copy / non-allocating rope traversal is used during visual width recalculations, autocomplete dictionary extraction, indent guide scoping, and local search passes to eliminate heap churn.
 - **Mouse Support**: Scroll independently, click to position, drag for selection, double-click for word select.
 
 ## Internal Documentation

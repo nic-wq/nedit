@@ -88,7 +88,26 @@ chmod +x "$BINARY_NAME"
 echo "Installing to $INSTALL_PATH..."
 sudo mv "$BINARY_NAME" "$INSTALL_PATH"
 
-# 6. Final check
+# 6. Install desktop entry and icon if available locally
+DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/256x256/apps"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -f "$SCRIPT_DIR/nedit.desktop" ]; then
+    mkdir -p "$DESKTOP_DIR"
+    cp "$SCRIPT_DIR/nedit.desktop" "$DESKTOP_DIR/nedit.desktop"
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+fi
+
+if [ -f "$SCRIPT_DIR/assets/nedit.png" ]; then
+    mkdir -p "$ICON_DIR"
+    mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/icons"
+    cp "$SCRIPT_DIR/assets/nedit.png" "$ICON_DIR/nedit.png"
+    cp "$SCRIPT_DIR/assets/nedit.png" "${XDG_DATA_HOME:-$HOME/.local/share}/icons/nedit.png"
+    command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
+fi
+
+# 7. Final check
 if [ $? -eq 0 ]; then
     echo "Installation completed successfully."
 else

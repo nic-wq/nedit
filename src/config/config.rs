@@ -72,7 +72,7 @@ fn default_preview_max_size() -> usize {
 }
 
 fn default_theme() -> String {
-    "NEdit Dark".to_string()
+    "NEdit Dark Complete".to_string()
 }
 
 impl Default for Config {

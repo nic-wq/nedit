@@ -285,7 +285,7 @@ impl App {
             .filter(|path| {
                 path.file_name()
                     .and_then(|name| name.to_str())
-                    .map(|name| !Self::should_skip_dir_name(name))
+                    .map(|name| !crate::explorer::should_skip_dir_name(name))
                     .unwrap_or(true)
             })
             .collect();
@@ -345,7 +345,7 @@ impl App {
                     return true;
                 }
                 let name = entry.file_name().to_string_lossy();
-                !Self::should_skip_dir_name(name.as_ref())
+                !crate::explorer::should_skip_dir_name(name.as_ref())
             })
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.file_type().is_file())
@@ -402,8 +402,9 @@ impl App {
             self.fuzzy_limit = 20;
 
             if mode == FuzzyMode::SaveAs && !self.buffers.is_empty() {
-                let content = self.buffers[self.current_buffer_idx].content.to_string();
-                if let Some(first_line) = content.lines().next() {
+                let buf = &self.buffers[self.current_buffer_idx];
+                if buf.content.len_lines() > 0 {
+                    let first_line = buf.content.line(0).to_string();
                     let trimmed = first_line.trim();
                     if let Some(name) = trimmed.strip_prefix("-- Name: ") {
                         self.set_fuzzy_query(self.slugify(name.trim()));
@@ -476,9 +477,10 @@ impl App {
             }
         }
         if let Some(rx) = &self.explorer_refresh_receiver {
-            if let Ok((items, max_width)) = rx.try_recv() {
+            if let Ok((items, max_width, corpus)) = rx.try_recv() {
                 self.explorer.items = items;
                 self.explorer.max_item_width = max_width;
+                self.explorer.search_corpus = corpus;
                 self.explorer_refresh_receiver = None;
 
                 // Restore selection
@@ -486,6 +488,12 @@ impl App {
                     if let Some(idx) = self.explorer.items.iter().position(|i| i.path == path) {
                         self.explorer.selected_idx = idx;
                     }
+                }
+
+                // A fresh corpus can change the filtered view: re-filter,
+                // keeping the selected path when it is still present.
+                if self.explorer.is_searching() {
+                    self.explorer.update_search_results(false);
                 }
 
                 // If a new refresh was requested while the previous one was running, trigger it now
@@ -585,7 +593,7 @@ impl App {
                         return true;
                     }
                     let name = e.file_name().to_string_lossy();
-                    !Self::should_skip_dir_name(name.as_ref())
+                    !crate::explorer::should_skip_dir_name(name.as_ref())
                 })
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
@@ -911,12 +919,27 @@ impl App {
             if let Some(buffer) = self.buffers.get(self.current_buffer_idx) {
                 self.fuzzy_lines = Vec::new();
                 for i in 0..buffer.content.len_lines() {
-                    let line = buffer.content.line(i).to_string();
-                    if query.is_empty() || contains_ascii_insensitive(&line, &query) {
-                        self.fuzzy_lines.push((i, line));
-                    }
-                    if self.fuzzy_lines.len() >= self.fuzzy_limit {
-                        break;
+                    let line_slice = buffer.content.line(i);
+                    let matches = if query.is_empty() {
+                        true
+                    } else {
+                        let mut chunks = line_slice.chunks();
+                        if let Some(chunk) = chunks.next() {
+                            if chunks.next().is_none() {
+                                contains_ascii_insensitive(chunk, &query)
+                            } else {
+                                let line = line_slice.to_string();
+                                contains_ascii_insensitive(&line, &query)
+                            }
+                        } else {
+                            false
+                        }
+                    };
+                    if matches {
+                        self.fuzzy_lines.push((i, line_slice.to_string()));
+                        if self.fuzzy_lines.len() >= self.fuzzy_limit {
+                            break;
+                        }
                     }
                 }
             }

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub struct FileItem {
     pub path: PathBuf,
     pub is_dir: bool,

@@ -5,3 +5,5 @@ target/
 .pr
 .antigravitycli/
 AGENTS.md.antigravitycli/
+*.zip
+tests/

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=NEdit
+GenericName=Text Editor
+GenericName[pt_BR]=Editor de Texto
+Comment=A modern, lightweight terminal text editor written in Rust
+Comment[pt_BR]=Editor de texto moderno e leve para terminal em Rust
+Icon=nedit
+Type=Application
+Categories=Development;TextEditor;
+Keywords=text;editor;syntax;terminal;rust;
+Exec=alacritty -e nedit %F
+StartupNotify=false
+Terminal=false
+MimeType=text/plain;text/x-rust;text/x-c;text/x-c++;text/x-csrc;text/x-chdr;text/x-python;text/markdown;application/json;application/toml;application/xml;text/x-lua;text/x-yaml;text/javascript;application/javascript;

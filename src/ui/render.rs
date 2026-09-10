@@ -408,75 +408,160 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.bg), area);
 }
 
-fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
-    if app.explorer.items.is_empty() {
-        let block = Block::default()
-            .title(format!(" {} ", app.i18n.t("explorer")))
-            .borders(Borders::RIGHT)
-            .border_style(Style::default().fg(colors.surface));
-        f.render_widget(block.bg(colors.bg), area);
-        return;
+/// Always-visible explorer search bar (top row of the panel).
+/// Typing with the explorer focused lands here; the cursor and the Shift
+/// selection render exactly like the fuzzy finder input.
+fn draw_explorer_search_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
+    const PREFIX_WIDTH: usize = 3; // " " + icon + " "
+    let mut spans = vec![Span::styled("  ", Style::default().fg(colors.accent))];
+    match app.explorer.search_input.selection_bytes() {
+        Some((s, e)) if s < e => {
+            let query = &app.explorer.search_input.text;
+            spans.push(Span::raw(query[..s].to_string()));
+            spans.push(Span::styled(
+                query[s..e].to_string(),
+                Style::default().bg(colors.sel).fg(colors.accent),
+            ));
+            spans.push(Span::raw(query[e..].to_string()));
+        }
+        _ => spans.push(Span::raw(app.explorer.search_input.text.clone())),
     }
-    let list_height = area.height.saturating_sub(2) as usize;
-    let scroll_offset = app
-        .explorer
-        .scroll_offset
-        .min(app.explorer.items.len().saturating_sub(1));
-    let visible_items = &app.explorer.items
-        [scroll_offset..((scroll_offset + list_height).min(app.explorer.items.len()))];
+    f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.bg), area);
+    if app.focus == Focus::Explorer {
+        let cursor_byte = app
+            .explorer
+            .search_input
+            .byte_idx(app.explorer.search_input.cursor);
+        let query_width = UnicodeWidthStr::width(&app.explorer.search_input.text[..cursor_byte]);
+        let cursor_x = area
+            .x
+            .saturating_add(PREFIX_WIDTH.saturating_add(query_width) as u16);
+        let max_x = area.x.saturating_add(area.width.saturating_sub(1));
+        f.set_cursor_position((cursor_x.min(max_x), area.y));
+    }
+}
 
-    let items: Vec<ListItem> = visible_items
-        .iter()
-        .enumerate()
-        .map(|(i, item)| {
-            let actual_idx = i + scroll_offset;
-            let indent = "  ".repeat(item.depth);
-            let icon = app
-                .icon_registry
-                .get_icon(&item.path, item.is_dir, item.expanded);
-
-            let style = if actual_idx == app.explorer.selected_idx {
-                Style::default()
-                    .bg(colors.sel)
-                    .fg(colors.accent)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(colors.fg)
-            };
-
-            ListItem::new(format!(
-                "{}{}{} {}",
-                indent,
-                icon,
-                item.name,
-                if item.is_dir && !item.expanded {
-                    "›"
-                } else if item.is_dir {
-                    "⌄"
-                } else {
-                    ""
-                }
-            ))
-            .style(style)
-        })
-        .collect();
-
+fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     let border_color = if app.focus == Focus::Explorer {
         colors.accent
     } else {
         colors.surface
     };
+    // The title row doubles as the match counter while filtering, so the
+    // row it occupies always earns its space.
+    let title = if app.explorer.is_searching() {
+        format!(
+            " {} ({}) ",
+            app.i18n.t("explorer"),
+            app.explorer.search_results.len()
+        )
+    } else {
+        format!(" {} ", app.i18n.t("explorer"))
+    };
     let block = Block::default()
-        .title(format!(" {} ", app.i18n.t("explorer")))
+        .title(title)
         .borders(Borders::RIGHT)
         .border_style(Style::default().fg(border_color));
 
-    f.render_widget(List::new(items).block(block).bg(colors.bg), area);
+    if area.height == 0 {
+        return;
+    }
+    // Row 0 is always the search bar; the list below shows the filtered
+    // flat view while searching, else the tree.
+    let bar_area = Rect::new(area.x, area.y, area.width, 1);
+    draw_explorer_search_bar(f, app, bar_area, colors);
+
+    let searching = app.explorer.is_searching();
+    let list_height = crate::explorer::explorer_list_height(area.height);
+    let (len, selected, scroll) = if searching {
+        (
+            app.explorer.search_results.len(),
+            app.explorer.search_selected,
+            app.explorer.search_scroll,
+        )
+    } else {
+        (
+            app.explorer.items.len(),
+            app.explorer.selected_idx,
+            app.explorer.scroll_offset,
+        )
+    };
+    let scroll = scroll.min(len.saturating_sub(1));
+    let selected = selected.min(len.saturating_sub(1));
+    let end = (scroll + list_height).min(len);
+
+    let mut items: Vec<ListItem> = Vec::new();
+    if searching && len == 0 {
+        items.push(ListItem::new(" No matches").style(Style::default().fg(colors.surface)));
+    }
+    for actual_idx in scroll..end {
+        let item = if searching {
+            &app.explorer.search_results[actual_idx]
+        } else {
+            &app.explorer.items[actual_idx]
+        };
+        let style = if actual_idx == selected {
+            Style::default()
+                .bg(colors.sel)
+                .fg(colors.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(colors.fg)
+        };
+        if searching {
+            let icon = app
+                .icon_registry
+                .get_icon(&item.path, item.is_dir, item.expanded);
+            let parent = item
+                .path
+                .parent()
+                .and_then(|p| p.strip_prefix(&app.explorer.root).ok())
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let mut spans = vec![Span::raw(format!("{}{}", icon, item.name))];
+            if !parent.is_empty() {
+                spans.push(Span::styled(
+                    format!("  {parent}"),
+                    Style::default().fg(colors.surface),
+                ));
+            }
+            items.push(ListItem::new(Line::from(spans)).style(style));
+        } else {
+            let indent = "  ".repeat(item.depth);
+            let icon = app
+                .icon_registry
+                .get_icon(&item.path, item.is_dir, item.expanded);
+            items.push(
+                ListItem::new(format!(
+                    "{}{}{} {}",
+                    indent,
+                    icon,
+                    item.name,
+                    if item.is_dir && !item.expanded {
+                        "›"
+                    } else if item.is_dir {
+                        "⌄"
+                    } else {
+                        ""
+                    }
+                ))
+                .style(style),
+            );
+        }
+    }
+
+    let list_area = Rect::new(
+        area.x,
+        area.y.saturating_add(1),
+        area.width,
+        area.height.saturating_sub(1),
+    );
+    f.render_widget(List::new(items).block(block).bg(colors.bg), list_area);
 }
 
-fn visual_leading_indent(line: &str) -> usize {
+fn visual_leading_indent_chars<I: IntoIterator<Item = char>>(chars: I) -> usize {
     let mut col = 0;
-    for c in line.chars() {
+    for c in chars {
         match c {
             ' ' => col += 1,
             '\t' => col += 4,
@@ -485,6 +570,7 @@ fn visual_leading_indent(line: &str) -> usize {
     }
     col
 }
+
 
 /// Returns `(active_level, scope_start, scope_end)` for the indent guide at the cursor.
 /// Active level follows the parent visual scope of the cursor line.
@@ -581,6 +667,7 @@ fn draw_editor(
             .theme_set
             .themes
             .get(&app.current_theme)
+            .or_else(|| app.theme_set.themes.get("NEdit Dark Complete"))
             .or_else(|| app.theme_set.themes.get("NEdit Dark"))
             .or_else(|| app.theme_set.themes.values().next())
             .expect("No themes loaded — check your theme directory");
@@ -682,17 +769,7 @@ fn draw_editor(
     let mut lines = Vec::new();
     let visible_width = area.width.saturating_sub(5) as usize;
     let (active_indent_level, active_scope_start, active_scope_end) = if is_focused {
-        let line_without_newline = |row: usize| {
-            let mut line = buffer.content.line(row).to_string();
-            if line.ends_with('\n') {
-                line.pop();
-            }
-            if line.ends_with('\r') {
-                line.pop();
-            }
-            line
-        };
-        let line_indent = |row: usize| visual_leading_indent(&line_without_newline(row));
+        let line_indent = |row: usize| visual_leading_indent_chars(buffer.content.line(row).chars());
         active_indent_guide_scope(
             line_count,
             line_indent,
@@ -728,23 +805,21 @@ fn draw_editor(
         .as_ref()
         .map(|text| text.chars().collect::<Vec<_>>());
 
+    let mut line_chars = Vec::new();
     for i in buffer_scroll_row..(buffer_scroll_row + height).min(line_count) {
         let original_line = buffer.content.line(i).to_string();
-        let mut line_content = original_line.clone();
-        if line_content.ends_with('\n') {
-            line_content.pop();
-        }
-        if line_content.ends_with('\r') {
-            line_content.pop();
-        }
+        let line_content = original_line.trim_end_matches(&['\r', '\n'][..]);
 
         let mut match_ranges = Vec::new();
         if let Some(word_chars) = selected_match_chars.as_ref() {
-            let line_chars: Vec<char> = line_content.chars().collect();
-            if !word_chars.is_empty() && line_chars.len() >= word_chars.len() {
-                for i in 0..=(line_chars.len() - word_chars.len()) {
-                    if line_chars[i..i + word_chars.len()] == word_chars[..] {
-                        match_ranges.push(i..i + word_chars.len());
+            if !word_chars.is_empty() {
+                line_chars.clear();
+                line_chars.extend(line_content.chars());
+                if line_chars.len() >= word_chars.len() {
+                    for idx in 0..=(line_chars.len() - word_chars.len()) {
+                        if line_chars[idx..idx + word_chars.len()] == word_chars[..] {
+                            match_ranges.push(idx..idx + word_chars.len());
+                        }
                     }
                 }
             }
@@ -1692,6 +1767,66 @@ mod syntax_resolution_tests {
             resolve_buffer_syntax(&syntax_set, &plain).name,
             "Plain Text"
         );
+    }
+}
+
+#[cfg(test)]
+mod explorer_search_render_tests {
+    use super::{draw_explorer, get_colors};
+    use crate::app::App;
+    use crate::explorer::FileItem;
+    use ratatui::{backend::TestBackend, Terminal};
+
+    fn row_text(buf: &ratatui::buffer::Buffer, y: u16, width: u16) -> String {
+        (0..width)
+            .map(|x| buf[(x, y)].symbol().to_string())
+            .collect::<String>()
+            .trim_end()
+            .to_string()
+    }
+
+    #[test]
+    fn search_bar_renders_on_top_and_filters_rows() {
+        let mut app = App::new(&[]);
+        app.focus = crate::app::Focus::Explorer;
+        for name in ["alpha.txt", "beta.txt"] {
+            app.explorer.items.push(FileItem {
+                path: std::path::PathBuf::from(format!("/root/{name}")),
+                is_dir: false,
+                name: name.to_string(),
+                depth: 0,
+                expanded: false,
+            });
+        }
+        app.explorer.search_corpus = app
+            .explorer
+            .items
+            .iter()
+            .map(|i| (i.path.clone(), i.is_dir))
+            .collect();
+        app.explorer.search_input.set_text("alp".to_string());
+        app.explorer.update_search_results(true);
+        assert_eq!(app.explorer.search_results.len(), 1);
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_explorer(f, &app, f.area(), &colors);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        // Row 0 is always the search bar showing the query...
+        assert!(row_text(&buf, 0, 40).contains("alp"));
+        // ...row 1 carries the match counter...
+        assert!(row_text(&buf, 1, 40).contains("(1)"));
+        // ...and only the match is listed below.
+        let row2 = row_text(&buf, 2, 40);
+        assert!(row2.contains("alpha.txt"), "got: {row2}");
+        for y in 2..10 {
+            assert!(!row_text(&buf, y, 40).contains("beta.txt"));
+        }
     }
 }
 

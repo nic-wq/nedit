@@ -6,7 +6,7 @@ pub enum Focus {
 
 // We use FuzzyMode to represent any modal interaction that requires a searchable list or text input,
 // consolidating various UI workflows into a single manageable state machine.
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum FuzzyMode {
     Files,
     Content,

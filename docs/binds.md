@@ -42,7 +42,7 @@ These can be customized in the `[keybinds]` section of `~/.config/nedit/config.t
 
 | Action        | Default      | Description                                                                                                           |
 | ------------- | ------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `set_as_root` | `ctrl+enter` | Set selected directory as explorer root (may not work on all terminals; use `SHIFT+O` → "Set as Root" as alternative) |
+| `set_as_root` | `ctrl+enter` | Set selected directory as explorer root (may not work on all terminals; use `ALT+O` → "Set as Root" as alternative) |
 
 ### Live Script
 
@@ -125,8 +125,26 @@ In Live Script mode the script pane is pinned as the last tab, so `CTRL + ALT + 
 | `UP`              | Move selection up                                  |
 | `DOWN`            | Move selection down                                |
 | `ENTER`           | Open file / Toggle directory expansion             |
-| `BACKSPACE`       | Go to parent directory                             |
-| `O` / `SHIFT + O` | Open file options (Rename/Move/Delete/Set as Root) |
+| `ALT + LEFT`      | Go to parent directory                             |
+| `ALT + O`         | Open file options (Rename/Move/Delete/Set as Root) |
+
+### Explorer Search
+
+The explorer always shows a search bar on its first row. Typing filters files **and** folders across the whole tree (including collapsed directories) with the same fuzzy matching as the file finder (`CTRL+O`):
+
+| Shortcut                     | Action                                              |
+| ---------------------------- | --------------------------------------------------- |
+| Any text                     | Filter the explorer                                 |
+| `LEFT` / `RIGHT`             | Move cursor in the search field                     |
+| `HOME` / `END`               | Jump to start/end of the search field               |
+| `DELETE`                     | Delete character after the cursor                   |
+| `SHIFT` + arrows/`HOME`/`END`| Extend the search field selection                   |
+| `CTRL + A`                   | Select all search text                              |
+| `CTRL + LEFT` / `CTRL + RIGHT` | Jump by word in the search field                  |
+| `CTRL + U` / `CTRL + K`      | Delete to start/end of the search field             |
+| `CTRL + W` / `CTRL + BACKSPACE` | Delete previous word                             |
+| `ENTER`                      | Open the selected match (expands the selected folder) |
+| `ESC`                        | Clear the search                                    |
 
 ### Unsaved Changes Prompt
 

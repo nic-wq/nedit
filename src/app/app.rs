@@ -63,7 +63,9 @@ pub struct App {
     pub fs_event_receiver: Receiver<notify::Result<notify::Event>>,
     pub syntax_set_receiver: Option<Receiver<SyntaxSet>>,
     pub indexed_files_receiver: Option<Receiver<Vec<(String, PathBuf)>>>,
-    pub explorer_refresh_receiver: Option<Receiver<(Vec<crate::explorer::FileItem>, usize)>>,
+    #[allow(clippy::type_complexity)]
+    pub explorer_refresh_receiver:
+        Option<Receiver<(Vec<crate::explorer::FileItem>, usize, Vec<(PathBuf, bool)>)>>,
     pub explorer_needs_refresh: bool,
     #[allow(clippy::type_complexity)]
     pub content_search_receiver: Option<Receiver<(String, u64, Vec<(PathBuf, usize, String)>)>>,
@@ -159,6 +161,8 @@ impl App {
 
         let mut theme_set = ThemeSet::new();
         if let Some(theme) = Self::load_embedded_theme() {
+            theme_set.themes.insert("NEdit Dark Complete".to_string(), theme.clone());
+            theme_set.themes.insert("nedit-dark-complete".to_string(), theme.clone());
             theme_set.themes.insert("NEdit Dark".to_string(), theme);
         }
         Self::load_custom_themes_into(&mut theme_set, &config_dir);
@@ -171,13 +175,26 @@ impl App {
             }
         }
 
+        let mut initial_root = current_dir.clone();
+        for arg in args {
+            let path = Self::parse_path_arg(arg);
+            if path.is_dir() {
+                initial_root = path;
+                break;
+            } else if let Some(root) = Self::find_project_root_or_parent(&path, &current_dir) {
+                initial_root = root;
+                break;
+            }
+        }
+        let _ = std::env::set_current_dir(&initial_root);
+
         let (tx, rx) = channel();
         let watcher = RecommendedWatcher::new(tx, NotifyConfig::default()).ok();
 
         let mut app = Self {
             buffers: Vec::new(),
             current_buffer_idx: 0,
-            explorer: FileExplorer::new(current_dir.clone()),
+            explorer: FileExplorer::new(initial_root.clone()),
             focus: Focus::Editor,
             show_explorer: false,
             should_quit: false,
@@ -240,21 +257,69 @@ impl App {
         };
 
         if let Some(watcher) = &mut app.watcher {
-            let _ = watcher.watch(&current_dir, Self::watch_mode_for_path(&current_dir));
+            let _ = watcher.watch(&initial_root, Self::watch_mode_for_path(&initial_root));
         }
 
         app.refresh_explorer();
 
         for arg in args {
-            let path = PathBuf::from(arg);
-            if path.is_dir() {
-                app.set_explorer_root(path);
-            } else {
-                app.open_file(path);
+            let path = Self::parse_path_arg(arg);
+            if !path.is_dir() {
+                let open_path = if path.is_absolute() {
+                    path
+                } else {
+                    current_dir.join(path)
+                };
+                app.open_file(open_path);
             }
         }
 
         app
+    }
+
+    pub fn parse_path_arg(arg: &str) -> PathBuf {
+        let clean = if let Some(stripped) = arg.strip_prefix("file://") {
+            stripped
+        } else {
+            arg
+        };
+        PathBuf::from(clean)
+    }
+
+    pub fn find_project_root_or_parent(file_path: &Path, current_dir: &Path) -> Option<PathBuf> {
+        let abs_path = if file_path.is_absolute() {
+            file_path.to_path_buf()
+        } else {
+            current_dir.join(file_path)
+        };
+
+        let parent = abs_path.parent()?;
+        if !parent.exists() {
+            return None;
+        }
+
+        let parent_canonical = parent.canonicalize().unwrap_or_else(|_| parent.to_path_buf());
+        let home = dirs::home_dir().and_then(|h| h.canonicalize().ok());
+
+        let mut current = parent_canonical.as_path();
+        loop {
+            if let Some(ref h) = home {
+                if current == h {
+                    break;
+                }
+            }
+
+            if current.join(".git").exists() {
+                return Some(current.to_path_buf());
+            }
+
+            match current.parent() {
+                Some(p) if p != current => current = p,
+                _ => break,
+            }
+        }
+
+        Some(parent_canonical)
     }
 
     pub fn config_dir() -> PathBuf {
@@ -307,6 +372,8 @@ impl App {
         let config_dir = Self::config_dir();
         let mut theme_set = ThemeSet::new();
         if let Some(theme) = Self::load_embedded_theme() {
+            theme_set.themes.insert("NEdit Dark Complete".to_string(), theme.clone());
+            theme_set.themes.insert("nedit-dark-complete".to_string(), theme.clone());
             theme_set.themes.insert("NEdit Dark".to_string(), theme);
         }
         Self::load_custom_themes_into(&mut theme_set, &config_dir);
@@ -316,8 +383,8 @@ impl App {
     }
 
     fn load_embedded_theme() -> Option<Theme> {
-        let bytes = include_bytes!("../../themes/nedit-dark.tmTheme");
-        let temp_path = std::env::temp_dir().join("nedit-dark-theme.tmTheme");
+        let bytes = include_bytes!("../../themes/nedit-dark-complete.tmTheme");
+        let temp_path = std::env::temp_dir().join("nedit-dark-complete-theme.tmTheme");
         std::fs::write(&temp_path, bytes).ok()?;
         let theme = ThemeSet::get_theme(&temp_path).ok()?;
         let _ = std::fs::remove_file(&temp_path);
@@ -530,27 +597,6 @@ impl App {
         Some(format!("v1-nonewlines\n{}", entries.join("\n")))
     }
 
-    pub(crate) fn should_skip_dir_name(name: &str) -> bool {
-        matches!(
-            name,
-            ".git"
-                | ".hg"
-                | ".svn"
-                | "target"
-                | "node_modules"
-                | "dist"
-                | "build"
-                | ".cache"
-                | ".next"
-                | ".nuxt"
-                | "vendor"
-                | "proc"
-                | "sys"
-                | "dev"
-                | "run"
-        )
-    }
-
     pub fn refresh_explorer(&mut self) {
         if self.explorer_refresh_receiver.is_some() {
             self.explorer_needs_refresh = true;
@@ -573,11 +619,20 @@ impl App {
             expanded_paths: self.explorer.expanded_paths.clone(),
             scroll_offset: 0,
             max_item_width: 20,
+            search_input: crate::line_input::LineInput::new(),
+            search_results: Vec::new(),
+            search_selected: 0,
+            search_scroll: 0,
+            search_corpus: Vec::new(),
         };
 
         std::thread::spawn(move || {
             explorer_clone.refresh_sync();
-            let _ = tx.send((explorer_clone.items, explorer_clone.max_item_width));
+            let _ = tx.send((
+                explorer_clone.items,
+                explorer_clone.max_item_width,
+                explorer_clone.search_corpus,
+            ));
         });
     }
 
@@ -688,7 +743,7 @@ impl App {
 }
 
 fn default_theme_name() -> String {
-    "NEdit Dark".to_string()
+    "NEdit Dark Complete".to_string()
 }
 
 #[cfg(test)]
@@ -739,5 +794,41 @@ mod tests {
         assert!(theme_set.themes.contains_key("Base16 Ocean Dark"));
         assert!(App::load_theme_by_name("Oceanic.tmTheme", &theme_set).is_some());
         assert!(App::load_theme_by_name("nested/Oceanic.tmTheme", &theme_set).is_some());
+    }
+
+    #[test]
+    fn adopts_parent_dir_as_explorer_root_when_opening_file() {
+        let temp = tempdir().unwrap();
+        let sub_dir = temp.path().join("teste");
+        fs::create_dir_all(&sub_dir).unwrap();
+        let file_path = sub_dir.join("arquivo.txt");
+        fs::write(&file_path, "hello").unwrap();
+
+        let app = App::new(&[file_path.to_str().unwrap().to_string()]);
+        assert_eq!(
+            app.explorer.root.canonicalize().unwrap(),
+            sub_dir.canonicalize().unwrap()
+        );
+        assert_eq!(app.buffers.len(), 1);
+        assert_eq!(app.buffers[0].path.as_ref(), Some(&file_path));
+    }
+
+    #[test]
+    fn adopts_git_root_as_explorer_root_when_opening_file_inside_repo() {
+        let temp = tempdir().unwrap();
+        let repo_root = temp.path().join("my_repo");
+        let git_dir = repo_root.join(".git");
+        let sub_dir = repo_root.join("src");
+        fs::create_dir_all(&git_dir).unwrap();
+        fs::create_dir_all(&sub_dir).unwrap();
+        let file_path = sub_dir.join("main.rs");
+        fs::write(&file_path, "fn main() {}").unwrap();
+
+        let app = App::new(&[file_path.to_str().unwrap().to_string()]);
+        assert_eq!(
+            app.explorer.root.canonicalize().unwrap(),
+            repo_root.canonicalize().unwrap()
+        );
+        assert_eq!(app.buffers.len(), 1);
     }
 }

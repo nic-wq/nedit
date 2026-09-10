@@ -3,16 +3,58 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::FileItem;
+use crate::app::matcher::FuzzyMatcher;
+use crate::line_input::LineInput;
+
+/// List rows of the explorer panel for a given area height: 1 row is always
+/// the search bar, plus 2 legacy chrome rows. Navigation scroll math and
+/// rendering share this so the selection can never scroll out of view.
+pub fn explorer_list_height(area_height: u16) -> usize {
+    area_height.saturating_sub(3) as usize
+}
+
+/// Directory names skipped everywhere (search corpus and file index).
+pub(crate) fn should_skip_dir_name(name: &str) -> bool {
+    matches!(
+        name,
+        ".git"
+            | ".hg"
+            | ".svn"
+            | "target"
+            | "node_modules"
+            | "dist"
+            | "build"
+            | ".cache"
+            | ".next"
+            | ".nuxt"
+            | "vendor"
+            | "proc"
+            | "sys"
+            | "dev"
+            | "run"
+    )
+}
 
 pub struct FileExplorer {
     pub root: PathBuf,
     pub items: Vec<FileItem>,
     pub selected_idx: usize,
-    // We use a HashSet for expanded paths to provide O(1) lookups when deciding 
+    // We use a HashSet for expanded paths to provide O(1) lookups when deciding
     // whether to render a directory's children during the recursive load.
     pub expanded_paths: HashSet<PathBuf>,
     pub scroll_offset: usize,
     pub max_item_width: usize,
+    /// Always-visible search field content (top of the panel).
+    pub search_input: LineInput,
+    /// Flat fuzzy-filtered view, authoritative while searching.
+    /// Covers the whole tree (including collapsed folders), not just `items`.
+    pub search_results: Vec<FileItem>,
+    pub search_selected: usize,
+    pub search_scroll: usize,
+    /// Every file and directory under `root`, ignoring expansion state.
+    /// Rebuilt on refresh; the search filter runs over this cache so each
+    /// keystroke is an in-memory pass instead of a filesystem walk.
+    pub search_corpus: Vec<(PathBuf, bool)>,
 }
 
 impl FileExplorer {
@@ -24,7 +66,164 @@ impl FileExplorer {
             expanded_paths: HashSet::new(),
             scroll_offset: 0,
             max_item_width: 20,
+            search_input: LineInput::new(),
+            search_results: Vec::new(),
+            search_selected: 0,
+            search_scroll: 0,
+            search_corpus: Vec::new(),
         }
+    }
+
+    /// Whether the search bar currently filters the panel.
+    pub fn is_searching(&self) -> bool {
+        !self.search_input.is_empty()
+    }
+
+    /// Visible rows: the filtered flat list while searching, else the tree.
+    pub fn visible_items(&self) -> &[FileItem] {
+        if self.is_searching() {
+            &self.search_results
+        } else {
+            &self.items
+        }
+    }
+
+    /// Selected row index within [`Self::visible_items`].
+    pub fn visible_selected_idx(&self) -> usize {
+        if self.is_searching() {
+            self.search_selected
+        } else {
+            self.selected_idx
+        }
+    }
+
+    /// Selected row within [`Self::visible_items`].
+    pub fn visible_selected(&self) -> Option<&FileItem> {
+        let items = self.visible_items();
+        if items.is_empty() {
+            return None;
+        }
+        items.get(self.visible_selected_idx().min(items.len() - 1))
+    }
+
+    /// Scroll offset keeping `selected` visible in a `height`-row window,
+    /// moving as little as possible. Unlike `selected - height + 1`, this
+    /// stays at 0 when everything fits, so wrapping never hides the top.
+    pub fn follow_scroll(selected: usize, scroll: usize, len: usize, height: usize) -> usize {
+        if len == 0 {
+            return 0;
+        }
+        let selected = selected.min(len - 1);
+        if height == 0 {
+            return selected;
+        }
+        if selected < scroll {
+            selected
+        } else if selected >= scroll + height {
+            selected + 1 - height
+        } else {
+            scroll
+        }
+    }
+
+    /// Drop the search entirely, keeping the tree selection/scroll untouched.
+    pub fn clear_search(&mut self) {
+        self.search_input.clear();
+        self.search_results.clear();
+        self.search_selected = 0;
+        self.search_scroll = 0;
+    }
+
+    /// Walk the whole tree under `root`, ignoring expansion state, so the
+    /// filter can surface files inside collapsed folders too.
+    pub fn collect_search_corpus(&mut self) {
+        self.search_corpus.clear();
+        let mut stack = vec![self.root.clone()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let is_dir = path.is_dir();
+                if is_dir {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if should_skip_dir_name(name) {
+                            continue;
+                        }
+                    }
+                    stack.push(path.clone());
+                }
+                self.search_corpus.push((path, is_dir));
+            }
+        }
+    }
+
+    /// Recompute the filtered view from the corpus. With `reset_selection`,
+    /// jump to the top (used after query edits); otherwise preserve the
+    /// selected path when it is still present (used after corpus refreshes).
+    pub fn update_search_results(&mut self, reset_selection: bool) {
+        let previous = (!reset_selection)
+            .then(|| {
+                self.search_results
+                    .get(self.search_selected)
+                    .map(|item| item.path.clone())
+            })
+            .flatten();
+        self.search_results = self.filter_corpus();
+        self.search_selected = previous
+            .and_then(|path| self.search_results.iter().position(|i| i.path == path))
+            .unwrap_or(0);
+        // Without the viewport height the input handler re-follows on every
+        // navigation key; here just never point past the end and never hide
+        // the selection above.
+        self.search_scroll = self
+            .search_scroll
+            .min(self.search_results.len().saturating_sub(1));
+        if self.search_selected < self.search_scroll {
+            self.search_scroll = self.search_selected;
+        }
+    }
+
+    /// Fuzzy-match the corpus against the query, best score first.
+    /// Same scoring engine as the Ctrl+O file finder.
+    fn filter_corpus(&self) -> Vec<FileItem> {
+        let query = self.search_input.text.trim().to_lowercase();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        // Single matcher per keystroke, reused across all candidates.
+        let mut matcher = FuzzyMatcher::new(&query);
+        let mut scored: Vec<(i32, PathBuf, bool)> = Vec::new();
+        for (path, is_dir) in &self.search_corpus {
+            let rel = path
+                .strip_prefix(&self.root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let fm = matcher.match_target(&rel);
+            if fm.matched {
+                scored.push((fm.score, path.clone(), *is_dir));
+            }
+        }
+        scored.sort_by_key(|scored| std::cmp::Reverse(scored.0));
+        scored
+            .into_iter()
+            .map(|(_, path, is_dir)| {
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                FileItem {
+                    path,
+                    is_dir,
+                    name,
+                    depth: 0,
+                    expanded: false,
+                }
+            })
+            .collect()
     }
 
     pub fn refresh_sync(&mut self) {
@@ -32,6 +231,7 @@ impl FileExplorer {
         self.items.clear();
         self.max_item_width = 20;
         self.load_dir_recursive(&self.root.clone(), 0);
+        self.collect_search_corpus();
 
         if let Some(path) = selected_path {
             if let Some(idx) = self.items.iter().position(|i| i.path == path) {
@@ -123,10 +323,145 @@ impl FileExplorer {
             self.root = parent.to_path_buf();
             self.selected_idx = 0;
             self.scroll_offset = 0;
+            self.invalidate_search();
         }
+    }
+
+    /// Drop filtered results and the corpus (e.g. the root changed and a
+    /// refresh is on its way). The query text is kept: results rebuild as
+    /// soon as the fresh corpus arrives.
+    pub fn invalidate_search(&mut self) {
+        self.search_results.clear();
+        self.search_corpus.clear();
+        self.search_selected = 0;
+        self.search_scroll = 0;
     }
 
     pub fn get_selected(&self) -> Option<&FileItem> {
         self.items.get(self.selected_idx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FileExplorer;
+    use std::path::PathBuf;
+
+    fn explorer_with(n: usize) -> FileExplorer {
+        let mut explorer = FileExplorer::new(PathBuf::from("/root"));
+        explorer.items = (0..n)
+            .map(|i| super::super::FileItem {
+                path: PathBuf::from(format!("/root/file{i}.txt")),
+                is_dir: false,
+                name: format!("file{i}.txt"),
+                depth: 0,
+                expanded: false,
+            })
+            .collect();
+        explorer
+    }
+
+    #[test]
+    fn follow_scroll_keeps_selection_visible() {
+        // Selection below the window scrolls minimally.
+        assert_eq!(FileExplorer::follow_scroll(10, 0, 30, 10), 1);
+        // Selection above jumps back up.
+        assert_eq!(FileExplorer::follow_scroll(5, 20, 30, 10), 5);
+        // Inside the window: no movement.
+        assert_eq!(FileExplorer::follow_scroll(25, 20, 30, 10), 20);
+        // Single-row window always shows the selection.
+        assert_eq!(FileExplorer::follow_scroll(7, 0, 30, 1), 7);
+        // Empty list and out-of-range selection clamp safely.
+        assert_eq!(FileExplorer::follow_scroll(0, 0, 0, 10), 0);
+        assert_eq!(FileExplorer::follow_scroll(99, 0, 10, 5), 5);
+    }
+
+    #[test]
+    fn wrap_to_bottom_never_hides_the_top_when_everything_fits() {
+        // Reported bug: with 5 items fully visible, wrapping Up from the
+        // first row pushed scroll to 1 and hid the first folder; it only
+        // came back after wrapping Down to 0 (which reset scroll).
+        // len=5, height=10: old formula gave 4-10+1 = 1 (wrong).
+        assert_eq!(FileExplorer::follow_scroll(4, 0, 5, 10), 0);
+        // Tall viewport, bottom selection: still 0.
+        assert_eq!(FileExplorer::follow_scroll(2, 0, 3, 10), 0);
+        // Long list still scrolls to reveal the wrapped bottom row.
+        assert_eq!(FileExplorer::follow_scroll(29, 0, 30, 10), 20);
+    }
+
+    #[test]
+    fn filter_covers_collapsed_folders_and_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src/nested")).unwrap();
+        std::fs::write(dir.path().join("src/main.rs"), "fn main(){}").unwrap();
+        std::fs::write(dir.path().join("src/nested/deep.txt"), "deep").unwrap();
+        std::fs::write(dir.path().join("README.md"), "readme").unwrap();
+
+        let mut explorer = FileExplorer::new(dir.path().to_path_buf());
+        explorer.refresh_sync();
+        // Nothing expanded: tree shows only top-level rows...
+        assert!(explorer.items.iter().all(|i| i.depth == 0));
+        // ...but the corpus (and the filter) sees everything.
+        assert!(explorer.search_corpus.len() >= 4);
+
+        // Deep file inside collapsed folders matches.
+        explorer.search_input.set_text("deep".to_string());
+        explorer.update_search_results(true);
+        assert_eq!(explorer.search_results.len(), 1);
+        assert_eq!(
+            explorer.search_results[0].path,
+            dir.path().join("src/nested/deep.txt")
+        );
+
+        // Directories match too.
+        explorer.search_input.set_text("nested".to_string());
+        explorer.update_search_results(true);
+        assert!(explorer
+            .search_results
+            .iter()
+            .any(|i| i.is_dir && i.path == dir.path().join("src/nested")));
+
+        // Empty query disables the filtered view.
+        explorer.search_input.clear();
+        assert!(!explorer.is_searching());
+        assert!(explorer.visible_items().as_ptr() == explorer.items.as_ptr());
+    }
+
+    #[test]
+    fn search_selection_resets_and_clamps() {
+        let mut explorer = explorer_with(0);
+        explorer.search_corpus = vec![
+            (PathBuf::from("/root/b.txt"), false),
+            (PathBuf::from("/root/a.txt"), false),
+        ];
+        explorer.search_input.set_text("txt".to_string());
+        explorer.update_search_results(true);
+        assert_eq!(explorer.search_results.len(), 2);
+        assert_eq!(explorer.search_selected, 0);
+        assert_eq!(explorer.search_scroll, 0);
+    }
+
+    #[test]
+    fn corpus_refresh_preserves_selected_path() {
+        let mut explorer = explorer_with(0);
+        explorer.search_corpus = vec![
+            (PathBuf::from("/root/b.txt"), false),
+            (PathBuf::from("/root/a.txt"), false),
+        ];
+        explorer.search_input.set_text("txt".to_string());
+        explorer.update_search_results(true);
+        // Select "a.txt" wherever it ranked...
+        let pos = explorer
+            .search_results
+            .iter()
+            .position(|i| i.name == "a.txt")
+            .unwrap();
+        explorer.search_selected = pos;
+        // ...and keep it across a corpus refresh that drops "b.txt".
+        explorer.search_corpus = vec![(PathBuf::from("/root/a.txt"), false)];
+        explorer.update_search_results(false);
+        assert_eq!(explorer.search_results.len(), 1);
+        assert_eq!(explorer.search_results[0].name, "a.txt");
+        assert_eq!(explorer.search_selected, 0);
     }
 }

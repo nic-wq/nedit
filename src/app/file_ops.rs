@@ -306,6 +306,7 @@ impl App {
     }
 
     pub fn set_explorer_root(&mut self, path: PathBuf) {
+        let _ = std::env::set_current_dir(&path);
         if let Some(watcher) = &mut self.watcher {
             let _ = watcher.unwatch(&self.explorer.root);
             let _ = watcher.watch(&path, Self::watch_mode_for_path(&path));
@@ -313,6 +314,7 @@ impl App {
         self.explorer.root = path;
         self.explorer.selected_idx = 0;
         self.explorer.scroll_offset = 0;
+        self.explorer.invalidate_search();
         self.refresh_explorer();
         self.invalidate_file_index();
     }
@@ -416,7 +418,9 @@ impl App {
             return path;
         }
 
-        let base = if let Some(selected) = self.explorer.get_selected() {
+        // Visible selection: creating from a filtered row anchors to what
+        // the user actually sees (identical to the tree when not searching).
+        let base = if let Some(selected) = self.explorer.visible_selected() {
             if selected.is_dir {
                 selected.path.clone()
             } else {

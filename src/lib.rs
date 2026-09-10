@@ -8,5 +8,6 @@ pub mod config;
 pub mod explorer;
 pub mod i18n;
 pub mod input;
+pub mod line_input;
 pub mod lua;
 pub mod ui;

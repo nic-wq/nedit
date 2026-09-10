@@ -225,14 +225,22 @@ impl EditorBuffer {
                 current_word.push(c);
             } else {
                 if current_word.len() > 1 {
-                    *words.entry(current_word.clone()).or_insert(0) += 1;
+                    if let Some(count) = words.get_mut(&current_word) {
+                        *count += 1;
+                    } else {
+                        words.insert(current_word.clone(), 1);
+                    }
                 }
                 current_word.clear();
             }
         }
 
         if current_word.len() > 1 {
-            *words.entry(current_word).or_insert(0) += 1;
+            if let Some(count) = words.get_mut(&current_word) {
+                *count += 1;
+            } else {
+                words.insert(current_word, 1);
+            }
         }
 
         words
@@ -351,8 +359,10 @@ impl EditorBuffer {
         use super::column::TAB_WIDTH;
         let max = (0..self.content.len_lines())
             .map(|row| {
-                self.line_text(row)
+                self.content
+                    .line(row)
                     .chars()
+                    .filter(|&c| c != '\n' && c != '\r')
                     .map(|c| if c == '\t' { TAB_WIDTH } else { 1 })
                     .sum()
             })

@@ -154,12 +154,24 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
             {
                 app.focus = Focus::Explorer;
+                // Row 0 is always the search bar; rows below map to items.
+                // Clicking the bar only focuses (typing already goes there).
                 let rel_row = mouse.row.saturating_sub(app.explorer_area.y) as usize;
-                let target_idx = app.explorer.scroll_offset + rel_row;
-                if target_idx < app.explorer.items.len() {
-                    app.explorer.selected_idx = target_idx;
+                let Some(item_row) = rel_row.checked_sub(1) else {
+                    return;
+                };
+                if app.explorer.is_searching() {
+                    let target_idx = app.explorer.search_scroll + item_row;
+                    if target_idx < app.explorer.search_results.len() {
+                        app.explorer.search_selected = target_idx;
+                    }
+                } else {
+                    let target_idx = app.explorer.scroll_offset + item_row;
+                    if target_idx < app.explorer.items.len() {
+                        app.explorer.selected_idx = target_idx;
+                    }
+                    app.update_preview_from_explorer_selection();
                 }
-                app.update_preview_from_explorer_selection();
             }
         }
         MouseEventKind::Drag(event::MouseButton::Left)
@@ -884,42 +896,161 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
     }
 }
 
-fn handle_explorer_input(app: &mut App, key: KeyEvent) {
-    match key.code {
-        KeyCode::Up => {
-            app.explorer.previous();
-            let height = app.explorer_area.height.saturating_sub(2) as usize;
-            if app.explorer.selected_idx < app.explorer.scroll_offset {
-                app.explorer.scroll_offset = app.explorer.selected_idx;
-            }
-            if app.explorer.selected_idx == app.explorer.items.len().saturating_sub(1) {
-                // Wrapped to bottom
-                app.explorer.scroll_offset = app
-                    .explorer
-                    .selected_idx
-                    .saturating_sub(height)
-                    .saturating_add(1);
-            }
-            app.update_preview_from_explorer_selection();
+/// Move the explorer selection, following with minimal scroll.
+/// Operates on the filtered list while searching, else on the tree.
+/// Navigation never triggers preview while searching (Enter opens directly).
+fn explorer_move_selection(app: &mut App, dir: isize) {
+    if app.explorer.is_searching() {
+        let len = app.explorer.search_results.len();
+        if len == 0 {
+            return;
         }
-        KeyCode::Down => {
+        let selected = if dir < 0 {
+            app.explorer
+                .search_selected
+                .checked_sub(1)
+                .unwrap_or(len - 1)
+        } else {
+            (app.explorer.search_selected + 1) % len
+        };
+        app.explorer.search_selected = selected;
+        let height = crate::explorer::explorer_list_height(app.explorer_area.height);
+        app.explorer.search_scroll = crate::explorer::FileExplorer::follow_scroll(
+            selected,
+            app.explorer.search_scroll,
+            len,
+            height,
+        );
+    } else {
+        if dir < 0 {
+            app.explorer.previous();
+        } else {
             app.explorer.next();
-            let height = app.explorer_area.height.saturating_sub(2) as usize;
-            if app.explorer.selected_idx >= app.explorer.scroll_offset + height {
-                app.explorer.scroll_offset = app
-                    .explorer
-                    .selected_idx
-                    .saturating_sub(height)
-                    .saturating_add(1);
+        }
+        let height = crate::explorer::explorer_list_height(app.explorer_area.height);
+        app.explorer.scroll_offset = crate::explorer::FileExplorer::follow_scroll(
+            app.explorer.selected_idx,
+            app.explorer.scroll_offset,
+            app.explorer.items.len(),
+            height,
+        );
+        app.update_preview_from_explorer_selection();
+    }
+}
+
+/// Text editing keys for the explorer search bar. Returns true when the key
+/// was consumed. Plain characters (with or without Shift for uppercase)
+/// always go to the search field; anything with Ctrl/Alt falls through so
+/// shortcuts keep working.
+fn handle_explorer_search_keys(app: &mut App, key: KeyEvent) -> bool {
+    use KeyCode::*;
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    if key.modifiers.contains(KeyModifiers::ALT) {
+        return false;
+    }
+    // Rebuild the filtered view after every mutation, jumping to the top
+    // like the fuzzy finder does. Each arm evaluates to whether the key was
+    // consumed, so the match itself is the return value.
+    macro_rules! edited {
+        () => {{
+            app.explorer.search_input.clamp();
+            app.explorer.update_search_results(true);
+            true
+        }};
+    }
+    app.explorer.search_input.clamp();
+    match (key.code, ctrl, shift) {
+        (Left, false, extend) => {
+            app.explorer.search_input.move_left(extend);
+            true
+        }
+        (Right, false, extend) => {
+            app.explorer.search_input.move_right(extend);
+            true
+        }
+        (Left, true, extend) => {
+            app.explorer.search_input.move_word(-1, extend);
+            true
+        }
+        (Right, true, extend) => {
+            app.explorer.search_input.move_word(1, extend);
+            true
+        }
+        (Home, _, extend) => {
+            app.explorer.search_input.home(extend);
+            true
+        }
+        (End, _, extend) => {
+            app.explorer.search_input.end(extend);
+            true
+        }
+        (Delete, false, _) => {
+            app.explorer.search_input.delete_fwd();
+            edited!()
+        }
+        (Delete, true, _) => {
+            app.explorer.search_input.delete_word_fwd();
+            edited!()
+        }
+        (Backspace, false, _) => {
+            if app.explorer.search_input.is_empty() {
+                return false; // empty bar: Backspace keeps meaning "go up"
             }
-            if app.explorer.selected_idx == 0 {
-                // Wrapped
-                app.explorer.scroll_offset = 0;
+            app.explorer.search_input.backspace();
+            edited!()
+        }
+        (Backspace, true, _) => {
+            if app.explorer.search_input.is_empty() {
+                return false;
             }
-            app.update_preview_from_explorer_selection();
+            app.explorer.search_input.delete_word_back();
+            edited!()
+        }
+        (Char('a') | Char('A'), true, _) => {
+            app.explorer.search_input.select_all();
+            true
+        }
+        (Char('e') | Char('E'), true, _) => {
+            app.explorer.search_input.end(false);
+            true
+        }
+        (Char('u') | Char('U'), true, _) => {
+            app.explorer.search_input.kill_to_start();
+            edited!()
+        }
+        (Char('k') | Char('K'), true, _) => {
+            app.explorer.search_input.kill_to_end();
+            edited!()
+        }
+        (Char('w') | Char('W'), true, _) => {
+            app.explorer.search_input.delete_word_back();
+            edited!()
+        }
+        (Char(c), false, _) => {
+            app.explorer.search_input.insert_str(&c.to_string());
+            edited!()
+        }
+        _ => false,
+    }
+}
+
+fn handle_explorer_input(app: &mut App, key: KeyEvent) {
+    if handle_explorer_search_keys(app, key) {
+        return;
+    }
+    match key.code {
+        KeyCode::Up => explorer_move_selection(app, -1),
+        KeyCode::Down => explorer_move_selection(app, 1),
+        // Esc leaves the filtered view; with no search it stays a no-op.
+        KeyCode::Esc if app.explorer.is_searching() => {
+            app.explorer.clear_search();
         }
         KeyCode::Enter => {
-            if let Some(item) = app.explorer.get_selected() {
+            // Enter acts on the visible row: filtered match while searching
+            // (the row the user actually sees), else the tree selection.
+            let selected = app.explorer.visible_selected().cloned();
+            if let Some(item) = selected {
                 let path = item.path.clone();
                 let is_dir = item.is_dir;
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -927,14 +1058,34 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
                         app.set_explorer_root(path);
                     }
                 } else if is_dir {
-                    app.explorer.toggle_expand();
-                    app.refresh_explorer();
+                    if app.explorer.is_searching() {
+                        // Leave the filtered view first: tree indices below
+                        // only make sense on the unfiltered list.
+                        app.explorer.clear_search();
+                    }
+                    if let Some(idx) = app.explorer.items.iter().position(|i| i.path == path) {
+                        app.explorer.selected_idx = idx;
+                        app.explorer.toggle_expand();
+                        app.refresh_explorer();
+                    } else {
+                        app.refresh_explorer();
+                    }
                 } else {
+                    // A confirmed open always leaves the filtered view: the
+                    // file becomes current (and live target) on a clean tree.
+                    let was_searching = app.explorer.is_searching();
+                    if was_searching {
+                        app.explorer.clear_search();
+                    }
                     app.open_file(path);
                 }
             }
         }
-        KeyCode::Backspace => {
+        // Go up one directory. Deliberately NOT on Backspace anymore:
+        // holding Backspace to clear the search field kept firing repeated
+        // go-up events once the query emptied, silently changing the root.
+        // Backspace now only edits the search text (no-op when empty).
+        KeyCode::Left if key.modifiers.contains(KeyModifiers::ALT) => {
             app.explorer.go_up_root();
             app.refresh_explorer();
             // Limpar preview ao navegar para diretório pai
@@ -966,8 +1117,12 @@ fn handle_explorer_input(app: &mut App, key: KeyEvent) {
     }
 }
 
+/// File options menu shortcut: Alt+O (any letter case, no Ctrl).
+/// Shift+O intentionally types a literal `O` into the search bar instead.
 fn is_explorer_file_options_shortcut(c: char, modifiers: KeyModifiers) -> bool {
-    c == 'O' || (c == 'o' && modifiers.contains(KeyModifiers::SHIFT))
+    (c == 'o' || c == 'O')
+        && modifiers.contains(KeyModifiers::ALT)
+        && !modifiers.contains(KeyModifiers::CONTROL)
 }
 
 fn handle_editor_input(app: &mut App, key: KeyEvent) {
@@ -1406,6 +1561,227 @@ mod tests {
         app.show_notification("Hi".to_string(), crate::app::NotificationType::Info);
         super::handle_mouse_event(&mut app, click(0, 0));
         assert_eq!(app.notifications.len(), 1);
+    }
+
+    #[test]
+    fn explorer_wrap_up_keeps_first_row_visible_when_everything_fits() {
+        use crate::explorer::FileItem;
+        use ratatui::layout::Rect;
+
+        // Reported bug: 5 rows fully visible, Up on the first row wrapped to
+        // the last file but hid the first folder (scroll jumped to 1); it
+        // only came back after wrapping Down to row 0.
+        let mut app = App::new(&[]);
+        app.show_explorer = true;
+        app.focus = crate::app::Focus::Explorer;
+        app.explorer_area = Rect::new(0, 0, 30, 30);
+        app.explorer.items = (0..5)
+            .map(|i| FileItem {
+                path: std::path::PathBuf::from(format!("/root/f{i}")),
+                is_dir: i == 0,
+                name: format!("f{i}"),
+                depth: 0,
+                expanded: false,
+            })
+            .collect();
+        app.explorer.selected_idx = 0;
+        app.explorer.scroll_offset = 0;
+
+        super::handle_explorer_input(&mut app, key(KeyCode::Up));
+        assert_eq!(app.explorer.selected_idx, 4);
+        assert_eq!(
+            app.explorer.scroll_offset, 0,
+            "everything fits: the top must stay visible"
+        );
+
+        super::handle_explorer_input(&mut app, key(KeyCode::Down));
+        assert_eq!(app.explorer.selected_idx, 0);
+        assert_eq!(app.explorer.scroll_offset, 0);
+    }
+
+    #[test]
+    fn explorer_typing_goes_to_search_but_ctrl_shortcuts_survive() {
+        use crate::explorer::FileItem;
+
+        let mut app = App::new(&[]);
+        app.show_explorer = true;
+        app.focus = crate::app::Focus::Explorer;
+        app.explorer.items = vec![FileItem {
+            path: std::path::PathBuf::from("/root/alpha.txt"),
+            is_dir: false,
+            name: "alpha.txt".to_string(),
+            depth: 0,
+            expanded: false,
+        }];
+
+        // Plain chars land in the search bar...
+        super::handle_explorer_input(&mut app, key(KeyCode::Char('a')));
+        super::handle_explorer_input(&mut app, key(KeyCode::Char('B')));
+        assert_eq!(app.explorer.search_input.text, "aB");
+        // ...while Ctrl combos never type text.
+        super::handle_explorer_input(
+            &mut app,
+            key_mods(KeyCode::Char('a'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(app.explorer.search_input.text, "aB");
+        assert_eq!(app.explorer.search_input.selection_range(), Some((0, 2)));
+        // Backspace edits the query; Esc clears the search.
+        super::handle_explorer_input(&mut app, key(KeyCode::Backspace));
+        assert_eq!(app.explorer.search_input.text, "");
+        assert!(!app.explorer.is_searching());
+    }
+
+    #[test]
+    fn explorer_backspace_never_changes_root() {
+        // Reported bug: holding Backspace to clear the search field fired
+        // repeated go-up events once the query emptied, silently moving the
+        // explorer root. Backspace now only edits text (no-op when empty);
+        // going up moved to Alt+Left.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("sub")).unwrap();
+
+        let mut app = App::new(&[]);
+        app.set_explorer_root(dir.path().join("sub"));
+        app.show_explorer = true;
+        app.focus = crate::app::Focus::Explorer;
+        let root_before = app.explorer.root.clone();
+
+        for c in "ab".chars() {
+            super::handle_explorer_input(&mut app, key(KeyCode::Char(c)));
+        }
+        assert_eq!(app.explorer.search_input.text, "ab");
+        // Hold past empty: 2 chars + 3 extra presses must not move the root.
+        for _ in 0..5 {
+            super::handle_explorer_input(&mut app, key(KeyCode::Backspace));
+        }
+        assert_eq!(app.explorer.search_input.text, "");
+        assert_eq!(app.explorer.root, root_before);
+    }
+
+    #[test]
+    fn alt_left_goes_up_and_root_round_trip_repopulates() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub").join("a.txt"), "A").unwrap();
+
+        fn pump(app: &mut App) {
+            for _ in 0..500 {
+                app.poll_background_tasks();
+                if app.explorer_refresh_receiver.is_none() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+
+        let mut app = App::new(&[]);
+        app.set_explorer_root(dir.path().join("sub"));
+        pump(&mut app);
+        app.show_explorer = true;
+        app.focus = crate::app::Focus::Explorer;
+        assert!(!app.explorer.items.is_empty());
+
+        // Alt+Left goes up one directory...
+        super::handle_explorer_input(&mut app, key_mods(KeyCode::Left, KeyModifiers::ALT));
+        assert_eq!(app.explorer.root, dir.path());
+        pump(&mut app);
+
+        // ...and going back down repopulates (never a stale empty view).
+        let sub_idx = app
+            .explorer
+            .items
+            .iter()
+            .position(|i| i.path == dir.path().join("sub"))
+            .expect("sub dir must be listed");
+        app.explorer.selected_idx = sub_idx;
+        super::handle_explorer_input(
+            &mut app,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL),
+        );
+        assert_eq!(app.explorer.root, dir.path().join("sub"));
+        pump(&mut app);
+        assert!(app.explorer.items.iter().any(|i| i.name == "a.txt"));
+    }
+
+    #[test]
+    fn alt_o_opens_file_options_while_shift_o_types() {
+        use crate::app::FuzzyMode;
+        use crate::explorer::FileItem;
+
+        fn setup() -> App {
+            let mut app = App::new(&[]);
+            app.show_explorer = true;
+            app.focus = crate::app::Focus::Explorer;
+            app.explorer.items = vec![FileItem {
+                path: std::path::PathBuf::from("/root/alpha.txt"),
+                is_dir: false,
+                name: "alpha.txt".to_string(),
+                depth: 0,
+                expanded: false,
+            }];
+            app
+        }
+
+        // Alt+O opens the menu on an empty bar...
+        let mut app = setup();
+        super::handle_explorer_input(&mut app, key_mods(KeyCode::Char('o'), KeyModifiers::ALT));
+        assert!(app.is_fuzzy);
+        assert_eq!(app.fuzzy_mode, FuzzyMode::FileOptions);
+        assert_eq!(app.explorer.search_input.text, "");
+
+        // ...and also with an active search (the filter is abandoned).
+        let mut app = setup();
+        super::handle_explorer_input(&mut app, key(KeyCode::Char('a')));
+        super::handle_explorer_input(&mut app, key(KeyCode::Char('b')));
+        assert!(app.explorer.is_searching());
+        super::handle_explorer_input(&mut app, key_mods(KeyCode::Char('o'), KeyModifiers::ALT));
+        assert_eq!(app.fuzzy_mode, FuzzyMode::FileOptions);
+
+        // Shift+O types a literal `O` instead.
+        let mut app = setup();
+        super::handle_explorer_input(&mut app, key_mods(KeyCode::Char('O'), KeyModifiers::SHIFT));
+        assert!(!app.is_fuzzy);
+        assert_eq!(app.explorer.search_input.text, "O");
+    }
+
+    #[test]
+    fn explorer_enter_opens_filtered_match() {
+        use crate::explorer::FileItem;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("alpha.txt"), "A").unwrap();
+        std::fs::write(dir.path().join("beta.txt"), "B").unwrap();
+
+        let mut app = App::new(&[]);
+        app.set_explorer_root(dir.path().to_path_buf());
+        app.show_explorer = true;
+        app.focus = crate::app::Focus::Explorer;
+        app.explorer.items = ["alpha.txt", "beta.txt"]
+            .iter()
+            .map(|name| FileItem {
+                path: dir.path().join(name),
+                is_dir: false,
+                name: name.to_string(),
+                depth: 0,
+                expanded: false,
+            })
+            .collect();
+        app.explorer.search_corpus = app
+            .explorer
+            .items
+            .iter()
+            .map(|i| (i.path.clone(), i.is_dir))
+            .collect();
+
+        for c in "bet".chars() {
+            super::handle_explorer_input(&mut app, key(KeyCode::Char(c)));
+        }
+        assert!(app.explorer.is_searching());
+        assert_eq!(app.explorer.search_results.len(), 1);
+        super::handle_explorer_input(&mut app, key(KeyCode::Enter));
+        assert!(!app.explorer.is_searching());
+        let opened = app.buffers[app.current_buffer_idx].path.clone().unwrap();
+        assert_eq!(opened, dir.path().join("beta.txt"));
     }
 
     #[test]
