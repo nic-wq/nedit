@@ -26,7 +26,7 @@ pub enum FuzzyMode {
     ExternalChange,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PendingAction {
     CloseTab,
     Quit,

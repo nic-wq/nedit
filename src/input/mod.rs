@@ -203,8 +203,7 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
     }
 
     if app.config.matches(key, "quit") {
-        let modified_idx = app.buffers.iter().position(|b| b.modified);
-        if let Some(idx) = modified_idx {
+        if let Some(idx) = next_quit_pending_buffer(app) {
             app.pending_action = Some(crate::app::types::PendingAction::Quit);
             app.pending_buffer_idx = Some(idx);
             app.toggle_fuzzy(crate::app::FuzzyMode::UnsavedChanges);
@@ -353,6 +352,27 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
     }
 }
 
+fn next_quit_pending_buffer(app: &App) -> Option<usize> {
+    // 1. Check regular modified files first (excluding live script)
+    let regular_modified = app.buffers.iter().enumerate().find(|(idx, b)| {
+        b.modified && (!app.live_script_mode || Some(*idx) != app.live_script_buffer_idx)
+    });
+    if let Some((idx, _)) = regular_modified {
+        return Some(idx);
+    }
+
+    // 2. If all regular files are handled, check if Live Script is open
+    if app.live_script_mode {
+        if let Some(script_idx) = app.live_script_buffer_idx {
+            if script_idx < app.buffers.len() {
+                return Some(script_idx);
+            }
+        }
+    }
+
+    None
+}
+
 fn handle_unsaved_changes_completion(app: &mut App) {
     let action = app.pending_action.take();
     let buffer_idx = app.pending_buffer_idx.take();
@@ -365,8 +385,7 @@ fn handle_unsaved_changes_completion(app: &mut App) {
             app.is_fuzzy = false;
         }
         Some(crate::app::types::PendingAction::Quit) => {
-            let next_modified = app.buffers.iter().position(|b| b.modified);
-            if let Some(idx) = next_modified {
+            if let Some(idx) = next_quit_pending_buffer(app) {
                 app.pending_action = Some(crate::app::types::PendingAction::Quit);
                 app.pending_buffer_idx = Some(idx);
                 // Stay in UnsavedChanges mode for the next buffer
@@ -477,11 +496,37 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 app.pending_action = None;
                 app.pending_buffer_idx = None;
             }
-            KeyCode::Enter => {}
+            KeyCode::Enter if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges => {
+                if let Some(idx) = app.pending_buffer_idx {
+                    let is_script =
+                        app.live_script_mode && Some(idx) == app.live_script_buffer_idx;
+                    if is_script {
+                        if idx < app.buffers.len() {
+                            app.buffers[idx].modified = false;
+                        }
+                        if app.pending_action
+                            != Some(crate::app::types::PendingAction::CloseTab)
+                        {
+                            app.live_script_mode = false;
+                        }
+                        handle_unsaved_changes_completion(app);
+                    }
+                }
+            }
             KeyCode::Char('s') | KeyCode::Char('S')
                 if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges =>
             {
                 if let Some(idx) = app.pending_buffer_idx {
+                    let is_script =
+                        app.live_script_mode && Some(idx) == app.live_script_buffer_idx;
+                    if is_script {
+                        app.show_notification(
+                            "Live scripts cannot be saved".to_string(),
+                            crate::app::NotificationType::Info,
+                        );
+                        return;
+                    }
+
                     if idx < app.buffers.len() {
                         let has_path = app.buffers[idx].path.is_some();
                         if !has_path {
@@ -506,6 +551,13 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 if let Some(idx) = app.pending_buffer_idx {
                     if idx < app.buffers.len() {
                         app.buffers[idx].modified = false;
+                    }
+                    if app.live_script_mode
+                        && Some(idx) == app.live_script_buffer_idx
+                        && app.pending_action
+                            != Some(crate::app::types::PendingAction::CloseTab)
+                    {
+                        app.live_script_mode = false;
                     }
                 }
                 handle_unsaved_changes_completion(app);
@@ -1286,7 +1338,15 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
         }
         "Open Live Script" => app.open_live_script(),
         "Undo Last Script" => app.undo_last_script(),
-        "Quit" => app.should_quit = true,
+        "Quit" => {
+            if let Some(idx) = next_quit_pending_buffer(app) {
+                app.pending_action = Some(crate::app::types::PendingAction::Quit);
+                app.pending_buffer_idx = Some(idx);
+                app.toggle_fuzzy(crate::app::FuzzyMode::UnsavedChanges);
+            } else {
+                app.should_quit = true;
+            }
+        }
         "Undo" => {
             if let Some(buf) = app.buffers.get_mut(app.current_buffer_idx) {
                 buf.undo();
@@ -1366,6 +1426,7 @@ fn handle_run_live_script(app: &mut App) {
                 .any(|a| matches!(a, crate::lua::LuaAction::Notify { .. }));
 
             app.apply_lua_actions(actions);
+
             if !has_custom_notify {
                 app.show_notification(
                     "Script executed successfully".to_string(),
@@ -1839,5 +1900,79 @@ mod tests {
         assert_eq!(app.notifications.len(), 1);
         assert_eq!(app.notifications[0].message, "Live scripts cannot be saved");
         assert_eq!(app.notifications[0].kind, crate::app::NotificationType::Info);
+    }
+
+    #[test]
+    fn ctrl_w_on_live_script_prompts_custom_close_and_discards() {
+        use crate::buffer::EditorBuffer;
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+
+        let script = app.live_script_buffer_idx.unwrap();
+        app.current_buffer_idx = script;
+
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Char('w'), KeyModifiers::CONTROL),
+        );
+
+        assert!(app.is_fuzzy);
+        assert_eq!(app.fuzzy_mode, FuzzyMode::UnsavedChanges);
+        assert_eq!(app.pending_action, Some(crate::app::types::PendingAction::CloseTab));
+        assert_eq!(app.pending_buffer_idx, Some(script));
+
+        // Pressing S should not save live script
+        super::handle_key_event(&mut app, key(KeyCode::Char('s')));
+        assert!(app.is_fuzzy);
+        assert_eq!(app.notifications.last().unwrap().message, "Live scripts cannot be saved");
+
+        // Pressing D discards and closes the live script pane
+        super::handle_key_event(&mut app, key(KeyCode::Char('d')));
+        assert!(!app.is_fuzzy);
+        assert!(!app.live_script_mode);
+        assert_eq!(app.live_script_buffer_idx, None);
+    }
+
+    #[test]
+    fn ctrl_q_with_modified_file_and_live_script_prompts_separately() {
+        use crate::buffer::EditorBuffer;
+        let mut app = App::new(&[]);
+        let mut buf = EditorBuffer::new();
+        buf.path = Some(std::path::PathBuf::from("my_file.rs"));
+        buf.modified = true;
+        app.buffers.push(buf);
+
+        app.open_live_script();
+        let script = app.live_script_buffer_idx.unwrap();
+
+        // Trigger quit
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Char('q'), KeyModifiers::CONTROL),
+        );
+
+        // First prompt must be for the modified file (index 0)
+        assert!(app.is_fuzzy);
+        assert_eq!(app.fuzzy_mode, FuzzyMode::UnsavedChanges);
+        assert_eq!(app.pending_action, Some(crate::app::types::PendingAction::Quit));
+        assert_eq!(app.pending_buffer_idx, Some(0));
+
+        // Discard changes to file 0
+        super::handle_key_event(&mut app, key(KeyCode::Char('d')));
+
+        // Second prompt must be for the Live Script (index 1)
+        assert!(app.is_fuzzy);
+        assert_eq!(app.fuzzy_mode, FuzzyMode::UnsavedChanges);
+        assert_eq!(app.pending_action, Some(crate::app::types::PendingAction::Quit));
+        assert_eq!(app.pending_buffer_idx, Some(script));
+        assert!(!app.should_quit);
+
+        // Discard live script with Enter (or D)
+        super::handle_key_event(&mut app, key(KeyCode::Enter));
+
+        // Now should quit is true and fuzzy is closed
+        assert!(!app.is_fuzzy);
+        assert!(app.should_quit);
     }
 }

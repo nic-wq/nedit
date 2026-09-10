@@ -1350,7 +1350,15 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
         FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
         FuzzyMode::Create => " 󰉋  New Name (trailing / = folder) ".to_string(),
-        FuzzyMode::UnsavedChanges => format!(" 󰆓  {} ", app.i18n.t("unsaved_changes")),
+        FuzzyMode::UnsavedChanges => {
+            if app.pending_action == Some(crate::app::types::PendingAction::Quit) {
+                " 󰆓  Quit NEdit ".to_string()
+            } else if app.live_script_mode && app.pending_buffer_idx == app.live_script_buffer_idx {
+                " 󰆓  Close Live Script ".to_string()
+            } else {
+                format!(" 󰆓  {} ", app.i18n.t("unsaved_changes"))
+            }
+        }
         FuzzyMode::ExternalChange => format!(" 󰆓  {} ", app.i18n.t("external_change")),
     };
 
@@ -1427,22 +1435,54 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             0,
         )
     } else if app.fuzzy_mode == FuzzyMode::UnsavedChanges {
-        let filename = app.pending_buffer_idx
-            .and_then(|idx| app.buffers.get(idx))
-            .and_then(|buf| buf.path.as_ref())
-            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
-            .unwrap_or_else(|| app.i18n.t("no_name").to_string());
+        let is_script = app.live_script_mode
+            && app.pending_buffer_idx == app.live_script_buffer_idx;
+        let is_quit = app.pending_action == Some(crate::app::types::PendingAction::Quit);
+
+        let (msg_line, hint_line) = if is_script {
+            if is_quit {
+                (
+                    "Quit application? A live script is open and will be lost.".to_string(),
+                    format!("(D: Discard & Quit  Esc: {})", app.i18n.t("cancel")),
+                )
+            } else {
+                (
+                    "Close Live Script? Script content will be lost.".to_string(),
+                    format!("(D: Discard  Esc: {})", app.i18n.t("cancel")),
+                )
+            }
+        } else {
+            let filename = app
+                .pending_buffer_idx
+                .and_then(|idx| app.buffers.get(idx))
+                .and_then(|buf| buf.path.as_ref())
+                .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+                .unwrap_or_else(|| app.i18n.t("no_name").to_string());
+
+            if is_quit {
+                (
+                    format!("Quit application: Save changes to {}?", filename),
+                    format!("(S: Save  D: Discard  Esc: {})", app.i18n.t("cancel")),
+                )
+            } else {
+                (
+                    format!("Save changes to {}?", filename),
+                    format!("(S: Save  D: Discard  Esc: {})", app.i18n.t("cancel")),
+                )
+            }
+        };
+
         (
             Paragraph::new(vec![
                 Line::from(vec![
                     Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
                     Span::styled(
-                        format!("Save changes to {}?", filename),
+                        msg_line,
                         Style::default().add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![Span::styled(
-                    format!("(S: Save  D: Discard  Esc: {})", app.i18n.t("cancel")),
+                    hint_line,
                     Style::default().fg(colors.accent),
                 )]),
             ])

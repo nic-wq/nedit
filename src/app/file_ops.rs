@@ -133,7 +133,10 @@ impl App {
     pub fn close_current_buffer(&mut self) {
         if !self.buffers.is_empty() {
             let closing_idx = self.current_buffer_idx;
-            if self.buffers[closing_idx].modified {
+            let is_script = self.live_script_mode
+                && Some(closing_idx) == self.live_script_buffer_idx;
+
+            if is_script || self.buffers[closing_idx].modified {
                 self.pending_action = Some(crate::app::types::PendingAction::CloseTab);
                 self.pending_buffer_idx = Some(closing_idx);
                 self.toggle_fuzzy(crate::app::FuzzyMode::UnsavedChanges);
