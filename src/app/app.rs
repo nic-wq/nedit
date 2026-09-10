@@ -635,6 +635,7 @@ impl App {
             search_results: Vec::new(),
             search_selected: 0,
             search_scroll: 0,
+            search_hscroll: std::cell::Cell::new(0),
             search_corpus: Vec::new(),
         };
 

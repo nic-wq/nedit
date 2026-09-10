@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -6,11 +7,33 @@ use super::FileItem;
 use crate::app::matcher::FuzzyMatcher;
 use crate::line_input::LineInput;
 
-/// List rows of the explorer panel for a given area height: 1 row is always
-/// the search bar, plus 2 legacy chrome rows. Navigation scroll math and
+/// List rows of the explorer panel for a given area height: 1 row is the explorer title,
+/// 3 rows are the bordered search bar. Navigation scroll math and
 /// rendering share this so the selection can never scroll out of view.
 pub fn explorer_list_height(area_height: u16) -> usize {
-    area_height.saturating_sub(3) as usize
+    area_height.saturating_sub(4) as usize
+}
+
+/// Calculates the horizontal scroll offset for a single-line input field so that the
+/// cursor at `cursor_col` is always visible within `avail_width` columns without
+/// shifting unnecessarily or leaving unnecessary empty space.
+pub fn follow_horizontal_scroll(
+    cursor_col: usize,
+    current_scroll: usize,
+    total_width: usize,
+    avail_width: usize,
+) -> usize {
+    if avail_width == 0 {
+        return 0;
+    }
+    let max_scroll = (total_width + 1).saturating_sub(avail_width);
+    let mut scroll = current_scroll.min(max_scroll);
+    if cursor_col < scroll {
+        scroll = cursor_col;
+    } else if cursor_col >= scroll + avail_width {
+        scroll = cursor_col + 1 - avail_width;
+    }
+    scroll.min(max_scroll)
 }
 
 /// Directory names skipped everywhere (search corpus and file index).
@@ -51,6 +74,8 @@ pub struct FileExplorer {
     pub search_results: Vec<FileItem>,
     pub search_selected: usize,
     pub search_scroll: usize,
+    /// Horizontal scroll offset for the explorer search input field.
+    pub search_hscroll: Cell<usize>,
     /// Every file and directory under `root`, ignoring expansion state.
     /// Rebuilt on refresh; the search filter runs over this cache so each
     /// keystroke is an in-memory pass instead of a filesystem walk.
@@ -70,6 +95,7 @@ impl FileExplorer {
             search_results: Vec::new(),
             search_selected: 0,
             search_scroll: 0,
+            search_hscroll: Cell::new(0),
             search_corpus: Vec::new(),
         }
     }
@@ -132,6 +158,7 @@ impl FileExplorer {
         self.search_results.clear();
         self.search_selected = 0;
         self.search_scroll = 0;
+        self.search_hscroll.set(0);
     }
 
     /// Walk the whole tree under `root`, ignoring expansion state, so the
@@ -463,5 +490,32 @@ mod tests {
         assert_eq!(explorer.search_results.len(), 1);
         assert_eq!(explorer.search_results[0].name, "a.txt");
         assert_eq!(explorer.search_selected, 0);
+    }
+
+    #[test]
+    fn horizontal_scroll_follows_cursor_both_ways() {
+        use super::follow_horizontal_scroll;
+
+        let avail = 10;
+        // Text fits: scroll stays 0
+        assert_eq!(follow_horizontal_scroll(0, 0, 5, avail), 0);
+        assert_eq!(follow_horizontal_scroll(5, 0, 5, avail), 0);
+
+        // Typing past the right edge scrolls right
+        // cursor at 10 on avail 10 -> scroll becomes 1
+        assert_eq!(follow_horizontal_scroll(10, 0, 10, avail), 1);
+        // cursor at 25 on total 30 -> scroll becomes 25 + 1 - 10 = 16
+        assert_eq!(follow_horizontal_scroll(25, 5, 30, avail), 16);
+
+        // Moving left stays stable until reaching the left edge
+        // cursor at 20 with scroll 16: still in [16, 26), scroll stays 16
+        assert_eq!(follow_horizontal_scroll(20, 16, 30, avail), 16);
+        // cursor moves past the left edge to 12 -> scroll adjusts to 12
+        assert_eq!(follow_horizontal_scroll(12, 16, 30, avail), 12);
+        // Home moves cursor to 0 -> scroll adjusts to 0
+        assert_eq!(follow_horizontal_scroll(0, 12, 30, avail), 0);
+
+        // Deleting text clamps scroll when total_width shrinks
+        assert_eq!(follow_horizontal_scroll(5, 10, 8, avail), 0);
     }
 }

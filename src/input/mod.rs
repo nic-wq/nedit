@@ -154,10 +154,11 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
             {
                 app.focus = Focus::Explorer;
-                // Row 0 is always the search bar; rows below map to items.
-                // Clicking the bar only focuses (typing already goes there).
+                // Row 0 is the title; rows 1..=3 are the bordered search bar;
+                // row 4 and below map to items.
+                // Clicking the title or search bar only focuses (typing already goes there).
                 let rel_row = mouse.row.saturating_sub(app.explorer_area.y) as usize;
-                let Some(item_row) = rel_row.checked_sub(1) else {
+                let Some(item_row) = rel_row.checked_sub(4) else {
                     return;
                 };
                 if app.explorer.is_searching() {

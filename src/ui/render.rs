@@ -408,69 +408,200 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.bg), area);
 }
 
-/// Always-visible explorer search bar (top row of the panel).
-/// Typing with the explorer focused lands here; the cursor and the Shift
-/// selection render exactly like the fuzzy finder input.
+/// Always-visible explorer search bar (under the explorer title).
+/// Renders a bordered rounded input box with a search icon and horizontal scrolling
+/// to prevent text overflow and cursor clipping.
 fn draw_explorer_search_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
-    const PREFIX_WIDTH: usize = 3; // " " + icon + " "
-    let mut spans = vec![Span::styled("  ", Style::default().fg(colors.accent))];
-    match app.explorer.search_input.selection_bytes() {
-        Some((s, e)) if s < e => {
-            let query = &app.explorer.search_input.text;
-            spans.push(Span::raw(query[..s].to_string()));
-            spans.push(Span::styled(
-                query[s..e].to_string(),
-                Style::default().bg(colors.sel).fg(colors.accent),
-            ));
-            spans.push(Span::raw(query[e..].to_string()));
-        }
-        _ => spans.push(Span::raw(app.explorer.search_input.text.clone())),
+    if area.width == 0 || area.height == 0 {
+        return;
     }
-    f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.bg), area);
-    if app.focus == Focus::Explorer {
-        let cursor_byte = app
-            .explorer
-            .search_input
-            .byte_idx(app.explorer.search_input.cursor);
-        let query_width = UnicodeWidthStr::width(&app.explorer.search_input.text[..cursor_byte]);
-        let cursor_x = area
+    let is_focused = app.focus == Focus::Explorer;
+    let border_color = if is_focused {
+        colors.accent
+    } else {
+        colors.surface
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(border_color))
+        .bg(colors.bg);
+    f.render_widget(block.clone(), area);
+
+    let inner = block.inner(area);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    let icon = "󰍉 ";
+    let icon_color = if is_focused {
+        colors.accent
+    } else {
+        colors.surface
+    };
+    let icon_span = Span::styled(icon, Style::default().fg(icon_color));
+    let icon_width = UnicodeWidthStr::width(icon);
+
+    if inner.width <= icon_width as u16 {
+        f.render_widget(Paragraph::new(Line::from(vec![icon_span])).bg(colors.bg), inner);
+        if is_focused {
+            f.set_cursor_position((inner.x, inner.y));
+        }
+        return;
+    }
+
+    let avail_width = (inner.width as usize).saturating_sub(icon_width);
+    let query = &app.explorer.search_input.text;
+    let cursor_char = app.explorer.search_input.cursor;
+    let cursor_byte = app.explorer.search_input.byte_idx(cursor_char);
+    let cursor_col = UnicodeWidthStr::width(&query[..cursor_byte]);
+    let total_query_width = UnicodeWidthStr::width(query.as_str());
+
+    let current_scroll = app.explorer.search_hscroll.get();
+    let scroll = crate::explorer::follow_horizontal_scroll(
+        cursor_col,
+        current_scroll,
+        total_query_width,
+        avail_width,
+    );
+    app.explorer.search_hscroll.set(scroll);
+
+    let mut spans = vec![icon_span];
+    if query.is_empty() {
+        if !is_focused && avail_width >= 9 {
+            spans.push(Span::styled("Search...", Style::default().fg(colors.surface)));
+        }
+    } else {
+        let sel_range = app.explorer.search_input.selection_range();
+        let window_start = scroll;
+        let window_end = scroll + avail_width;
+
+        let mut current_col = 0;
+        let mut current_style: Option<Style> = None;
+        let mut current_text = String::new();
+
+        for (char_idx, ch) in query.chars().enumerate() {
+            let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+            let ch_start = current_col;
+            let ch_end = current_col + ch_width;
+            current_col = ch_end;
+
+            if ch_end <= window_start {
+                continue;
+            }
+            if ch_start >= window_end {
+                break;
+            }
+
+            let is_sel = match sel_range {
+                Some((s, e)) => char_idx >= s && char_idx < e,
+                None => false,
+            };
+            let style = if is_sel {
+                Style::default().bg(colors.sel).fg(colors.accent)
+            } else {
+                Style::default().fg(colors.fg)
+            };
+
+            if current_style != Some(style) {
+                if !current_text.is_empty() {
+                    if let Some(st) = current_style {
+                        spans.push(Span::styled(std::mem::take(&mut current_text), st));
+                    }
+                }
+                current_style = Some(style);
+            }
+
+            if ch_start < window_start {
+                for _ in 0..ch_end.saturating_sub(window_start) {
+                    current_text.push(' ');
+                }
+            } else if ch_end > window_end {
+                for _ in 0..window_end.saturating_sub(ch_start) {
+                    current_text.push(' ');
+                }
+            } else {
+                current_text.push(ch);
+            }
+        }
+        if !current_text.is_empty() {
+            if let Some(st) = current_style {
+                spans.push(Span::styled(current_text, st));
+            }
+        }
+    }
+
+    f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.bg), inner);
+
+    if is_focused {
+        let cursor_rel = cursor_col.saturating_sub(scroll);
+        let cursor_x = inner
             .x
-            .saturating_add(PREFIX_WIDTH.saturating_add(query_width) as u16);
-        let max_x = area.x.saturating_add(area.width.saturating_sub(1));
-        f.set_cursor_position((cursor_x.min(max_x), area.y));
+            .saturating_add(icon_width as u16)
+            .saturating_add(cursor_rel as u16);
+        let max_cursor_x = inner.x.saturating_add(inner.width.saturating_sub(1));
+        f.set_cursor_position((cursor_x.min(max_cursor_x), inner.y));
     }
 }
 
 fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
+    if area.height == 0 || area.width == 0 {
+        return;
+    }
+
     let border_color = if app.focus == Focus::Explorer {
         colors.accent
     } else {
         colors.surface
     };
-    // The title row doubles as the match counter while filtering, so the
-    // row it occupies always earns its space.
+    let outer_block = Block::default()
+        .borders(Borders::RIGHT)
+        .border_style(Style::default().fg(border_color));
+    f.render_widget(outer_block.clone(), area);
+
+    let inner = outer_block.inner(area);
+    if inner.height == 0 || inner.width == 0 {
+        return;
+    }
+
+    // Row 0: Explorer title with match counter when searching.
     let title = if app.explorer.is_searching() {
         format!(
-            " {} ({}) ",
+            " {} ({})",
             app.i18n.t("explorer"),
             app.explorer.search_results.len()
         )
     } else {
-        format!(" {} ", app.i18n.t("explorer"))
+        format!(" {}", app.i18n.t("explorer"))
     };
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::RIGHT)
-        .border_style(Style::default().fg(border_color));
+    let title_style = if app.focus == Focus::Explorer {
+        Style::default()
+            .fg(colors.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(colors.fg)
+            .add_modifier(Modifier::BOLD)
+    };
+    let title_area = Rect::new(inner.x, inner.y, inner.width, 1);
+    f.render_widget(
+        Paragraph::new(Line::from(vec![Span::styled(title, title_style)])).bg(colors.bg),
+        title_area,
+    );
 
-    if area.height == 0 {
-        return;
+    // Rows 1..=3: Bordered search bar under the title.
+    let (box_x, box_width) = if inner.width > 4 {
+        (inner.x.saturating_add(1), inner.width.saturating_sub(2))
+    } else {
+        (inner.x, inner.width)
+    };
+    let bar_height = 3.min(inner.height.saturating_sub(1));
+    if bar_height > 0 {
+        let bar_area = Rect::new(box_x, inner.y.saturating_add(1), box_width, bar_height);
+        draw_explorer_search_bar(f, app, bar_area, colors);
     }
-    // Row 0 is always the search bar; the list below shows the filtered
-    // flat view while searching, else the tree.
-    let bar_area = Rect::new(area.x, area.y, area.width, 1);
-    draw_explorer_search_bar(f, app, bar_area, colors);
 
+    // Row 4+: Tree or search matches.
     let searching = app.explorer.is_searching();
     let list_height = crate::explorer::explorer_list_height(area.height);
     let (len, selected, scroll) = if searching {
@@ -518,7 +649,7 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
                 .and_then(|p| p.strip_prefix(&app.explorer.root).ok())
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let mut spans = vec![Span::raw(format!("{}{}", icon, item.name))];
+            let mut spans = vec![Span::raw(format!(" {}{}", icon, item.name))];
             if !parent.is_empty() {
                 spans.push(Span::styled(
                     format!("  {parent}"),
@@ -533,7 +664,7 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
                 .get_icon(&item.path, item.is_dir, item.expanded);
             items.push(
                 ListItem::new(format!(
-                    "{}{}{} {}",
+                    " {}{}{} {}",
                     indent,
                     icon,
                     item.name,
@@ -550,13 +681,11 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         }
     }
 
-    let list_area = Rect::new(
-        area.x,
-        area.y.saturating_add(1),
-        area.width,
-        area.height.saturating_sub(1),
-    );
-    f.render_widget(List::new(items).block(block).bg(colors.bg), list_area);
+    if list_height > 0 {
+        let list_top = inner.y.saturating_add(4);
+        let list_area = Rect::new(inner.x, list_top, inner.width, list_height as u16);
+        f.render_widget(List::new(items).bg(colors.bg), list_area);
+    }
 }
 
 fn visual_leading_indent_chars<I: IntoIterator<Item = char>>(chars: I) -> usize {
@@ -1826,7 +1955,7 @@ mod explorer_search_render_tests {
     }
 
     #[test]
-    fn search_bar_renders_on_top_and_filters_rows() {
+    fn search_bar_renders_under_title_with_borders_and_filters_rows() {
         let mut app = App::new(&[]);
         app.focus = crate::app::Focus::Explorer;
         for name in ["alpha.txt", "beta.txt"] {
@@ -1857,16 +1986,76 @@ mod explorer_search_render_tests {
             })
             .unwrap();
         let buf = terminal.backend().buffer().clone();
-        // Row 0 is always the search bar showing the query...
-        assert!(row_text(&buf, 0, 40).contains("alp"));
-        // ...row 1 carries the match counter...
-        assert!(row_text(&buf, 1, 40).contains("(1)"));
-        // ...and only the match is listed below.
+        // Row 0 carries the Explorer title and match counter...
+        let row0 = row_text(&buf, 0, 40);
+        assert!(row0.contains("Explorer"), "got: {row0}");
+        assert!(row0.contains("(1)"), "got: {row0}");
+        // Row 1 is the top border of the search box
+        let row1 = row_text(&buf, 1, 40);
+        assert!(row1.contains('╭'), "got: {row1}");
+        // Row 2 is the search box content with icon and query
         let row2 = row_text(&buf, 2, 40);
-        assert!(row2.contains("alpha.txt"), "got: {row2}");
-        for y in 2..10 {
+        assert!(row2.contains("󰍉"), "got: {row2}");
+        assert!(row2.contains("alp"), "got: {row2}");
+        // Row 3 is the bottom border of the search box
+        let row3 = row_text(&buf, 3, 40);
+        assert!(row3.contains('╰'), "got: {row3}");
+        // Row 4 lists the matching item
+        let row4 = row_text(&buf, 4, 40);
+        assert!(row4.contains("alpha.txt"), "got: {row4}");
+        for y in 4..10 {
             assert!(!row_text(&buf, y, 40).contains("beta.txt"));
         }
+    }
+
+    #[test]
+    fn long_search_query_scrolls_horizontally_without_spilling_or_breaking_borders() {
+        let mut app = App::new(&[]);
+        app.focus = crate::app::Focus::Explorer;
+        // Total explorer width 25 columns
+        let width = 25;
+        let height = 10;
+        let long_query = "this_is_a_very_long_search_query_that_exceeds_explorer_width";
+        app.explorer.search_input.set_text(long_query.to_string());
+        app.explorer.update_search_results(true);
+
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_explorer(f, &app, f.area(), &colors);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+
+        // Rightmost column of explorer is always the separator border │
+        for y in 0..height {
+            assert_eq!(
+                buf[(width - 1, y)].symbol(),
+                "│",
+                "right border broken at row {y}"
+            );
+        }
+
+        // Search box borders are intact on rows 1, 2, 3
+        let row1 = row_text(&buf, 1, width);
+        assert!(row1.contains('╭'), "got: {row1}");
+        assert!(row1.contains('╮'), "got: {row1}");
+
+        let row2 = row_text(&buf, 2, width);
+        // Search icon is present
+        assert!(row2.contains("󰍉"), "got: {row2}");
+        // Search box left and right borders are intact
+        assert!(row2.contains('│'), "got: {row2}");
+        // The tail of the long query is visible because of horizontal scrolling
+        assert!(row2.contains("width"), "got: {row2}");
+        // The start of the query has scrolled off
+        assert!(!row2.contains("this_is_a_very"), "got: {row2}");
+
+        let row3 = row_text(&buf, 3, width);
+        assert!(row3.contains('╰'), "got: {row3}");
+        assert!(row3.contains('╯'), "got: {row3}");
     }
 }
 
