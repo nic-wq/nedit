@@ -95,14 +95,26 @@ pub struct App {
 }
 
 impl App {
-    pub fn show_notification(&mut self, message: String, ntype: NotificationType) {
+    fn push_toast(&mut self, toast: crate::app::toast::Toast) {
         // Cap the stack so a burst of messages never covers the screen.
         if self.notifications.len() >= crate::app::toast::MAX_TOASTS {
             self.notifications.remove(0);
         }
-        self.notifications
-            .push(crate::app::toast::Toast::new(message, ntype));
+        self.notifications.push(toast);
         self.needs_redraw = true;
+    }
+
+    pub fn show_notification(&mut self, message: String, ntype: NotificationType) {
+        self.push_toast(crate::app::toast::Toast::new(message, ntype));
+    }
+
+    pub fn show_notification_with_duration(
+        &mut self,
+        message: String,
+        ntype: NotificationType,
+        duration: std::time::Duration,
+    ) {
+        self.push_toast(crate::app::toast::Toast::with_duration(message, ntype, duration));
     }
 
     pub fn clear_notification(&mut self) {
@@ -830,5 +842,20 @@ mod tests {
             repo_root.canonicalize().unwrap()
         );
         assert_eq!(app.buffers.len(), 1);
+    }
+
+    #[test]
+    fn show_notification_with_duration_records_custom_duration() {
+        let mut app = App::new(&[]);
+        let dur = std::time::Duration::from_millis(1500);
+        app.show_notification_with_duration(
+            "test custom".to_string(),
+            crate::app::NotificationType::Error,
+            dur,
+        );
+        assert_eq!(app.notifications.len(), 1);
+        assert_eq!(app.notifications[0].message, "test custom");
+        assert_eq!(app.notifications[0].kind, crate::app::NotificationType::Error);
+        assert_eq!(app.notifications[0].duration, dur);
     }
 }

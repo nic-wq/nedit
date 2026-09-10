@@ -685,6 +685,13 @@ impl App {
                         buf.invalidate_max_visual_width();
                     }
                 }
+                crate::lua::LuaAction::Notify {
+                    message,
+                    kind,
+                    duration,
+                } => {
+                    self.show_notification_with_duration(message, kind, duration);
+                }
             }
         }
 

@@ -7,9 +7,9 @@ use super::types::NotificationType;
 use crate::config::NotificationPosition;
 
 /// How long an info toast stays on screen.
-const INFO_DURATION: Duration = Duration::from_millis(4000);
+pub const INFO_DURATION: Duration = Duration::from_millis(4000);
 /// Errors stay longer so there is time to read them.
-const ERROR_DURATION: Duration = Duration::from_millis(6000);
+pub const ERROR_DURATION: Duration = Duration::from_millis(6000);
 /// Maximum toasts kept in memory (oldest is dropped first).
 pub const MAX_TOASTS: usize = 4;
 /// Maximum toasts painted at once (newest first).
@@ -30,11 +30,18 @@ pub struct Toast {
 }
 
 impl Toast {
-    pub fn new(message: String, kind: NotificationType) -> Self {
-        let duration = match kind {
+    pub const fn default_duration(kind: NotificationType) -> Duration {
+        match kind {
             NotificationType::Info => INFO_DURATION,
             NotificationType::Error => ERROR_DURATION,
-        };
+        }
+    }
+
+    pub fn new(message: String, kind: NotificationType) -> Self {
+        Self::with_duration(message, kind, Self::default_duration(kind))
+    }
+
+    pub fn with_duration(message: String, kind: NotificationType, duration: Duration) -> Self {
         Self {
             message,
             kind,
@@ -500,5 +507,19 @@ mod tests {
         assert!(r.x + r.width <= area.width);
         assert!(r.y + r.height <= area.height);
         assert!(r.width >= 8);
+    }
+
+    #[test]
+    fn custom_duration_toast() {
+        let custom = Toast::with_duration(
+            "custom".to_string(),
+            NotificationType::Info,
+            Duration::from_millis(2500),
+        );
+        assert_eq!(custom.duration, Duration::from_millis(2500));
+        assert_eq!(custom.kind, NotificationType::Info);
+
+        assert_eq!(Toast::default_duration(NotificationType::Info), INFO_DURATION);
+        assert_eq!(Toast::default_duration(NotificationType::Error), ERROR_DURATION);
     }
 }

@@ -1361,11 +1361,17 @@ fn handle_run_live_script(app: &mut App) {
                 );
                 return;
             }
+            let has_custom_notify = actions
+                .iter()
+                .any(|a| matches!(a, crate::lua::LuaAction::Notify { .. }));
+
             app.apply_lua_actions(actions);
-            app.show_notification(
-                "Script executed successfully".to_string(),
-                crate::app::NotificationType::Info,
-            );
+            if !has_custom_notify {
+                app.show_notification(
+                    "Script executed successfully".to_string(),
+                    crate::app::NotificationType::Info,
+                );
+            }
         }
         Err(err) => {
             app.show_notification(
@@ -1793,5 +1799,24 @@ mod tests {
         handle_paste(&mut app, "b".to_string());
         assert_eq!(app.fuzzy_query, "abc");
         assert_eq!(app.fuzzy_cursor, 2);
+    }
+
+    #[test]
+    fn run_live_script_emits_custom_toast_notification() {
+        use crate::buffer::EditorBuffer;
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+        let script_idx = app.live_script_buffer_idx.unwrap();
+        app.buffers[script_idx].content =
+            ropey::Rope::from_str("nedit.notify('Live script toast!', 'error', 3.5)");
+
+        super::handle_run_live_script(&mut app);
+
+        assert_eq!(app.notifications.len(), 1);
+        let toast = &app.notifications[0];
+        assert_eq!(toast.message, "Live script toast!");
+        assert_eq!(toast.kind, crate::app::NotificationType::Error);
+        assert_eq!(toast.duration, std::time::Duration::from_millis(3500));
     }
 }

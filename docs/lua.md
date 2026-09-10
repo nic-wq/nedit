@@ -95,6 +95,28 @@ local cleaned = content:gsub("%s+", " ")
 nedit.write_current_file(cleaned)
 ```
 
+### nedit.notify(text, [type], [time])
+
+Exibe uma notificação flutuante (toast) com barra de progresso.
+
+- **`text`**: Mensagem a ser exibida.
+- **`type`** *(opcional)*: `"info"` (padrão) ou `"error"`.
+- **`time`** *(opcional)*: Duração em segundos (ex: `3` ou `2.5`) ou milissegundos (ex: `3000`). Se omitido, usa a duração padrão (4s para info, 6s para error).
+
+*(Aliases disponíveis: `nedit.show_notification` e `nedit.toast`)*
+
+```lua
+-- Notificação simples (tipo 'info', 4 segundos)
+nedit.notify("Operação concluída!")
+
+-- Notificação de erro com duração de 3 segundos
+nedit.notify("Formato inválido encontrado!", "error", 3)
+
+-- Duração em milissegundos
+nedit.notify("Processamento finalizado", "info", 5000)
+```
+
+
 ## Command Palette Commands
 
 ### Live Scripts
