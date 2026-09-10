@@ -338,6 +338,7 @@ impl App {
     fn scoped_search_files(root: PathBuf) -> impl Iterator<Item = PathBuf> {
         let root_for_filter = root.clone();
         WalkDir::new(root)
+            .max_depth(12)
             .into_iter()
             .filter_entry(move |entry| {
                 let path = entry.path();
@@ -350,6 +351,7 @@ impl App {
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.file_type().is_file())
             .map(|entry| entry.path().to_path_buf())
+            .take(30_000)
     }
 
     fn search_content_in_files(
@@ -597,6 +599,7 @@ impl App {
 
         std::thread::spawn(move || {
             let files: Vec<(String, PathBuf)> = WalkDir::new(&root)
+                .max_depth(12)
                 .into_iter()
                 .filter_entry(|e| {
                     let path = e.path();
@@ -608,6 +611,7 @@ impl App {
                 })
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
+                .take(30_000)
                 .map(|e| {
                     let full = e.path().to_path_buf();
                     let relative = full

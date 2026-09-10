@@ -268,8 +268,13 @@ impl App {
             last_external_check: Instant::now(),
         };
 
-        if let Some(watcher) = &mut app.watcher {
-            let _ = watcher.watch(&initial_root, Self::watch_mode_for_path(&initial_root));
+        let is_huge_system_dir = initial_root == Path::new("/")
+            || dirs::home_dir().map(|h| h == initial_root).unwrap_or(false);
+
+        if !is_huge_system_dir {
+            if let Some(watcher) = &mut app.watcher {
+                let _ = watcher.watch(&initial_root, Self::watch_mode_for_path(&initial_root));
+            }
         }
 
         app.refresh_explorer();

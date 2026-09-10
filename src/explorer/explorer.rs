@@ -38,23 +38,23 @@ pub fn follow_horizontal_scroll(
 
 /// Directory names skipped everywhere (search corpus and file index).
 pub(crate) fn should_skip_dir_name(name: &str) -> bool {
+    if name.starts_with('.') {
+        return !matches!(name, ".github" | ".vscode" | ".gitlab");
+    }
     matches!(
         name,
-        ".git"
-            | ".hg"
-            | ".svn"
-            | "target"
+        "target"
             | "node_modules"
             | "dist"
             | "build"
-            | ".cache"
-            | ".next"
-            | ".nuxt"
             | "vendor"
             | "proc"
             | "sys"
             | "dev"
             | "run"
+            | "venv"
+            | "__pycache__"
+            | "AppData"
     )
 }
 
@@ -161,26 +161,66 @@ impl FileExplorer {
         self.search_hscroll.set(0);
     }
 
+    pub const MAX_CORPUS_ITEMS: usize = 20_000;
+    pub const MAX_CORPUS_DEPTH: usize = 12;
+
     /// Walk the whole tree under `root`, ignoring expansion state, so the
     /// filter can surface files inside collapsed folders too.
     pub fn collect_search_corpus(&mut self) {
         self.search_corpus.clear();
-        let mut stack = vec![self.root.clone()];
-        while let Some(dir) = stack.pop() {
+        let mut stack = vec![(self.root.clone(), 0usize)];
+        let mut visited: HashSet<PathBuf> = HashSet::new();
+
+        if let Ok(canon) = fs::canonicalize(&self.root) {
+            visited.insert(canon);
+        } else {
+            visited.insert(self.root.clone());
+        }
+
+        while let Some((dir, depth)) = stack.pop() {
+            if self.search_corpus.len() >= Self::MAX_CORPUS_ITEMS {
+                break;
+            }
+            if depth >= Self::MAX_CORPUS_DEPTH {
+                continue;
+            }
+
             let Ok(entries) = fs::read_dir(&dir) else {
                 continue;
             };
+
             for entry in entries.flatten() {
+                if self.search_corpus.len() >= Self::MAX_CORPUS_ITEMS {
+                    break;
+                }
+
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+
+                // NEVER recursively follow symlinks to avoid circular loops and runaway crawls.
+                if file_type.is_symlink() {
+                    let path = entry.path();
+                    self.search_corpus.push((path, false));
+                    continue;
+                }
+
                 let path = entry.path();
-                let is_dir = path.is_dir();
+                let is_dir = file_type.is_dir();
+
                 if is_dir {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         if should_skip_dir_name(name) {
                             continue;
                         }
                     }
-                    stack.push(path.clone());
+
+                    let canon = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+                    if visited.insert(canon) {
+                        stack.push((path.clone(), depth + 1));
+                    }
                 }
+
                 self.search_corpus.push((path, is_dir));
             }
         }
@@ -273,8 +313,15 @@ impl FileExplorer {
         let mut entries_vec = Vec::new();
         if let Ok(entries) = fs::read_dir(path) {
             for entry in entries.flatten() {
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
                 let entry_path = entry.path();
-                let is_dir = entry_path.is_dir();
+                let is_dir = if file_type.is_symlink() {
+                    false
+                } else {
+                    file_type.is_dir()
+                };
                 let name = entry_path
                     .file_name()
                     .unwrap_or_default()
@@ -517,5 +564,27 @@ mod tests {
 
         // Deleting text clamps scroll when total_width shrinks
         assert_eq!(follow_horizontal_scroll(5, 10, 8, avail), 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn collect_search_corpus_never_loops_on_circular_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("file.txt"), "hello").unwrap();
+
+        // Create circular symlink: sub/loop -> dir
+        let loop_link = sub.join("loop");
+        let _ = symlink(dir.path(), &loop_link);
+
+        let mut explorer = FileExplorer::new(dir.path().to_path_buf());
+        explorer.collect_search_corpus();
+
+        // It must terminate immediately, without exploding the corpus
+        assert!(explorer.search_corpus.len() < 10);
+        assert!(explorer.search_corpus.iter().any(|(p, _)| p == &sub.join("file.txt")));
     }
 }
