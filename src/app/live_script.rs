@@ -80,6 +80,22 @@ mod tests {
     }
 
     #[test]
+    fn live_script_cannot_be_saved() {
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+
+        assert_eq!(app.current_buffer_idx, app.live_script_buffer_idx.unwrap());
+
+        app.save_current_buffer();
+
+        assert!(!app.is_fuzzy);
+        assert_eq!(app.notifications.len(), 1);
+        assert_eq!(app.notifications[0].message, "Live scripts cannot be saved");
+        assert_eq!(app.notifications[0].kind, crate::app::NotificationType::Info);
+    }
+
+    #[test]
     fn opening_file_with_preview_keeps_script_on_the_right() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.txt"), "AAA").unwrap();

@@ -1819,4 +1819,25 @@ mod tests {
         assert_eq!(toast.kind, crate::app::NotificationType::Error);
         assert_eq!(toast.duration, std::time::Duration::from_millis(3500));
     }
+
+    #[test]
+    fn ctrl_s_on_live_script_shows_notification_and_does_not_open_save_as() {
+        use crate::buffer::EditorBuffer;
+        let mut app = App::new(&[]);
+        app.buffers.push(EditorBuffer::new());
+        app.open_live_script();
+
+        let script = app.live_script_buffer_idx.unwrap();
+        app.current_buffer_idx = script;
+
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Char('s'), KeyModifiers::CONTROL),
+        );
+
+        assert!(!app.is_fuzzy);
+        assert_eq!(app.notifications.len(), 1);
+        assert_eq!(app.notifications[0].message, "Live scripts cannot be saved");
+        assert_eq!(app.notifications[0].kind, crate::app::NotificationType::Info);
+    }
 }

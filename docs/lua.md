@@ -4,7 +4,7 @@ Live scripts in NEdit allow you to automate the editor with Lua. They run intera
 
 ## Script Metadata
 
-Use `-- Name` on the **first line** to show a friendly name (also used to suggest a filename on save):
+Use `-- Name` on the **first line** to show a friendly name:
 
 ```lua
 -- Remove Extra Spaces

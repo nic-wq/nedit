@@ -387,6 +387,16 @@ impl App {
             return;
         }
 
+        if self.live_script_mode
+            && Some(self.current_buffer_idx) == self.live_script_buffer_idx
+        {
+            self.show_notification(
+                "Live scripts cannot be saved".to_string(),
+                NotificationType::Info,
+            );
+            return;
+        }
+
         let has_path = self.buffers[self.current_buffer_idx].path.is_some();
         if !has_path {
             self.toggle_fuzzy(FuzzyMode::SaveAs);

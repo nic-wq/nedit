@@ -7,7 +7,7 @@ use std::sync::Arc;
 use walkdir::WalkDir;
 
 use super::matcher::{FuzzyFileResult, FuzzyMatcher};
-use super::{App, FuzzyMode};
+use super::{App, FuzzyMode, NotificationType};
 
 // Binary file extensions to skip during indexing and content search
 const BINARY_EXTENSIONS: &[&str] = &[
@@ -396,6 +396,17 @@ impl App {
         if self.is_fuzzy && self.fuzzy_mode == mode {
             self.is_fuzzy = false;
         } else {
+            if mode == FuzzyMode::SaveAs
+                && self.live_script_mode
+                && Some(self.current_buffer_idx) == self.live_script_buffer_idx
+            {
+                self.show_notification(
+                    "Live scripts cannot be saved".to_string(),
+                    NotificationType::Info,
+                );
+                return;
+            }
+
             self.is_fuzzy = true;
             self.fuzzy_mode = mode;
             self.clear_fuzzy_query();
