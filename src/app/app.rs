@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use notify::{Config as NotifyConfig, RecommendedWatcher, Watcher};
 use ratatui::layout::Rect;
+use ropey::Rope;
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
@@ -18,6 +19,12 @@ use crate::explorer::FileExplorer;
 use crate::i18n::I18n;
 
 use super::{Focus, NotificationType};
+
+pub struct LargeFileLoadResult {
+    pub request_id: u64,
+    pub path: PathBuf,
+    pub result: std::io::Result<Rope>,
+}
 
 // The App struct acts as the "Single Source of Truth" for the entire application state.
 // By centralizing state here, we simplify data flow and make it easier to coordinate 
@@ -62,6 +69,9 @@ pub struct App {
     pub watcher: Option<RecommendedWatcher>,
     pub fs_event_receiver: Receiver<notify::Result<notify::Event>>,
     pub syntax_set_receiver: Option<Receiver<SyntaxSet>>,
+    pub(crate) large_file_load_sender: Sender<LargeFileLoadResult>,
+    pub(crate) large_file_load_receiver: Receiver<LargeFileLoadResult>,
+    pub(crate) next_large_file_load_id: u64,
     pub indexed_files_receiver: Option<Receiver<Vec<(String, PathBuf)>>>,
     #[allow(clippy::type_complexity)]
     pub explorer_refresh_receiver:
@@ -202,6 +212,7 @@ impl App {
 
         let (tx, rx) = channel();
         let watcher = RecommendedWatcher::new(tx, NotifyConfig::default()).ok();
+        let (large_file_load_sender, large_file_load_receiver) = channel();
 
         let mut app = Self {
             buffers: Vec::new(),
@@ -241,6 +252,9 @@ impl App {
             watcher,
             fs_event_receiver: rx,
             syntax_set_receiver: None,
+            large_file_load_sender,
+            large_file_load_receiver,
+            next_large_file_load_id: 0,
             indexed_files_receiver: None,
             explorer_refresh_receiver: None,
             explorer_needs_refresh: false,
@@ -743,8 +757,8 @@ impl App {
             buf.cursor_col = saved_col.min(buf.line_max_char_col(buf.cursor_row));
             buf.cursor_goal_visual_col = 0;
             buf.selection_start = None;
-            buf.syntax_states = vec![None; buf.content.len_lines()];
-            buf.rendered_spans = vec![None; buf.content.len_lines()];
+            buf.sync_syntax_states(0);
+            buf.sync_rendered_spans(0);
             buf.invalidate_max_visual_width();
             self.record_file_mtime(&path);
             self.show_notification(

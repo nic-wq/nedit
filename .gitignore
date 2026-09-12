@@ -7,3 +7,4 @@ target/
 AGENTS.md.antigravitycli/
 *.zip
 tests/
+arquivo_*.txt

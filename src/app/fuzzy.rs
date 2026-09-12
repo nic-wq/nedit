@@ -457,6 +457,10 @@ impl App {
     }
 
     pub fn poll_background_tasks(&mut self) {
+        while let Ok(load) = self.large_file_load_receiver.try_recv() {
+            self.apply_large_file_load(load);
+        }
+
         if let Some(rx) = &self.syntax_set_receiver {
             let mut disconnected = false;
             loop {

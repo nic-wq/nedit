@@ -58,6 +58,19 @@ impl Config {
             c => c,
         };
 
+        let is_target_backtab = target_code == KeyCode::BackTab
+            || (target_code == KeyCode::Tab && target_modifiers.contains(KeyModifiers::SHIFT));
+        let is_event_backtab = event.code == KeyCode::BackTab
+            || (event.code == KeyCode::Tab && event.modifiers.contains(KeyModifiers::SHIFT));
+
+        if is_target_backtab || is_event_backtab {
+            if is_target_backtab && is_event_backtab {
+                let other_modifiers = KeyModifiers::CONTROL | KeyModifiers::ALT;
+                return (event.modifiers & other_modifiers) == (target_modifiers & other_modifiers);
+            }
+            return false;
+        }
+
         let important_modifiers = KeyModifiers::CONTROL | KeyModifiers::SHIFT | KeyModifiers::ALT;
         event_code == target_code_normalized
             && (event.modifiers & important_modifiers) == (target_modifiers & important_modifiers)

@@ -10,4 +10,4 @@ mod editing;
 mod history;
 mod selection;
 
-pub use buffer::EditorBuffer;
+pub use buffer::{EditorBuffer, LARGE_FILE_THRESHOLD};

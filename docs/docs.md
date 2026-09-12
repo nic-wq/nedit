@@ -201,7 +201,8 @@ Error and info messages appear as a popup bar above the status bar. They auto-di
 - Custom syntax files can be placed in `~/.config/nedit/syntax/` and are loaded automatically.
 - Parsed syntax sets are **cached to disk** (`~/.config/nedit/cache/`) for fast startup.
 - Highlighting is loaded and computed in the background — the UI never blocks.
-- Files **over 5 MB** have syntax highlighting disabled to maintain performance.
+- Files **of 5 MiB or more** have syntax highlighting disabled to maintain performance.
+- Files of 5 MiB or more open in the background: their tab is available immediately while loading, and document-wide helpers such as autocomplete and full-width metrics stay disabled to keep navigation responsive.
 - Highlighting is cached incrementally during scrolling and editing, preventing highlight loss.
 
 ### Autocomplete

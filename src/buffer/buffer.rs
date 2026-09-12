@@ -5,6 +5,9 @@ use std::path::PathBuf;
 use super::column;
 use ropey::Rope;
 
+/// Keep large-file behavior aligned with the existing syntax-highlighting limit.
+pub const LARGE_FILE_THRESHOLD: u64 = 5 * 1024 * 1024;
+
 #[derive(Clone)]
 pub struct EditorBuffer {
     // We use Ropey because it's optimized for very large files, allowing for
@@ -32,6 +35,12 @@ pub struct EditorBuffer {
     pub history_idx: usize,
     pub is_read_only: bool,
     pub is_preview: bool,
+    /// Large buffers avoid per-line caches and document-wide helper work.
+    pub is_large_file: bool,
+    /// A buffer is read-only until its background load replaces the placeholder.
+    pub is_loading: bool,
+    /// Identifies a background load independently of the buffer's current index.
+    pub load_request_id: Option<u64>,
     pub autocomplete_options: Vec<String>,
     pub autocomplete_idx: usize,
     pub show_autocomplete_list: bool,
@@ -49,10 +58,15 @@ impl Default for EditorBuffer {
 impl EditorBuffer {
     pub fn new() -> Self {
         let content = Rope::from_str("");
+        Self::from_content(None, content, false)
+    }
+
+    fn from_content(path: Option<PathBuf>, content: Rope, is_large_file: bool) -> Self {
+        let line_count = if is_large_file { 0 } else { content.len_lines() };
         Self {
             content: content.clone(),
             saved_content: content.clone(),
-            path: None,
+            path,
             cursor_row: 0,
             cursor_col: 0,
             cursor_goal_visual_col: 0,
@@ -65,11 +79,14 @@ impl EditorBuffer {
             history_idx: 0,
             is_read_only: false,
             is_preview: false,
+            is_large_file,
+            is_loading: false,
+            load_request_id: None,
             autocomplete_options: Vec::new(),
             autocomplete_idx: 0,
             show_autocomplete_list: false,
-            syntax_states: vec![None; content.len_lines()],
-            rendered_spans: vec![None; content.len_lines()],
+            syntax_states: vec![None; line_count],
+            rendered_spans: vec![None; line_count],
             max_visual_width: None,
         }
     }
@@ -81,29 +98,21 @@ impl EditorBuffer {
             Rope::from_str("")
         };
 
-        Ok(Self {
-            content: content.clone(),
-            saved_content: content.clone(),
-            path: Some(path),
-            cursor_row: 0,
-            cursor_col: 0,
-            cursor_goal_visual_col: 0,
-            scroll_row: 0,
-            scroll_col: 0,
-            modified: false,
-            syntax_override: None,
-            selection_start: None,
-            history: vec![content.clone()],
-            history_idx: 0,
-            is_read_only: false,
-            is_preview: false,
-            autocomplete_options: Vec::new(),
-            autocomplete_idx: 0,
-            show_autocomplete_list: false,
-            syntax_states: vec![None; content.len_lines()],
-            rendered_spans: vec![None; content.len_lines()],
-            max_visual_width: None,
-        })
+        Ok(Self::from_content(Some(path), content, false))
+    }
+
+    /// Creates the non-editable tab shown while a large file is read off-thread.
+    pub(crate) fn loading(path: PathBuf, request_id: u64) -> Self {
+        let mut buffer = Self::from_content(Some(path), Rope::from_str(""), true);
+        buffer.is_loading = true;
+        buffer.is_read_only = true;
+        buffer.load_request_id = Some(request_id);
+        buffer
+    }
+
+    /// Builds a finished large-file buffer without allocating caches per line.
+    pub(crate) fn from_loaded_large_file(path: PathBuf, content: Rope) -> Self {
+        Self::from_content(Some(path), content, true)
     }
 
     pub fn line_text(&self, row: usize) -> String {
@@ -247,6 +256,12 @@ impl EditorBuffer {
     }
 
     pub fn find_matching_bracket(&self) -> Option<(usize, usize)> {
+        self.find_matching_bracket_with_limit(None)
+    }
+
+    /// Finds a bracket pair while optionally bounding the number of characters
+    /// inspected in either direction. Large files use this to keep redraws local.
+    pub fn find_matching_bracket_with_limit(&self, max_chars: Option<usize>) -> Option<(usize, usize)> {
         let char_idx = self.to_char_idx(self.cursor_row, self.cursor_col);
         if char_idx >= self.content.len_chars() {
             return None;
@@ -259,7 +274,10 @@ impl EditorBuffer {
         if let Some(pos) = open_chars.iter().position(|&c| c == current_char) {
             let target_close = close_chars[pos];
             let mut depth = 0;
-            for i in (char_idx + 1)..self.content.len_chars() {
+            let end = max_chars
+                .map(|limit| char_idx.saturating_add(1 + limit).min(self.content.len_chars()))
+                .unwrap_or(self.content.len_chars());
+            for i in (char_idx + 1)..end {
                 let c = self.content.char(i);
                 if c == current_char {
                     depth += 1;
@@ -273,7 +291,8 @@ impl EditorBuffer {
         } else if let Some(pos) = close_chars.iter().position(|&c| c == current_char) {
             let target_open = open_chars[pos];
             let mut depth = 0;
-            for i in (0..char_idx).rev() {
+            let start = max_chars.map(|limit| char_idx.saturating_sub(limit)).unwrap_or(0);
+            for i in (start..char_idx).rev() {
                 let c = self.content.char(i);
                 if c == current_char {
                     depth += 1;
@@ -328,6 +347,10 @@ impl EditorBuffer {
     }
 
     pub fn sync_syntax_states(&mut self, from_row: usize) {
+        if self.is_large_file {
+            self.syntax_states.clear();
+            return;
+        }
         let line_count = self.content.len_lines();
         if self.syntax_states.len() != line_count {
             self.syntax_states.resize(line_count, None);
@@ -339,6 +362,10 @@ impl EditorBuffer {
     }
 
     pub fn sync_rendered_spans(&mut self, from_row: usize) {
+        if self.is_large_file {
+            self.rendered_spans.clear();
+            return;
+        }
         let line_count = self.content.len_lines();
         if self.rendered_spans.len() != line_count {
             self.rendered_spans.resize(line_count, None);
@@ -350,12 +377,19 @@ impl EditorBuffer {
     }
 
     pub fn invalidate_all_rendered_spans(&mut self) {
+        if self.is_large_file {
+            self.rendered_spans.clear();
+            return;
+        }
         for entry in self.rendered_spans.iter_mut() {
             *entry = None;
         }
     }
 
     pub fn update_max_visual_width(&mut self) {
+        if self.is_large_file {
+            return;
+        }
         use super::column::TAB_WIDTH;
         let max = (0..self.content.len_lines())
             .map(|row| {
@@ -380,6 +414,7 @@ impl EditorBuffer {
 mod tests {
     use super::EditorBuffer;
     use ropey::Rope;
+    use std::path::PathBuf;
 
     fn clean_buffer(content: &str) -> EditorBuffer {
         let mut buf = EditorBuffer::new();
@@ -486,5 +521,27 @@ mod tests {
         buf.delete_backspace();
         assert_eq!(buf.content.to_string(), "");
         assert!(!buf.modified);
+    }
+
+    #[test]
+    fn loaded_large_file_skips_per_line_caches_and_global_width() {
+        let path = PathBuf::from("large.txt");
+        let content = Rope::from_str("one\ntwo\nthree\n");
+        let mut buffer = EditorBuffer::from_loaded_large_file(path, content);
+
+        assert!(buffer.is_large_file);
+        assert!(!buffer.is_loading);
+        assert!(buffer.syntax_states.is_empty());
+        assert!(buffer.rendered_spans.is_empty());
+
+        buffer.update_max_visual_width();
+        assert_eq!(buffer.max_visual_width, None);
+    }
+
+    #[test]
+    fn bounded_bracket_search_does_not_scan_past_limit() {
+        let buffer = clean_buffer("(xxxxxxxx)");
+        assert_eq!(buffer.find_matching_bracket_with_limit(Some(3)), None);
+        assert_eq!(buffer.find_matching_bracket_with_limit(Some(9)), Some((0, 9)));
     }
 }

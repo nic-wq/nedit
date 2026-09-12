@@ -2,6 +2,13 @@ use super::EditorBuffer;
 
 impl EditorBuffer {
     pub fn update_autocomplete(&mut self) {
+        if self.is_large_file || self.is_loading {
+            self.autocomplete_options.clear();
+            self.autocomplete_idx = 0;
+            self.show_autocomplete_list = false;
+            return;
+        }
+
         let prefix = self.get_current_word_prefix();
         if prefix.chars().count() < 2 {
             self.autocomplete_options.clear();
@@ -52,5 +59,27 @@ impl EditorBuffer {
             self.autocomplete_options.clear();
             self.show_autocomplete_list = false;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EditorBuffer;
+    use ropey::Rope;
+    use std::path::PathBuf;
+
+    #[test]
+    fn large_files_do_not_scan_the_document_for_autocomplete() {
+        let mut buffer = EditorBuffer::from_loaded_large_file(
+            PathBuf::from("large.txt"),
+            Rope::from_str("prefix completion\n"),
+        );
+        buffer.cursor_col = 3;
+        buffer.autocomplete_options = vec!["stale".to_string()];
+
+        buffer.update_autocomplete();
+
+        assert!(buffer.autocomplete_options.is_empty());
+        assert_eq!(buffer.autocomplete_idx, 0);
     }
 }

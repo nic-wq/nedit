@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use notify::{RecursiveMode, Watcher};
 
 use crate::app::{Focus, FuzzyMode, NotificationType, DOC_BINDS, DOC_LUA, DOC_MAIN};
-use crate::buffer::EditorBuffer;
+use crate::buffer::{EditorBuffer, LARGE_FILE_THRESHOLD};
 
+use super::app::LargeFileLoadResult;
 use super::App;
 
 impl App {
@@ -101,6 +102,11 @@ impl App {
             }
         }
 
+        if Self::is_large_file_path(&path) {
+            self.start_large_file_load(path);
+            return;
+        }
+
         match EditorBuffer::from_path(path.clone()) {
             Ok(buffer) => {
                 self.current_buffer_idx = self.push_buffer(buffer);
@@ -113,20 +119,81 @@ impl App {
                 }
             }
             Err(err) => {
-                let message = match err.downcast_ref::<std::io::Error>().map(|e| e.kind()) {
-                    Some(ErrorKind::NotFound) => {
-                        format!("File not found: {}", path.display())
-                    }
-                    Some(ErrorKind::PermissionDenied) => {
-                        format!("Permission denied: {}", path.display())
-                    }
-                    Some(ErrorKind::InvalidData) => {
-                        format!("Cannot open binary file: {}", path.display())
-                    }
-                    _ => format!("Could not open file {}: {}", path.display(), err),
-                };
-                self.show_notification(message, NotificationType::Error);
+                self.show_notification(
+                    Self::file_open_error_message(
+                        &path,
+                        err.downcast_ref::<std::io::Error>().map(|error| error.kind()),
+                        &err,
+                    ),
+                    NotificationType::Error,
+                );
             }
+        }
+    }
+
+    fn is_large_file_path(path: &Path) -> bool {
+        std::fs::metadata(path)
+            .map(|metadata| metadata.is_file() && metadata.len() >= LARGE_FILE_THRESHOLD)
+            .unwrap_or(false)
+    }
+
+    fn start_large_file_load(&mut self, path: PathBuf) {
+        let request_id = self.next_large_file_load_id;
+        self.next_large_file_load_id = self.next_large_file_load_id.wrapping_add(1);
+        let placeholder = EditorBuffer::loading(path.clone(), request_id);
+        self.current_buffer_idx = self.push_buffer(placeholder);
+        self.focus = Focus::Editor;
+        self.is_welcome = false;
+        if self.live_script_mode {
+            self.target_buffer_idx = Some(self.current_buffer_idx);
+        }
+
+        let sender = self.large_file_load_sender.clone();
+        std::thread::spawn(move || {
+            let result = std::fs::File::open(&path).and_then(ropey::Rope::from_reader);
+            let _ = sender.send(LargeFileLoadResult {
+                request_id,
+                path,
+                result,
+            });
+        });
+    }
+
+    pub(crate) fn apply_large_file_load(&mut self, load: LargeFileLoadResult) {
+        let Some(buffer_idx) = self.buffers.iter().position(|buffer| {
+            buffer.is_loading
+                && buffer.load_request_id == Some(load.request_id)
+                && buffer.path.as_ref() == Some(&load.path)
+        }) else {
+            return;
+        };
+
+        match load.result {
+            Ok(content) => {
+                self.buffers[buffer_idx] = EditorBuffer::from_loaded_large_file(load.path.clone(), content);
+                self.record_file_mtime(&load.path);
+                self.needs_redraw = true;
+            }
+            Err(err) => {
+                self.force_close_buffer(buffer_idx);
+                self.show_notification(
+                    Self::file_open_error_message(&load.path, Some(err.kind()), &err),
+                    NotificationType::Error,
+                );
+            }
+        }
+    }
+
+    pub(crate) fn file_open_error_message(
+        path: &Path,
+        error_kind: Option<ErrorKind>,
+        detail: impl std::fmt::Display,
+    ) -> String {
+        match error_kind {
+            Some(ErrorKind::NotFound) => format!("File not found: {}", path.display()),
+            Some(ErrorKind::PermissionDenied) => format!("Permission denied: {}", path.display()),
+            Some(ErrorKind::InvalidData) => format!("Cannot open binary file: {}", path.display()),
+            _ => format!("Could not open file {}: {}", path.display(), detail),
         }
     }
 
@@ -149,6 +216,27 @@ impl App {
 
     pub fn force_close_buffer(&mut self, closing_idx: usize) {
         if closing_idx < self.buffers.len() {
+            // A loading placeholder can be the temporary live-script target.
+            // Closing it must restore an existing target instead of closing the
+            // whole live-script pair as if it were a real edited document.
+            if self.live_script_mode
+                && self.buffers[closing_idx].is_loading
+                && Some(closing_idx) == self.target_buffer_idx
+            {
+                let replacement = self
+                    .buffers
+                    .iter()
+                    .enumerate()
+                    .find_map(|(idx, _)| {
+                        (idx != closing_idx && Some(idx) != self.live_script_buffer_idx)
+                            .then_some(idx)
+                    });
+                self.target_buffer_idx = replacement;
+                if let Some(idx) = replacement {
+                    self.current_buffer_idx = idx;
+                }
+            }
+
             // Remember path to forget mtime
             let mut forget_paths = Vec::new();
             if let Some(p) = self.buffers[closing_idx].path.clone() {
@@ -861,5 +949,148 @@ fn shift_index_after_remove(idx: usize, removed_idx: usize, fallback: usize) -> 
         fallback
     } else {
         idx
+    }
+}
+
+#[cfg(test)]
+mod large_file_tests {
+    use super::{App, EditorBuffer, LargeFileLoadResult, LARGE_FILE_THRESHOLD};
+    use ropey::Rope;
+    use std::io;
+
+    fn loading_app(path: std::path::PathBuf, request_id: u64) -> App {
+        let mut app = App::new(&[]);
+        app.current_buffer_idx = app.push_buffer(EditorBuffer::loading(path, request_id));
+        app.is_welcome = false;
+        app
+    }
+
+    #[test]
+    fn loaded_result_replaces_the_matching_placeholder() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large.txt");
+        let mut app = loading_app(path.clone(), 7);
+
+        app.large_file_load_sender
+            .send(LargeFileLoadResult {
+                request_id: 7,
+                path,
+                result: Ok(Rope::from_str("loaded\ncontent\n")),
+            })
+            .unwrap();
+        app.poll_background_tasks();
+
+        let buffer = &app.buffers[app.current_buffer_idx];
+        assert!(!buffer.is_loading);
+        assert!(buffer.is_large_file);
+        assert!(!buffer.is_read_only);
+        assert_eq!(buffer.content.to_string(), "loaded\ncontent\n");
+        assert!(buffer.syntax_states.is_empty());
+        assert!(buffer.rendered_spans.is_empty());
+    }
+
+    #[test]
+    fn failed_load_closes_placeholder_and_notifies() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.txt");
+        let mut app = loading_app(path.clone(), 8);
+
+        app.large_file_load_sender
+            .send(LargeFileLoadResult {
+                request_id: 8,
+                path: path.clone(),
+                result: Err(io::Error::new(io::ErrorKind::NotFound, "missing")),
+            })
+            .unwrap();
+        app.poll_background_tasks();
+
+        assert!(app.buffers.is_empty());
+        assert!(app.is_welcome);
+        assert!(app.notifications[0].message.contains("File not found"));
+    }
+
+    #[test]
+    fn result_for_closed_placeholder_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large.txt");
+        let mut app = loading_app(path.clone(), 9);
+        app.force_close_buffer(app.current_buffer_idx);
+
+        app.large_file_load_sender
+            .send(LargeFileLoadResult {
+                request_id: 9,
+                path,
+                result: Ok(Rope::from_str("must not reappear")),
+            })
+            .unwrap();
+        app.poll_background_tasks();
+
+        assert!(app.buffers.is_empty());
+        assert!(app.notifications.is_empty());
+    }
+
+    #[test]
+    fn closing_loading_live_target_preserves_the_existing_live_pair() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old.txt");
+        let loading_path = dir.path().join("loading.txt");
+        let mut app = App::new(&[]);
+        let old_idx = app.push_buffer(EditorBuffer::from_path(old_path).unwrap());
+        let script_idx = app.push_buffer(EditorBuffer::new());
+        app.live_script_mode = true;
+        app.live_script_buffer_idx = Some(script_idx);
+        app.target_buffer_idx = Some(old_idx);
+        let loading_idx = app.push_buffer(EditorBuffer::loading(loading_path, 10));
+        app.target_buffer_idx = Some(loading_idx);
+        app.current_buffer_idx = loading_idx;
+
+        app.force_close_buffer(loading_idx);
+
+        assert!(app.live_script_mode);
+        assert_eq!(app.buffers.len(), 2);
+        assert_eq!(app.target_buffer_idx, Some(0));
+        assert_eq!(app.live_script_buffer_idx, Some(1));
+        assert_eq!(app.current_buffer_idx, 0);
+    }
+
+    #[test]
+    fn threshold_size_file_opens_as_an_immediate_placeholder() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("threshold.txt");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(LARGE_FILE_THRESHOLD).unwrap();
+
+        let mut app = App::new(&[]);
+        app.open_file(path);
+
+        let buffer = &app.buffers[app.current_buffer_idx];
+        assert!(buffer.is_loading);
+        assert!(buffer.is_large_file);
+        assert!(buffer.is_read_only);
+        assert!(buffer.syntax_states.is_empty());
+        assert!(buffer.rendered_spans.is_empty());
+    }
+
+    #[test]
+    #[ignore = "generates and reads a 100 MiB large-file fixture"]
+    fn hundred_megabyte_multiline_file_opens_as_a_placeholder() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("100mb-lines.txt");
+        let mut file = std::io::BufWriter::new(std::fs::File::create(&path).unwrap());
+        let line = [b'x'; 1_023];
+        for _ in 0..(100 * 1024) {
+            file.write_all(&line).unwrap();
+            file.write_all(b"\n").unwrap();
+        }
+        file.flush().unwrap();
+
+        let mut app = App::new(&[]);
+        app.open_file(path);
+        let buffer = &app.buffers[app.current_buffer_idx];
+        assert!(buffer.is_loading);
+        assert!(buffer.syntax_states.is_empty());
+        assert!(buffer.rendered_spans.is_empty());
     }
 }

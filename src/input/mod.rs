@@ -105,13 +105,23 @@ fn is_editor_left_drag(app: &App, mouse: MouseEvent) -> bool {
 
 fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
     match mouse.kind {
-        MouseEventKind::ScrollUp => {
+        MouseEventKind::ScrollUp
+            if app
+                .editor_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row)) =>
+        {
             if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                if buffer.is_loading {
+                    return;
+                }
                 buffer.scroll_row = buffer.scroll_row.saturating_sub(3);
             }
         }
         MouseEventKind::ScrollDown => {
             if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                if buffer.is_loading {
+                    return;
+                }
                 buffer.scroll_row = buffer.scroll_row.saturating_add(3);
             }
         }
@@ -132,6 +142,9 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
                 let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
                 if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                    if buffer.is_loading {
+                        return;
+                    }
                     let target_row = buffer.scroll_row + rel_row;
                     let target_col =
                         buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
@@ -183,6 +196,9 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
             let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
             if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                if buffer.is_loading {
+                    return;
+                }
                 if buffer.selection_start.is_none() {
                     buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
                 }
@@ -271,6 +287,9 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         }
     }
     if app.config.matches(key, "toggle_focus") {
+        if !app.show_explorer {
+            return;
+        }
         // Limpar preview ao sair do explorer para o editor
         if app.focus == Focus::Explorer {
             if let Some(idx) = app.preview_buffer_idx.take() {
@@ -1180,7 +1199,10 @@ fn is_explorer_file_options_shortcut(c: char, modifiers: KeyModifiers) -> bool {
 
 fn handle_editor_input(app: &mut App, key: KeyEvent) {
     let current_idx = app.current_buffer_idx;
-    if app.buffers.get(current_idx).is_none() {
+    let Some(buffer) = app.buffers.get(current_idx) else {
+        return;
+    };
+    if buffer.is_loading {
         return;
     }
 
@@ -1447,7 +1469,7 @@ fn handle_run_live_script(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::{handle_fuzzy_input, handle_paste};
-    use crate::app::{App, FuzzyMode};
+    use crate::app::{App, Focus, FuzzyMode};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn key(code: KeyCode) -> KeyEvent {
@@ -1975,5 +1997,57 @@ mod tests {
         // Now should quit is true and fuzzy is closed
         assert!(!app.is_fuzzy);
         assert!(app.should_quit);
+    }
+
+    #[test]
+    fn shift_tab_does_nothing_when_explorer_closed() {
+        let mut app = App::new(&[]);
+        assert!(!app.show_explorer);
+        assert_eq!(app.focus, Focus::Editor);
+
+        // Shift+Tab via BackTab with Shift
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::BackTab, KeyModifiers::SHIFT),
+        );
+        assert!(!app.show_explorer);
+        assert_eq!(app.focus, Focus::Editor);
+
+        // Shift+Tab via BackTab without Shift (terminal variations)
+        super::handle_key_event(
+            &mut app,
+            key(KeyCode::BackTab),
+        );
+        assert!(!app.show_explorer);
+        assert_eq!(app.focus, Focus::Editor);
+
+        // Shift+Tab via Tab with Shift
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Tab, KeyModifiers::SHIFT),
+        );
+        assert!(!app.show_explorer);
+        assert_eq!(app.focus, Focus::Editor);
+    }
+
+    #[test]
+    fn shift_tab_toggles_focus_when_explorer_open() {
+        let mut app = App::new(&[]);
+        app.show_explorer = true;
+        assert_eq!(app.focus, Focus::Editor);
+
+        // Shift+Tab toggles to explorer
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::BackTab, KeyModifiers::SHIFT),
+        );
+        assert_eq!(app.focus, Focus::Explorer);
+
+        // Shift+Tab toggles back to editor
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::BackTab, KeyModifiers::SHIFT),
+        );
+        assert_eq!(app.focus, Focus::Editor);
     }
 }

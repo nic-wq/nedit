@@ -177,10 +177,20 @@ pub fn render(f: &mut Frame, app: &mut App) {
 
         let target_idx = app.target_buffer_idx.unwrap_or(0);
         let script_idx = app.live_script_buffer_idx.unwrap_or(0);
-        let target_path = app.buffers.get(target_idx).and_then(|b| b.path.clone());
-        let script_path = app.buffers.get(script_idx).and_then(|b| b.path.clone());
-        app.ensure_syntax_for_path_loading(target_path.as_deref());
-        app.ensure_syntax_for_path_loading(script_path.as_deref());
+        let target = app
+            .buffers
+            .get(target_idx)
+            .map(|buffer| (buffer.path.clone(), buffer.is_large_file || buffer.is_loading));
+        let script = app
+            .buffers
+            .get(script_idx)
+            .map(|buffer| (buffer.path.clone(), buffer.is_large_file || buffer.is_loading));
+        if let Some((path, false)) = target {
+            app.ensure_syntax_for_path_loading(path.as_deref());
+        }
+        if let Some((path, false)) = script {
+            app.ensure_syntax_for_path_loading(path.as_deref());
+        }
 
         if target_idx < app.buffers.len() && script_idx < app.buffers.len() {
             let split_chunks = Layout::default()
@@ -237,11 +247,13 @@ pub fn render(f: &mut Frame, app: &mut App) {
         }
     } else if !app.buffers.is_empty() {
         app.ensure_current_theme_loaded();
-        let current_path = app
+        let current = app
             .buffers
             .get(app.current_buffer_idx)
-            .and_then(|b| b.path.clone());
-        app.ensure_syntax_for_path_loading(current_path.as_deref());
+            .map(|buffer| (buffer.path.clone(), buffer.is_large_file || buffer.is_loading));
+        if let Some((path, false)) = current {
+            app.ensure_syntax_for_path_loading(path.as_deref());
+        }
 
         {
             let body_area = editor_body_area(app, editor_chunks[1], app.current_buffer_idx);
@@ -277,6 +289,12 @@ fn draw_split_separator(f: &mut Frame, area: Rect, colors: &UIColors) {
 fn should_draw_header_status_bar(app: &App, buffer_idx: usize) -> bool {
     if app.is_welcome || app.buffers.is_empty() {
         return false;
+    }
+
+    if let Some(buf) = app.buffers.get(buffer_idx) {
+        if buf.is_loading {
+            return false;
+        }
     }
 
     !app.live_script_mode && buffer_idx < app.buffers.len()
@@ -757,10 +775,18 @@ fn active_indent_guide_scope(
 }
 
 fn file_metrics(buffer: &mut EditorBuffer) -> String {
+    if buffer.is_loading {
+        return String::new();
+    }
+
+    let lines = buffer.content.len_lines();
+    if buffer.is_large_file {
+        return format!("[Lines: {} | Cols: —]", lines);
+    }
+
     if buffer.max_visual_width.is_none() {
         buffer.update_max_visual_width();
     }
-    let lines = buffer.content.len_lines();
     let cols = buffer.max_visual_width.unwrap();
     format!("[Lines: {} | Cols: {}]", lines, cols)
 }
@@ -780,8 +806,36 @@ fn draw_editor(
         None => return,
     };
 
+    if buffer.is_loading {
+        f.render_widget(Block::default().bg(colors.bg), area);
+        if area.height > 0 && area.width > 0 {
+            let center_y = area.y + area.height / 2;
+            let loading_area = Rect {
+                x: area.x,
+                y: center_y,
+                width: area.width,
+                height: 1,
+            };
+            let loading_widget = Paragraph::new(Line::from(vec![
+                Span::styled(
+                    "[Loading]",
+                    Style::default()
+                        .fg(colors.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]))
+            .alignment(Alignment::Center);
+            f.render_widget(loading_widget, loading_area);
+        }
+        return;
+    }
+
     let matching_bracket = if app.config.highlight_matching_bracket {
-        buffer.find_matching_bracket()
+        if buffer.is_large_file {
+            buffer.find_matching_bracket_with_limit(Some(8_192))
+        } else {
+            buffer.find_matching_bracket()
+        }
     } else {
         None
     };
@@ -821,7 +875,7 @@ fn draw_editor(
         .map(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
         .unwrap_or(false);
     let mut syntax_highlighter = syntax_set
-        .filter(|_| !is_markdown && buffer.content.len_bytes() <= 5_242_880)
+        .filter(|_| !buffer.is_large_file && !buffer.is_loading && !is_markdown)
         .map(|syntax_set| {
         let syntax = resolve_buffer_syntax(syntax_set, buffer);
 
@@ -876,7 +930,7 @@ fn draw_editor(
         (highlighter, ps, hs)
     });
 
-    let md_highlight = if is_markdown {
+    let md_highlight = if is_markdown && !buffer.is_large_file && !buffer.is_loading {
         let visible: std::ops::Range<usize> =
             buffer_scroll_row..(buffer_scroll_row + height).min(line_count);
         let needs_highlight = visible.clone().any(|row| {
@@ -897,7 +951,7 @@ fn draw_editor(
 
     let mut lines = Vec::new();
     let visible_width = area.width.saturating_sub(5) as usize;
-    let (active_indent_level, active_scope_start, active_scope_end) = if is_focused {
+    let (active_indent_level, active_scope_start, active_scope_end) = if is_focused && !buffer.is_large_file {
         let line_indent = |row: usize| visual_leading_indent_chars(buffer.content.line(row).chars());
         active_indent_guide_scope(
             line_count,
@@ -1935,6 +1989,110 @@ mod syntax_resolution_tests {
         assert_eq!(
             resolve_buffer_syntax(&syntax_set, &plain).name,
             "Plain Text"
+        );
+    }
+}
+
+#[cfg(test)]
+mod large_file_render_tests {
+    use super::render;
+    use crate::app::App;
+    use crate::buffer::EditorBuffer;
+    use ratatui::{backend::TestBackend, Terminal};
+    use ropey::Rope;
+    use std::path::PathBuf;
+
+    #[test]
+    fn rendering_large_file_keeps_line_caches_empty() {
+        let mut app = App::new(&[]);
+        let content = Rope::from_str("alpha\nbeta\ngamma\n");
+        app.current_buffer_idx = app.push_buffer(EditorBuffer::from_loaded_large_file(
+            PathBuf::from("large.rs"),
+            content,
+        ));
+        app.is_welcome = false;
+
+        let backend = TestBackend::new(80, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+
+        let buffer = &app.buffers[app.current_buffer_idx];
+        assert!(buffer.syntax_states.is_empty());
+        assert!(buffer.rendered_spans.is_empty());
+        assert_eq!(buffer.max_visual_width, None);
+    }
+
+    #[test]
+    fn loading_buffer_renders_centered_indicator() {
+        let mut app = App::new(&[]);
+        let path = PathBuf::from("big_file.txt");
+        app.current_buffer_idx = app.push_buffer(EditorBuffer::loading(path.clone(), 42));
+        app.is_welcome = false;
+
+        let width = 80;
+        let height = 12;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+
+        let all_text = (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
+        let found_loading = all_text.iter().any(|line| line.contains("[Loading]"));
+        assert!(found_loading, "Expected [Loading] in rendered output, got:\n{}", all_text.join("\n"));
+
+        // Header status bar should NOT be rendered while loading
+        let found_header = all_text.iter().any(|line| line.contains("Lines:"));
+        assert!(!found_header, "Header status bar shouldn't render while loading");
+
+        // Line numbers shouldn't render while loading
+        let found_line_num = all_text.iter().any(|line| line.starts_with("  1 "));
+        assert!(!found_line_num, "Line numbers shouldn't render while loading");
+
+        // Center row contains [Loading]
+        let center_row = &all_text[5];
+        let center_row2 = &all_text[6];
+        assert!(
+            center_row.contains("[Loading]") || center_row2.contains("[Loading]"),
+            "Expected [Loading] centered vertically, rows:\n5: {}\n6: {}",
+            center_row,
+            center_row2
+        );
+
+        // When load finishes, content and header are shown, [Loading] is gone
+        app.apply_large_file_load(crate::app::LargeFileLoadResult {
+            request_id: 42,
+            path: path.clone(),
+            result: Ok(Rope::from_str("hello large world\nsecond line\n")),
+        });
+
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let buf_after = terminal.backend().buffer().clone();
+        let all_text_after = (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buf_after[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            !all_text_after.iter().any(|line| line.contains("[Loading]")),
+            "[Loading] should disappear after load completes"
+        );
+        assert!(
+            all_text_after.iter().any(|line| line.contains("hello large world")),
+            "File content should be displayed after load completes"
+        );
+        assert!(
+            all_text_after.iter().any(|line| line.contains("Lines: 3")),
+            "Header metrics should be displayed after load completes"
         );
     }
 }
