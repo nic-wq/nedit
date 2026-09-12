@@ -226,33 +226,74 @@ impl EditorBuffer {
     }
 
     pub fn collect_all_words(&self) -> HashMap<String, usize> {
+        let line_count = self.content.len_lines();
+        let (start_row, end_row) = if line_count > 2000 {
+            let start = self.cursor_row.saturating_sub(1000);
+            let end = (self.cursor_row + 1000).min(line_count);
+            (start, end)
+        } else {
+            (0, line_count)
+        };
+
         let mut words = HashMap::new();
         let mut current_word = String::new();
 
-        for c in self.content.chars() {
-            if c.is_alphanumeric() || c == '_' {
-                current_word.push(c);
-            } else {
-                if current_word.len() > 1 {
-                    if let Some(count) = words.get_mut(&current_word) {
-                        *count += 1;
-                    } else {
-                        words.insert(current_word.clone(), 1);
+        for row in start_row..end_row {
+            let line = self.content.line(row);
+            for c in line.chars() {
+                if c.is_alphanumeric() || c == '_' {
+                    current_word.push(c);
+                } else {
+                    if current_word.len() > 1 {
+                        *words.entry(current_word.clone()).or_insert(0) += 1;
                     }
+                    current_word.clear();
                 }
+            }
+            if current_word.len() > 1 {
+                *words.entry(current_word.clone()).or_insert(0) += 1;
                 current_word.clear();
             }
         }
 
-        if current_word.len() > 1 {
-            if let Some(count) = words.get_mut(&current_word) {
-                *count += 1;
-            } else {
-                words.insert(current_word, 1);
+        words
+    }
+
+    pub fn collect_autocomplete_matches(&self, prefix: &str) -> Vec<String> {
+        let line_count = self.content.len_lines();
+        let (start_row, end_row) = if line_count > 2000 {
+            let start = self.cursor_row.saturating_sub(1000);
+            let end = (self.cursor_row + 1000).min(line_count);
+            (start, end)
+        } else {
+            (0, line_count)
+        };
+
+        let mut words: HashMap<String, usize> = HashMap::new();
+        let mut current_word = String::new();
+        let prefix_len = prefix.chars().count();
+
+        for row in start_row..end_row {
+            let line = self.content.line(row);
+            for c in line.chars() {
+                if c.is_alphanumeric() || c == '_' {
+                    current_word.push(c);
+                } else {
+                    if current_word.starts_with(prefix) && current_word.chars().count() > prefix_len {
+                        *words.entry(current_word.clone()).or_insert(0) += 1;
+                    }
+                    current_word.clear();
+                }
+            }
+            if current_word.starts_with(prefix) && current_word.chars().count() > prefix_len {
+                *words.entry(current_word.clone()).or_insert(0) += 1;
+                current_word.clear();
             }
         }
 
-        words
+        let mut matches: Vec<(String, usize)> = words.into_iter().collect();
+        matches.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        matches.into_iter().map(|(w, _)| w).collect()
     }
 
     pub fn find_matching_bracket(&self) -> Option<(usize, usize)> {

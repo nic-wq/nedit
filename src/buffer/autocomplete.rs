@@ -13,22 +13,22 @@ impl EditorBuffer {
         if prefix.chars().count() < 2 {
             self.autocomplete_options.clear();
             self.autocomplete_idx = 0;
+            self.show_autocomplete_list = false;
             return;
         }
 
-        let words = self.collect_all_words();
-        let prefix_len = prefix.chars().count();
-        let mut matches: Vec<(String, usize)> = words
-            .into_iter()
-            .filter(|(w, _)| w.starts_with(&prefix) && w.chars().count() > prefix_len)
-            .collect();
-
-        // We sort by frequency (the second element of the tuple) to prioritize 
-        // the most commonly used words in the current buffer.
-        matches.sort_by_key(|b| std::cmp::Reverse(b.1));
-
-        self.autocomplete_options = matches.into_iter().map(|(w, _)| w).collect();
+        self.autocomplete_options = self.collect_autocomplete_matches(&prefix);
         self.autocomplete_idx = 0;
+        self.show_autocomplete_list = self.autocomplete_options.len() > 1;
+    }
+
+    pub fn cycle_autocomplete(&mut self, step: isize) {
+        if self.autocomplete_options.is_empty() {
+            return;
+        }
+        let total = self.autocomplete_options.len() as isize;
+        let next_idx = (self.autocomplete_idx as isize + step).rem_euclid(total);
+        self.autocomplete_idx = next_idx as usize;
     }
 
     pub fn get_current_word_prefix(&self) -> String {
@@ -81,5 +81,51 @@ mod tests {
 
         assert!(buffer.autocomplete_options.is_empty());
         assert_eq!(buffer.autocomplete_idx, 0);
+    }
+
+    #[test]
+    fn test_autocomplete_multiple_options_and_cycling() {
+        let mut buffer = EditorBuffer::new();
+        buffer.insert_text("username user_id user_role\nus");
+        buffer.cursor_row = 1;
+        buffer.cursor_col = 2;
+
+        buffer.update_autocomplete();
+
+        assert_eq!(buffer.autocomplete_options.len(), 3);
+        assert!(buffer.show_autocomplete_list);
+        assert_eq!(buffer.autocomplete_idx, 0);
+
+        // Cycle forward
+        buffer.cycle_autocomplete(1);
+        assert_eq!(buffer.autocomplete_idx, 1);
+
+        // Cycle wrap around
+        buffer.cycle_autocomplete(2);
+        assert_eq!(buffer.autocomplete_idx, 0);
+
+        // Cycle backward
+        buffer.cycle_autocomplete(-1);
+        assert_eq!(buffer.autocomplete_idx, 2);
+
+        // Accept selected option
+        let selected = buffer.autocomplete_options[buffer.autocomplete_idx].clone();
+        buffer.accept_autocomplete();
+        assert!(!buffer.show_autocomplete_list);
+        assert!(buffer.autocomplete_options.is_empty());
+        assert_eq!(buffer.line_text(1), selected);
+    }
+
+    #[test]
+    fn test_autocomplete_single_option_does_not_show_list() {
+        let mut buffer = EditorBuffer::new();
+        buffer.insert_text("something_unique\nso");
+        buffer.cursor_row = 1;
+        buffer.cursor_col = 2;
+
+        buffer.update_autocomplete();
+
+        assert_eq!(buffer.autocomplete_options.len(), 1);
+        assert!(!buffer.show_autocomplete_list);
     }
 }

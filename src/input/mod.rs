@@ -1206,6 +1206,45 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
         return;
     }
 
+    if app.buffers[current_idx].show_autocomplete_list
+        && app.buffers[current_idx].autocomplete_options.len() > 1
+    {
+        match (key.code, key.modifiers) {
+            (KeyCode::Down, KeyModifiers::NONE) => {
+                app.buffers[current_idx].cycle_autocomplete(1);
+                return;
+            }
+            (KeyCode::Up, KeyModifiers::NONE) => {
+                app.buffers[current_idx].cycle_autocomplete(-1);
+                return;
+            }
+            (KeyCode::BackTab, _) => {
+                app.buffers[current_idx].cycle_autocomplete(-1);
+                return;
+            }
+            (KeyCode::Tab, m) if m.contains(KeyModifiers::SHIFT) => {
+                app.buffers[current_idx].cycle_autocomplete(-1);
+                return;
+            }
+            (KeyCode::Tab, _) | (KeyCode::Enter, _) if !app.buffers[current_idx].is_read_only => {
+                app.buffers[current_idx].accept_autocomplete();
+                return;
+            }
+            (KeyCode::Esc, _) => {
+                let buf = &mut app.buffers[current_idx];
+                buf.show_autocomplete_list = false;
+                buf.autocomplete_options.clear();
+                return;
+            }
+            (KeyCode::Left, _) | (KeyCode::Right, _) => {
+                let buf = &mut app.buffers[current_idx];
+                buf.show_autocomplete_list = false;
+                buf.autocomplete_options.clear();
+            }
+            _ => {}
+        }
+    }
+
     match (key.code, key.modifiers) {
         (KeyCode::Esc, _) if app.buffers[current_idx].show_autocomplete_list => {
             app.buffers[current_idx].show_autocomplete_list = false;
@@ -2049,5 +2088,62 @@ mod tests {
             key_mods(KeyCode::BackTab, KeyModifiers::SHIFT),
         );
         assert_eq!(app.focus, Focus::Editor);
+    }
+
+    #[test]
+    fn autocomplete_popup_navigation_and_accept() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        let mut buffer = crate::buffer::EditorBuffer::new();
+        buffer.insert_text("username user_id user_role\n");
+        app.current_buffer_idx = app.push_buffer(buffer);
+
+        // Type 'u' then 's'
+        super::handle_editor_input(&mut app, key(KeyCode::Char('u')));
+        super::handle_editor_input(&mut app, key(KeyCode::Char('s')));
+
+        let buf = &app.buffers[app.current_buffer_idx];
+        assert_eq!(buf.autocomplete_options.len(), 3);
+        assert!(buf.show_autocomplete_list);
+        assert_eq!(buf.autocomplete_idx, 0);
+
+        // Down arrow moves to next option
+        super::handle_editor_input(&mut app, key(KeyCode::Down));
+        assert_eq!(app.buffers[app.current_buffer_idx].autocomplete_idx, 1);
+
+        // Shift+Tab moves back
+        super::handle_editor_input(&mut app, key_mods(KeyCode::BackTab, KeyModifiers::SHIFT));
+        assert_eq!(app.buffers[app.current_buffer_idx].autocomplete_idx, 0);
+
+        // Tab accepts
+        let selected = app.buffers[app.current_buffer_idx].autocomplete_options
+            [app.buffers[app.current_buffer_idx].autocomplete_idx]
+            .clone();
+        super::handle_editor_input(&mut app, key(KeyCode::Tab));
+        let buf = &app.buffers[app.current_buffer_idx];
+        assert!(!buf.show_autocomplete_list);
+        assert!(buf.autocomplete_options.is_empty());
+        assert_eq!(buf.line_text(1), selected);
+    }
+
+    #[test]
+    fn autocomplete_popup_esc_cancels() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        let mut buffer = crate::buffer::EditorBuffer::new();
+        buffer.insert_text("username user_id user_role\n");
+        app.current_buffer_idx = app.push_buffer(buffer);
+
+        super::handle_editor_input(&mut app, key(KeyCode::Char('u')));
+        super::handle_editor_input(&mut app, key(KeyCode::Char('s')));
+
+        assert!(app.buffers[app.current_buffer_idx].show_autocomplete_list);
+
+        // Esc closes popup
+        super::handle_editor_input(&mut app, key(KeyCode::Esc));
+        let buf = &app.buffers[app.current_buffer_idx];
+        assert!(!buf.show_autocomplete_list);
+        assert!(buf.autocomplete_options.is_empty());
+        assert_eq!(buf.line_text(1), "us");
     }
 }

@@ -434,11 +434,7 @@ fn draw_explorer_search_bar(f: &mut Frame, app: &App, area: Rect, colors: &UICol
         return;
     }
     let is_focused = app.focus == Focus::Explorer;
-    let border_color = if is_focused {
-        colors.accent
-    } else {
-        colors.surface
-    };
+    let border_color = colors.accent;
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -452,11 +448,7 @@ fn draw_explorer_search_bar(f: &mut Frame, app: &App, area: Rect, colors: &UICol
     }
 
     let icon = "󰍉 ";
-    let icon_color = if is_focused {
-        colors.accent
-    } else {
-        colors.surface
-    };
+    let icon_color = colors.accent;
     let icon_span = Span::styled(icon, Style::default().fg(icon_color));
     let icon_width = UnicodeWidthStr::width(icon);
 
@@ -487,7 +479,7 @@ fn draw_explorer_search_bar(f: &mut Frame, app: &App, area: Rect, colors: &UICol
     let mut spans = vec![icon_span];
     if query.is_empty() {
         if !is_focused && avail_width >= 9 {
-            spans.push(Span::styled("Search...", Style::default().fg(colors.surface)));
+            spans.push(Span::styled("Search...", Style::default().fg(colors.fg)));
         }
     } else {
         let sel_range = app.explorer.search_input.selection_range();
@@ -583,15 +575,6 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     }
 
     // Row 0: Explorer title with match counter when searching.
-    let title = if app.explorer.is_searching() {
-        format!(
-            " {} ({})",
-            app.i18n.t("explorer"),
-            app.explorer.search_results.len()
-        )
-    } else {
-        format!(" {}", app.i18n.t("explorer"))
-    };
     let title_style = if app.focus == Focus::Explorer {
         Style::default()
             .fg(colors.accent)
@@ -601,9 +584,25 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             .fg(colors.fg)
             .add_modifier(Modifier::BOLD)
     };
+    let title_spans = if app.explorer.is_searching() {
+        vec![
+            Span::styled(format!(" {}", app.i18n.t("explorer")), title_style),
+            Span::styled(
+                format!(" ({})", app.explorer.search_results.len()),
+                Style::default()
+                    .fg(colors.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]
+    } else {
+        vec![Span::styled(
+            format!(" {}", app.i18n.t("explorer")),
+            title_style,
+        )]
+    };
     let title_area = Rect::new(inner.x, inner.y, inner.width, 1);
     f.render_widget(
-        Paragraph::new(Line::from(vec![Span::styled(title, title_style)])).bg(colors.bg),
+        Paragraph::new(Line::from(title_spans)).bg(colors.bg),
         title_area,
     );
 
@@ -1195,7 +1194,115 @@ fn draw_editor(
         if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
             f.set_cursor_position((cursor_x, cursor_y));
         }
+
+        if buffer.show_autocomplete_list && buffer.autocomplete_options.len() > 1 {
+            draw_autocomplete_popup(f, buffer, area, colors, cursor_x, cursor_y);
+        }
     }
+}
+
+fn draw_autocomplete_popup(
+    f: &mut Frame,
+    buffer: &EditorBuffer,
+    area: Rect,
+    colors: &UIColors,
+    cursor_x: u16,
+    cursor_y: u16,
+) {
+    if buffer.autocomplete_options.len() <= 1 {
+        return;
+    }
+
+    let prefix = buffer.get_current_word_prefix();
+    let prefix_len = UnicodeWidthStr::width(prefix.as_str()) as u16;
+
+    let max_visible = 5;
+    let total = buffer.autocomplete_options.len();
+    let visible_count = total.min(max_visible);
+
+    let max_word_len = buffer
+        .autocomplete_options
+        .iter()
+        .map(|w| UnicodeWidthStr::width(w.as_str()))
+        .max()
+        .unwrap_or(8);
+
+    let popup_width = ((max_word_len + 6) as u16).max(14).min(area.width.saturating_sub(2));
+    let popup_height = (visible_count as u16) + 2;
+
+    let ideal_x = cursor_x.saturating_sub(prefix_len);
+    let popup_x = if ideal_x + popup_width > area.x + area.width {
+        (area.x + area.width).saturating_sub(popup_width)
+    } else {
+        ideal_x.max(area.x)
+    };
+
+    let popup_y = if cursor_y + 1 + popup_height <= area.y + area.height {
+        cursor_y + 1
+    } else {
+        cursor_y.saturating_sub(popup_height)
+    };
+
+    let popup_rect = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+    f.render_widget(Clear, popup_rect);
+
+    let buf = f.buffer_mut();
+    for y in popup_rect.top()..popup_rect.bottom() {
+        for x in popup_rect.left()..popup_rect.right() {
+            buf[(x, y)].set_char(' ').set_bg(colors.bg).set_fg(colors.fg);
+        }
+    }
+
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(colors.accent).bg(colors.bg))
+        .style(Style::default().bg(colors.bg));
+
+    if total > max_visible {
+        block = block.title_bottom(
+            Line::from(format!(" ({}/{}) ", buffer.autocomplete_idx + 1, total))
+                .alignment(Alignment::Right)
+                .style(Style::default().fg(colors.accent).bg(colors.bg)),
+        );
+    }
+
+    let inner = block.inner(popup_rect);
+    f.render_widget(block, popup_rect);
+
+    let window_start = if buffer.autocomplete_idx >= max_visible {
+        (buffer.autocomplete_idx + 1).saturating_sub(max_visible)
+    } else {
+        0
+    };
+    let window_end = (window_start + max_visible).min(total);
+
+    let mut lines = Vec::new();
+    let inner_width = inner.width as usize;
+    for idx in window_start..window_end {
+        let opt = &buffer.autocomplete_options[idx];
+        let is_selected = idx == buffer.autocomplete_idx;
+
+        let marker = if is_selected { "▸ " } else { "  " };
+        let style = if is_selected {
+            Style::default()
+                .fg(colors.accent)
+                .bg(colors.sel)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(colors.fg).bg(colors.bg)
+        };
+
+        let raw_text = format!("{}{}", marker, opt);
+        let raw_width = UnicodeWidthStr::width(raw_text.as_str());
+        let pad_len = inner_width.saturating_sub(raw_width);
+        let line_text = format!("{}{}", raw_text, " ".repeat(pad_len));
+
+        lines.push(Line::from(Span::styled(line_text, style)));
+    }
+
+    f.render_widget(Paragraph::new(lines).bg(colors.bg), inner);
 }
 
 /// Floating notification toasts stacked in the configured corner.
@@ -2214,6 +2321,40 @@ mod explorer_search_render_tests {
         let row3 = row_text(&buf, 3, width);
         assert!(row3.contains('╰'), "got: {row3}");
         assert!(row3.contains('╯'), "got: {row3}");
+    }
+
+    #[test]
+    fn search_bar_and_match_counter_maintain_accent_color_when_unfocused() {
+        let mut app = App::new(&[]);
+        app.focus = crate::app::Focus::Editor;
+        app.explorer.items.push(crate::explorer::FileItem {
+            path: std::path::PathBuf::from("/root/alpha.txt"),
+            is_dir: false,
+            name: "alpha.txt".to_string(),
+            depth: 0,
+            expanded: false,
+        });
+        app.explorer.search_corpus = vec![(std::path::PathBuf::from("/root/alpha.txt"), false)];
+        app.explorer.search_input.set_text("alp".to_string());
+        app.explorer.update_search_results(true);
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let colors = get_colors(&app);
+        terminal
+            .draw(|f| {
+                draw_explorer(f, &app, f.area(), &colors);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+
+        let row0_text = row_text(&buf, 0, 40);
+        let paren_col = row0_text.find('(').expect("should have ( in row 0");
+        assert_eq!(buf[(paren_col as u16, 0)].fg, colors.accent);
+
+        let row1_text = row_text(&buf, 1, 40);
+        let corner_col = row1_text.find('╭').expect("should have ╭ in row 1");
+        assert_eq!(buf[(corner_col as u16, 1)].fg, colors.accent);
     }
 }
 
