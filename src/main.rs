@@ -597,6 +597,8 @@ fn main() -> anyhow::Result<()> {
         EnableMouseCapture,
         EnableBracketedPaste
     )?;
+    let _ = std::io::Write::write_all(&mut stdout, b"\x1b[?1003h");
+    let _ = std::io::Write::flush(&mut stdout);
     // Enable advanced keyboard reporting to distinguish between keys like Esc/Alt+key
     // and to receive release events which are crucial for certain key combos.
     let _ = execute!(
@@ -642,6 +644,11 @@ fn main() -> anyhow::Result<()> {
             app.needs_redraw = true;
         }
 
+        // Keep explorer marquee scrolling when the selected item name exceeds the sidebar width.
+        if app.show_explorer && app.explorer.has_active_marquee.get() && tick_counter.is_multiple_of(16) {
+            app.needs_redraw = true;
+        }
+
         if app.should_quit {
             break;
         }
@@ -649,6 +656,8 @@ fn main() -> anyhow::Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
+    let _ = std::io::Write::write_all(terminal.backend_mut(), b"\x1b[?1003l");
+    let _ = std::io::Write::flush(terminal.backend_mut());
     let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
     execute!(
         terminal.backend_mut(),

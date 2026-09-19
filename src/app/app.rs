@@ -102,6 +102,13 @@ pub struct App {
     pub saved_buffer_idx: usize,
     pub file_mtimes: HashMap<PathBuf, SystemTime>,
     pub last_external_check: Instant,
+    pub mouse_pos: Option<(u16, u16)>,
+    pub tab_hitboxes: Vec<crate::app::types::TabHitbox>,
+    pub modal_button_hitboxes: Vec<crate::app::types::ModalButtonHitbox>,
+    pub modal_list_area: Option<Rect>,
+    pub modal_list_start_idx: usize,
+    pub last_explorer_click_item: Option<usize>,
+    pub last_explorer_click_time: std::time::Instant,
 }
 
 impl App {
@@ -280,6 +287,13 @@ impl App {
             saved_buffer_idx: 0,
             file_mtimes: HashMap::new(),
             last_external_check: Instant::now(),
+            mouse_pos: None,
+            tab_hitboxes: Vec::new(),
+            modal_button_hitboxes: Vec::new(),
+            modal_list_area: None,
+            modal_list_start_idx: 0,
+            last_explorer_click_item: None,
+            last_explorer_click_time: std::time::Instant::now(),
         };
 
         let is_huge_system_dir = initial_root == Path::new("/")
@@ -655,6 +669,8 @@ impl App {
             search_selected: 0,
             search_scroll: 0,
             search_hscroll: std::cell::Cell::new(0),
+            marquee_state: std::cell::RefCell::new((None, std::time::Instant::now())),
+            has_active_marquee: std::cell::Cell::new(false),
             search_corpus: Vec::new(),
         };
 

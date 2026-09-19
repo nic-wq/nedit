@@ -37,3 +37,32 @@ pub enum NotificationType {
     Error,
     Info,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TabHitbox {
+    pub buffer_idx: usize,
+    pub tab_start_x: u16,
+    pub tab_end_x: u16,
+    pub close_start_x: Option<u16>,
+    pub close_end_x: Option<u16>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModalAction {
+    ConfirmDelete,
+    Cancel,
+    SaveUnsaved,
+    DiscardUnsaved,
+    ReloadExternal,
+    KeepExternal,
+    ConfirmInput,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModalButtonHitbox {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+    pub action: ModalAction,
+}

@@ -2,7 +2,7 @@ use crossterm::event::{
     self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
 
-use crate::app::{App, Focus};
+use crate::app::{App, Focus, ModalAction};
 
 pub fn handle_events(app: &mut App) -> anyhow::Result<()> {
     // We use a short poll duration (16ms ~ 60fps) to keep the UI responsive
@@ -103,39 +103,569 @@ fn is_editor_left_drag(app: &App, mouse: MouseEvent) -> bool {
             .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
 }
 
-fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
-    match mouse.kind {
-        MouseEventKind::ScrollUp
-            if app
-                .editor_area
-                .contains(ratatui::layout::Position::new(mouse.column, mouse.row)) =>
+pub(crate) fn cancel_modal(app: &mut App) {
+    if app.fuzzy_mode == crate::app::FuzzyMode::ExternalChange {
+        if let Some(idx) = app.pending_buffer_idx {
+            if let Some(path) = app.buffers.get(idx).and_then(|b| b.path.clone()) {
+                app.record_file_mtime(&path);
+            }
+        }
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
+        app.current_theme = app.original_theme.clone();
+    }
+    app.is_fuzzy = false;
+    app.clear_fuzzy_query();
+    app.pending_path = None;
+    app.move_dir = None;
+    app.pending_action = None;
+    app.pending_buffer_idx = None;
+    app.clear_notification();
+    app.needs_redraw = true;
+}
+
+pub(crate) fn execute_delete_confirm(app: &mut App) {
+    if let Some(path) = app.pending_path.take() {
+        let result = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        match result {
+            Ok(()) => {
+                app.close_buffers_for_path(&path);
+                app.refresh_explorer();
+                app.show_notification(
+                    format!("Deleted {}", path.display()),
+                    crate::app::NotificationType::Info,
+                );
+                app.is_fuzzy = false;
+            }
+            Err(err) => {
+                app.pending_path = Some(path);
+                app.show_notification(
+                    format!("Error deleting file: {}", err),
+                    crate::app::NotificationType::Error,
+                );
+            }
+        }
+    }
+    app.needs_redraw = true;
+}
+
+pub(crate) fn execute_save_unsaved(app: &mut App) {
+    if let Some(idx) = app.pending_buffer_idx {
+        let is_script = app.live_script_mode && Some(idx) == app.live_script_buffer_idx;
+        if is_script {
+            app.show_notification(
+                "Live scripts cannot be saved".to_string(),
+                crate::app::NotificationType::Info,
+            );
+            return;
+        }
+
+        if idx < app.buffers.len() {
+            let has_path = app.buffers[idx].path.is_some();
+            if !has_path {
+                app.current_buffer_idx = idx;
+                app.fuzzy_mode = crate::app::FuzzyMode::SaveAs;
+                app.clear_fuzzy_query();
+                app.needs_redraw = true;
+                return;
+            } else {
+                let _ = app.buffers[idx].save();
+                if let Some(p) = app.buffers[idx].path.clone() {
+                    app.record_file_mtime(&p);
+                }
+            }
+        }
+    }
+    handle_unsaved_changes_completion(app);
+    app.needs_redraw = true;
+}
+
+pub(crate) fn execute_discard_unsaved(app: &mut App) {
+    if let Some(idx) = app.pending_buffer_idx {
+        if idx < app.buffers.len() {
+            app.buffers[idx].modified = false;
+        }
+        if app.live_script_mode
+            && Some(idx) == app.live_script_buffer_idx
+            && app.pending_action != Some(crate::app::types::PendingAction::CloseTab)
         {
+            app.live_script_mode = false;
+        }
+    }
+    handle_unsaved_changes_completion(app);
+    app.needs_redraw = true;
+}
+
+pub(crate) fn execute_reload_external(app: &mut App) {
+    if let Some(idx) = app.pending_buffer_idx {
+        app.reload_buffer_from_disk(idx);
+    }
+    app.is_fuzzy = false;
+    app.clear_fuzzy_query();
+    app.pending_path = None;
+    app.pending_buffer_idx = None;
+    app.needs_redraw = true;
+}
+
+pub(crate) fn execute_keep_external(app: &mut App) {
+    if let Some(idx) = app.pending_buffer_idx {
+        if let Some(path) = app.buffers.get(idx).and_then(|b| b.path.clone()) {
+            app.record_file_mtime(&path);
+        }
+    }
+    app.is_fuzzy = false;
+    app.clear_fuzzy_query();
+    app.pending_path = None;
+    app.pending_buffer_idx = None;
+    app.needs_redraw = true;
+}
+
+pub(crate) fn execute_modal_action(app: &mut App, action: ModalAction) {
+    match action {
+        ModalAction::ConfirmDelete => execute_delete_confirm(app),
+        ModalAction::Cancel => cancel_modal(app),
+        ModalAction::SaveUnsaved => execute_save_unsaved(app),
+        ModalAction::DiscardUnsaved => execute_discard_unsaved(app),
+        ModalAction::ReloadExternal => execute_reload_external(app),
+        ModalAction::KeepExternal => execute_keep_external(app),
+        ModalAction::ConfirmInput => execute_fuzzy_enter(app),
+    }
+}
+
+pub(crate) fn execute_fuzzy_enter(app: &mut App) {
+    if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges {
+        if let Some(idx) = app.pending_buffer_idx {
+            let is_script =
+                app.live_script_mode && Some(idx) == app.live_script_buffer_idx;
+            if is_script {
+                if idx < app.buffers.len() {
+                    app.buffers[idx].modified = false;
+                }
+                if app.pending_action
+                    != Some(crate::app::types::PendingAction::CloseTab)
+                {
+                    app.live_script_mode = false;
+                }
+                handle_unsaved_changes_completion(app);
+            }
+        }
+        app.needs_redraw = true;
+        return;
+    }
+    if app.fuzzy_mode == crate::app::FuzzyMode::DeleteConfirm {
+        execute_delete_confirm(app);
+        return;
+    }
+    if app.fuzzy_mode == crate::app::FuzzyMode::CommandPalette {
+        if let Some(cmd) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+            let keep_modal =
+                handle_command_palette_selection(app, cmd.to_string_lossy().as_ref());
+            if !keep_modal {
+                app.is_fuzzy = false;
+            }
+        }
+        app.needs_redraw = true;
+        return;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::FileOptions {
+        if let Some(choice) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+            let Some(item) = app.explorer.get_selected() else {
+                app.is_fuzzy = false;
+                app.needs_redraw = true;
+                return;
+            };
+            app.pending_path = Some(item.path.clone());
+            match choice.to_string_lossy().as_ref() {
+                "New File" => {
+                    app.fuzzy_mode = crate::app::FuzzyMode::Create;
+                    app.clear_fuzzy_query();
+                    app.pending_path = None;
+                }
+                "New Folder" => {
+                    app.fuzzy_mode = crate::app::FuzzyMode::Create;
+                    app.set_fuzzy_query("/".to_string());
+                    app.pending_path = None;
+                }
+                "Rename" => {
+                    app.fuzzy_mode = crate::app::FuzzyMode::Rename;
+                    app.set_fuzzy_query(item.name.clone());
+                }
+                "Move" => {
+                    app.fuzzy_mode = crate::app::FuzzyMode::Move;
+                    app.move_dir = item.path.parent().map(|p| p.to_path_buf());
+                    app.clear_fuzzy_query();
+                    app.update_fuzzy(true);
+                }
+                "Delete" => {
+                    app.fuzzy_mode = crate::app::FuzzyMode::DeleteConfirm;
+                    app.clear_fuzzy_query();
+                }
+                "Set as Root" => {
+                    app.set_explorer_root(item.path.clone());
+                    app.is_fuzzy = false;
+                }
+                _ => app.is_fuzzy = false,
+            }
+        }
+        app.needs_redraw = true;
+        return;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::Rename {
+        if let Some(old_path) = app.pending_path.take() {
+            let new_name = app.fuzzy_query.trim();
+            if new_name.is_empty() {
+                app.show_notification(
+                    "New name cannot be empty".to_string(),
+                    crate::app::NotificationType::Error,
+                );
+                app.pending_path = Some(old_path);
+                app.needs_redraw = true;
+                return;
+            }
+            if let Some(parent) = old_path.parent() {
+                let new_path = parent.join(new_name);
+                match std::fs::rename(&old_path, &new_path) {
+                    Ok(()) => {
+                        app.update_buffer_paths(&old_path, &new_path);
+                        app.refresh_explorer();
+                        app.show_notification(
+                            format!("Renamed to {}", new_path.display()),
+                            crate::app::NotificationType::Info,
+                        );
+                        app.is_fuzzy = false;
+                    }
+                    Err(err) => {
+                        app.pending_path = Some(old_path);
+                        app.show_notification(
+                            format!("Error renaming file: {}", err),
+                            crate::app::NotificationType::Error,
+                        );
+                    }
+                }
+            } else {
+                app.show_notification(
+                    "Cannot rename this item".to_string(),
+                    crate::app::NotificationType::Error,
+                );
+            }
+        }
+        app.needs_redraw = true;
+        return;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::Move {
+        if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+            if path == *".." {
+                if let Some(parent) = app
+                    .move_dir
+                    .as_ref()
+                    .and_then(|dir| dir.parent())
+                    .map(|p| p.to_path_buf())
+                {
+                    app.move_dir = Some(parent);
+                    app.update_fuzzy(true);
+                }
+            } else if path.is_dir() {
+                app.move_dir = Some(path);
+                app.update_fuzzy(true);
+            }
+        }
+        app.needs_redraw = true;
+        return;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::DocSelect {
+        if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx) {
+            let path_str = path.to_string_lossy().to_string();
+            let doc_type = if path_str.contains("lua") {
+                "lua"
+            } else if path_str.contains("binds") {
+                "binds"
+            } else {
+                "general"
+            };
+            app.open_doc(doc_type);
+        }
+        app.needs_redraw = true;
+        return;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::Create {
+        if !app.fuzzy_query.trim().is_empty() {
+            app.create_path_from_input(&app.fuzzy_query.clone());
+        }
+        app.is_fuzzy = false;
+        app.needs_redraw = true;
+        return;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::SaveAs {
+        if !app.fuzzy_query.is_empty() {
+            let filename = app.fuzzy_query.trim().to_string();
+            let path = app.resolve_input_path(&filename);
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
             if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                if buffer.is_loading {
+                buffer.path = Some(path.clone());
+                if let Err(err) = buffer.save() {
+                    app.show_notification(
+                        format!("Could not save file: {}", err),
+                        crate::app::NotificationType::Error,
+                    );
+                    app.needs_redraw = true;
                     return;
                 }
-                buffer.scroll_row = buffer.scroll_row.saturating_sub(3);
+                app.record_file_mtime(&path);
+            }
+            app.refresh_explorer();
+        }
+        if app.pending_action.is_some() {
+            handle_unsaved_changes_completion(app);
+        } else {
+            app.is_fuzzy = false;
+        }
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::Local {
+        if let Some((line_idx, _)) = app.fuzzy_lines.get(app.fuzzy_idx) {
+            if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                buffer.cursor_row = *line_idx;
+                buffer.move_to_line_start();
+                let height = app.editor_area.height as usize;
+                if buffer.cursor_row < buffer.scroll_row {
+                    buffer.scroll_row = buffer.cursor_row;
+                } else if buffer.cursor_row >= buffer.scroll_row + height {
+                    buffer.scroll_row =
+                        buffer.cursor_row.saturating_sub(height).saturating_add(1);
+                }
+            }
+        }
+        app.is_fuzzy = false;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::Content {
+        if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+            let prefer_home = app
+                .fuzzy_query
+                .trim()
+                .strip_prefix('@')
+                .map(|query| query.starts_with('~'))
+                .unwrap_or(false);
+            let path_text = app.format_search_dir_for_query(&path, prefer_home);
+            app.set_fuzzy_query(format!("@{}/", path_text.trim_end_matches('/')));
+            app.update_fuzzy(true);
+            app.needs_redraw = true;
+            return;
+        }
+        if let Some((path, line_idx, _)) = app.fuzzy_global_results.get(app.fuzzy_idx) {
+            let path = path.clone();
+            let line_idx = *line_idx;
+            app.open_file(path);
+            if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                buffer.cursor_row = line_idx;
+                buffer.move_to_line_start();
+                let height = app.editor_area.height as usize;
+                if buffer.cursor_row < buffer.scroll_row {
+                    buffer.scroll_row = buffer.cursor_row;
+                } else if buffer.cursor_row >= buffer.scroll_row + height {
+                    buffer.scroll_row =
+                        buffer.cursor_row.saturating_sub(height).saturating_add(1);
+                }
+            }
+        }
+        app.is_fuzzy = false;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::Files {
+        if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+            let is_scoped_dir_pick = path.is_dir()
+                && app
+                    .fuzzy_query
+                    .trim()
+                    .strip_prefix('@')
+                    .map(|query| !query.chars().any(char::is_whitespace))
+                    .unwrap_or(false);
+            if is_scoped_dir_pick {
+                let prefer_home = app
+                    .fuzzy_query
+                    .trim()
+                    .strip_prefix('@')
+                    .map(|query| query.starts_with('~'))
+                    .unwrap_or(false);
+                let path_text = app.format_search_dir_for_query(&path, prefer_home);
+                app.set_fuzzy_query(format!("@{}/", path_text.trim_end_matches('/')));
+                app.update_fuzzy(true);
+                app.needs_redraw = true;
+                return;
+            }
+            app.open_file(path);
+        }
+        app.is_fuzzy = false;
+    } else if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
+        if let Some(theme) = app.fuzzy_themes.get(app.fuzzy_idx) {
+            app.apply_theme(theme.clone());
+            app.save_current_theme();
+        }
+        app.is_fuzzy = false;
+    } else {
+        if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx) {
+            app.open_file(path.clone());
+        }
+        app.is_fuzzy = false;
+    }
+    app.needs_redraw = true;
+}
+
+fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::Moved => {
+            app.mouse_pos = Some((mouse.column, mouse.row));
+            app.needs_redraw = true;
+        }
+        MouseEventKind::ScrollUp => {
+            if app.is_fuzzy {
+                app.fuzzy_idx = app.fuzzy_idx.saturating_sub(1);
+                app.needs_redraw = true;
+            } else if app
+                .explorer_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                app.explorer.scroll_offset = app.explorer.scroll_offset.saturating_sub(1);
+                app.needs_redraw = true;
+            } else if app
+                .editor_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                    if !buffer.is_loading {
+                        buffer.scroll_row = buffer.scroll_row.saturating_sub(3);
+                        app.needs_redraw = true;
+                    }
+                }
             }
         }
         MouseEventKind::ScrollDown => {
-            if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                if buffer.is_loading {
-                    return;
+            if app.is_fuzzy {
+                let max = match app.fuzzy_mode {
+                    crate::app::FuzzyMode::Local => app.fuzzy_lines.len(),
+                    crate::app::FuzzyMode::Content => {
+                        if !app.fuzzy_results.is_empty() {
+                            app.fuzzy_results.len()
+                        } else {
+                            app.fuzzy_global_results.len()
+                        }
+                    }
+                    crate::app::FuzzyMode::Themes => app.fuzzy_themes.len(),
+                    crate::app::FuzzyMode::Files => {
+                        if !app.fuzzy_file_results.is_empty() {
+                            app.fuzzy_file_results.len()
+                        } else {
+                            app.fuzzy_results.len()
+                        }
+                    }
+                    _ => app.fuzzy_results.len(),
+                };
+                if app.fuzzy_idx + 1 < max {
+                    app.fuzzy_idx += 1;
                 }
-                buffer.scroll_row = buffer.scroll_row.saturating_add(3);
+                if app.fuzzy_idx + 5 >= max && max >= app.fuzzy_limit {
+                    app.load_more_fuzzy();
+                }
+                app.needs_redraw = true;
+            } else if app
+                .explorer_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                if app.explorer.scroll_offset + 1 < app.explorer.items.len() {
+                    app.explorer.scroll_offset += 1;
+                    app.needs_redraw = true;
+                }
+            } else if app
+                .editor_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                    if !buffer.is_loading {
+                        buffer.scroll_row = buffer.scroll_row.saturating_add(3);
+                        app.needs_redraw = true;
+                    }
+                }
             }
         }
         MouseEventKind::Down(event::MouseButton::Left) => {
-            // Toasts float above everything: their close button wins the click.
+            // 1. Toasts float above everything: their close button wins the click.
             if app.dismiss_toast_at(mouse.column, mouse.row) {
                 return;
             }
+
+            // 2. Modals capture all clicks when active
+            if app.is_fuzzy {
+                // Check modal buttons
+                for btn in app.modal_button_hitboxes.clone() {
+                    if mouse.column >= btn.x
+                        && mouse.column < btn.x + btn.width
+                        && mouse.row >= btn.y
+                        && mouse.row < btn.y + btn.height
+                    {
+                        execute_modal_action(app, btn.action);
+                        return;
+                    }
+                }
+
+                // Check modal list row click
+                if let Some(list_area) = app.modal_list_area {
+                    if mouse.column >= list_area.x
+                        && mouse.column < list_area.x + list_area.width
+                        && mouse.row >= list_area.y
+                        && mouse.row < list_area.y + list_area.height
+                    {
+                        let row_offset = (mouse.row - list_area.y) as usize;
+                        let target_idx = app.modal_list_start_idx + row_offset;
+                        let max = match app.fuzzy_mode {
+                            crate::app::FuzzyMode::Local => app.fuzzy_lines.len(),
+                            crate::app::FuzzyMode::Content => {
+                                if !app.fuzzy_results.is_empty() {
+                                    app.fuzzy_results.len()
+                                } else {
+                                    app.fuzzy_global_results.len()
+                                }
+                            }
+                            crate::app::FuzzyMode::Themes => app.fuzzy_themes.len(),
+                            crate::app::FuzzyMode::Files => {
+                                if !app.fuzzy_file_results.is_empty() {
+                                    app.fuzzy_file_results.len()
+                                } else {
+                                    app.fuzzy_results.len()
+                                }
+                            }
+                            _ => app.fuzzy_results.len(),
+                        };
+                        if target_idx < max {
+                            app.fuzzy_idx = target_idx;
+                            execute_fuzzy_enter(app);
+                            return;
+                        }
+                    }
+                }
+                return;
+            }
+
+            // 3. Tab bar clicks
+            for tab in app.tab_hitboxes.clone() {
+                if mouse.column >= tab.tab_start_x && mouse.column <= tab.tab_end_x {
+                    // Check if close button clicked
+                    if let (Some(cs), Some(ce)) = (tab.close_start_x, tab.close_end_x) {
+                        if mouse.column >= cs && mouse.column <= ce {
+                            app.close_buffer_by_index(tab.buffer_idx);
+                            app.needs_redraw = true;
+                            return;
+                        }
+                    }
+                    // Clicked tab body: switch buffer
+                    app.current_buffer_idx = tab.buffer_idx;
+                    if let Some(idx) = app.preview_buffer_idx {
+                        app.clear_preview(idx);
+                    }
+                    app.focus = Focus::Editor;
+                    app.needs_redraw = true;
+                    return;
+                }
+            }
+
+            // 4. Editor clicks
             if app
                 .editor_area
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
             {
                 app.focus = Focus::Editor;
-                // Limpar preview se clicou no editor
                 if let Some(idx) = app.preview_buffer_idx {
                     app.clear_preview(idx);
                 }
@@ -161,30 +691,75 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                     if is_double_click {
                         buffer.select_word();
                     }
+                    app.needs_redraw = true;
                 }
-            } else if app
+            }
+            // 5. Explorer clicks
+            else if app
                 .explorer_area
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
             {
                 app.focus = Focus::Explorer;
-                // Row 0 is the title; rows 1..=3 are the bordered search bar;
-                // row 4 and below map to items.
-                // Clicking the title or search bar only focuses (typing already goes there).
                 let rel_row = mouse.row.saturating_sub(app.explorer_area.y) as usize;
                 let Some(item_row) = rel_row.checked_sub(4) else {
+                    app.needs_redraw = true;
                     return;
                 };
-                if app.explorer.is_searching() {
-                    let target_idx = app.explorer.search_scroll + item_row;
-                    if target_idx < app.explorer.search_results.len() {
-                        app.explorer.search_selected = target_idx;
-                    }
+
+                let target_idx = if app.explorer.is_searching() {
+                    app.explorer.search_scroll + item_row
                 } else {
-                    let target_idx = app.explorer.scroll_offset + item_row;
-                    if target_idx < app.explorer.items.len() {
-                        app.explorer.selected_idx = target_idx;
+                    app.explorer.scroll_offset + item_row
+                };
+
+                let item_count = if app.explorer.is_searching() {
+                    app.explorer.search_results.len()
+                } else {
+                    app.explorer.items.len()
+                };
+
+                if target_idx < item_count {
+                    let (path, is_dir) = if app.explorer.is_searching() {
+                        (app.explorer.search_results[target_idx].path.clone(), app.explorer.search_results[target_idx].path.is_dir())
+                    } else {
+                        (app.explorer.items[target_idx].path.clone(), app.explorer.items[target_idx].is_dir)
+                    };
+
+                    let now = std::time::Instant::now();
+                    let is_double_click = app.last_explorer_click_item == Some(target_idx)
+                        && app.last_explorer_click_time.elapsed().as_millis() < 400;
+
+                    if is_double_click {
+                        app.last_explorer_click_item = None;
+                        if is_dir {
+                            if app.explorer.is_searching() {
+                                app.explorer.clear_search();
+                            }
+                            if let Some(idx) = app.explorer.items.iter().position(|i| i.path == path) {
+                                app.explorer.selected_idx = idx;
+                                app.explorer.toggle_expand();
+                                app.refresh_explorer();
+                            } else {
+                                app.refresh_explorer();
+                            }
+                        } else {
+                            if app.explorer.is_searching() {
+                                app.explorer.clear_search();
+                            }
+                            app.open_file(path);
+                            app.focus = Focus::Editor;
+                        }
+                    } else {
+                        app.last_explorer_click_item = Some(target_idx);
+                        app.last_explorer_click_time = now;
+                        if app.explorer.is_searching() {
+                            app.explorer.search_selected = target_idx;
+                        } else {
+                            app.explorer.selected_idx = target_idx;
+                        }
+                        app.update_preview_from_explorer_selection();
                     }
-                    app.update_preview_from_explorer_selection();
+                    app.needs_redraw = true;
                 }
             }
         }
@@ -207,6 +782,7 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                     buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
                 let row = target_row.min(buffer.content.len_lines().saturating_sub(1));
                 buffer.place_cursor(row, target_col);
+                app.needs_redraw = true;
             }
         }
         _ => {}
@@ -498,117 +1074,37 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             | crate::app::FuzzyMode::Create
             | crate::app::FuzzyMode::UnsavedChanges
             | crate::app::FuzzyMode::ExternalChange
+            | crate::app::FuzzyMode::DeleteConfirm
     ) {
         match key.code {
             KeyCode::Esc => {
-                if app.fuzzy_mode == crate::app::FuzzyMode::ExternalChange {
-                    // Keep local — update mtime to new file time to avoid re-popup.
-                    if let Some(idx) = app.pending_buffer_idx {
-                        if let Some(path) = app.buffers.get(idx).and_then(|b| b.path.clone()) {
-                            app.record_file_mtime(&path);
-                        }
-                    }
-                }
-                app.is_fuzzy = false;
-                app.clear_fuzzy_query();
-                app.pending_path = None;
-                app.move_dir = None;
-                app.pending_action = None;
-                app.pending_buffer_idx = None;
-            }
-            KeyCode::Enter if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges => {
-                if let Some(idx) = app.pending_buffer_idx {
-                    let is_script =
-                        app.live_script_mode && Some(idx) == app.live_script_buffer_idx;
-                    if is_script {
-                        if idx < app.buffers.len() {
-                            app.buffers[idx].modified = false;
-                        }
-                        if app.pending_action
-                            != Some(crate::app::types::PendingAction::CloseTab)
-                        {
-                            app.live_script_mode = false;
-                        }
-                        handle_unsaved_changes_completion(app);
-                    }
-                }
+                cancel_modal(app);
+                return;
             }
             KeyCode::Char('s') | KeyCode::Char('S')
                 if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges =>
             {
-                if let Some(idx) = app.pending_buffer_idx {
-                    let is_script =
-                        app.live_script_mode && Some(idx) == app.live_script_buffer_idx;
-                    if is_script {
-                        app.show_notification(
-                            "Live scripts cannot be saved".to_string(),
-                            crate::app::NotificationType::Info,
-                        );
-                        return;
-                    }
-
-                    if idx < app.buffers.len() {
-                        let has_path = app.buffers[idx].path.is_some();
-                        if !has_path {
-                            // If it has no path, we need to ask for a path first
-                            app.current_buffer_idx = idx;
-                            app.fuzzy_mode = crate::app::FuzzyMode::SaveAs;
-                            app.clear_fuzzy_query();
-                            return;
-                        } else {
-                            let _ = app.buffers[idx].save();
-                            if let Some(p) = app.buffers[idx].path.clone() {
-                                app.record_file_mtime(&p);
-                            }
-                        }
-                    }
-                }
-                handle_unsaved_changes_completion(app);
+                execute_save_unsaved(app);
+                return;
             }
             KeyCode::Char('d') | KeyCode::Char('D')
                 if app.fuzzy_mode == crate::app::FuzzyMode::UnsavedChanges =>
             {
-                if let Some(idx) = app.pending_buffer_idx {
-                    if idx < app.buffers.len() {
-                        app.buffers[idx].modified = false;
-                    }
-                    if app.live_script_mode
-                        && Some(idx) == app.live_script_buffer_idx
-                        && app.pending_action
-                            != Some(crate::app::types::PendingAction::CloseTab)
-                    {
-                        app.live_script_mode = false;
-                    }
-                }
-                handle_unsaved_changes_completion(app);
+                execute_discard_unsaved(app);
+                return;
             }
             KeyCode::Char('r') | KeyCode::Char('R')
                 if app.fuzzy_mode == crate::app::FuzzyMode::ExternalChange =>
             {
-                if let Some(idx) = app.pending_buffer_idx {
-                    app.reload_buffer_from_disk(idx);
-                }
-                app.is_fuzzy = false;
-                app.clear_fuzzy_query();
-                app.pending_path = None;
-                app.pending_buffer_idx = None;
+                execute_reload_external(app);
+                return;
             }
             KeyCode::Char('k') | KeyCode::Char('K')
                 if app.fuzzy_mode == crate::app::FuzzyMode::ExternalChange =>
             {
-                // Keep local version — just update mtime.
-                if let Some(idx) = app.pending_buffer_idx {
-                    if let Some(path) = app.buffers.get(idx).and_then(|b| b.path.clone()) {
-                        app.record_file_mtime(&path);
-                    }
-                }
-                app.is_fuzzy = false;
-                app.clear_fuzzy_query();
-                app.pending_path = None;
-                app.pending_buffer_idx = None;
+                execute_keep_external(app);
+                return;
             }
-            // NOTE: text input (Char/Backspace/Delete/arrows/...) for the
-            // editable modes is handled by handle_fuzzy_text_keys above.
             _ => {}
         }
         if key.code != KeyCode::Enter {
@@ -618,13 +1114,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
 
     match key.code {
         KeyCode::Esc => {
-            if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
-                app.current_theme = app.original_theme.clone();
-            }
-            app.pending_path = None;
-            app.move_dir = None;
-            app.clear_notification();
-            app.is_fuzzy = false;
+            cancel_modal(app);
         }
         KeyCode::Tab if app.fuzzy_mode == crate::app::FuzzyMode::Move => {
             if let (Some(old_path), Some(new_dir)) = (app.pending_path.take(), app.move_dir.take())
@@ -693,263 +1183,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Enter => {
-            if app.fuzzy_mode == crate::app::FuzzyMode::CommandPalette {
-                if let Some(cmd) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    let keep_modal =
-                        handle_command_palette_selection(app, cmd.to_string_lossy().as_ref());
-                    if !keep_modal {
-                        app.is_fuzzy = false;
-                    }
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::FileOptions {
-                if let Some(choice) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    let Some(item) = app.explorer.get_selected() else {
-                        app.is_fuzzy = false;
-                        return;
-                    };
-                    app.pending_path = Some(item.path.clone());
-                    match choice.to_string_lossy().as_ref() {
-                        "New File" => {
-                            app.fuzzy_mode = crate::app::FuzzyMode::Create;
-                            app.clear_fuzzy_query();
-                            app.pending_path = None;
-                        }
-                        "New Folder" => {
-                            // Prefill trailing slash so Enter creates a directory.
-                            app.fuzzy_mode = crate::app::FuzzyMode::Create;
-                            app.set_fuzzy_query("/".to_string());
-                            app.pending_path = None;
-                        }
-                        "Rename" => {
-                            app.fuzzy_mode = crate::app::FuzzyMode::Rename;
-                            app.set_fuzzy_query(item.name.clone());
-                        }
-                        "Move" => {
-                            app.fuzzy_mode = crate::app::FuzzyMode::Move;
-                            app.move_dir = item.path.parent().map(|p| p.to_path_buf());
-                            app.clear_fuzzy_query();
-                            app.update_fuzzy(true);
-                        }
-                        "Delete" => {
-                            app.fuzzy_mode = crate::app::FuzzyMode::DeleteConfirm;
-                            app.clear_fuzzy_query();
-                        }
-                        "Set as Root" => {
-                            app.set_explorer_root(item.path.clone());
-                            app.is_fuzzy = false;
-                        }
-                        _ => app.is_fuzzy = false,
-                    }
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::Rename {
-                if let Some(old_path) = app.pending_path.take() {
-                    let new_name = app.fuzzy_query.trim();
-                    if new_name.is_empty() {
-                        app.show_notification(
-                            "New name cannot be empty".to_string(),
-                            crate::app::NotificationType::Error,
-                        );
-                        app.pending_path = Some(old_path);
-                        return;
-                    }
-                    if let Some(parent) = old_path.parent() {
-                        let new_path = parent.join(new_name);
-                        match std::fs::rename(&old_path, &new_path) {
-                            Ok(()) => {
-                                app.update_buffer_paths(&old_path, &new_path);
-                                app.refresh_explorer();
-                                app.show_notification(
-                                    format!("Renamed to {}", new_path.display()),
-                                    crate::app::NotificationType::Info,
-                                );
-                                app.is_fuzzy = false;
-                            }
-                            Err(err) => {
-                                app.pending_path = Some(old_path);
-                                app.show_notification(
-                                    format!("Error renaming file: {}", err),
-                                    crate::app::NotificationType::Error,
-                                );
-                            }
-                        }
-                    } else {
-                        app.show_notification(
-                            "Cannot rename this item".to_string(),
-                            crate::app::NotificationType::Error,
-                        );
-                    }
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::DeleteConfirm {
-                if let Some(path) = app.pending_path.take() {
-                    let result = if path.is_dir() {
-                        std::fs::remove_dir_all(&path)
-                    } else {
-                        std::fs::remove_file(&path)
-                    };
-                    match result {
-                        Ok(()) => {
-                            app.close_buffers_for_path(&path);
-                            app.refresh_explorer();
-                            app.show_notification(
-                                format!("Deleted {}", path.display()),
-                                crate::app::NotificationType::Info,
-                            );
-                            app.is_fuzzy = false;
-                        }
-                        Err(err) => {
-                            app.pending_path = Some(path);
-                            app.show_notification(
-                                format!("Error deleting file: {}", err),
-                                crate::app::NotificationType::Error,
-                            );
-                        }
-                    }
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::Move {
-                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    if path == *".." {
-                        if let Some(parent) = app
-                            .move_dir
-                            .as_ref()
-                            .and_then(|dir| dir.parent())
-                            .map(|p| p.to_path_buf())
-                        {
-                            app.move_dir = Some(parent);
-                            app.update_fuzzy(true);
-                        }
-                    } else if path.is_dir() {
-                        app.move_dir = Some(path);
-                        app.update_fuzzy(true);
-                    }
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::DocSelect {
-                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx) {
-                    let path_str = path.to_string_lossy().to_string();
-                    let doc_type = if path_str.contains("lua") {
-                        "lua"
-                    } else if path_str.contains("binds") {
-                        "binds"
-                    } else {
-                        "general"
-                    };
-                    app.open_doc(doc_type);
-                }
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::Create {
-                if !app.fuzzy_query.trim().is_empty() {
-                    app.create_path_from_input(&app.fuzzy_query.clone());
-                }
-                app.is_fuzzy = false;
-                return;
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::SaveAs {
-                if !app.fuzzy_query.is_empty() {
-                    let filename = app.fuzzy_query.trim().to_string();
-                    // Live script panes save like any other buffer: wherever
-                    // the user points, with no forced scripts directory.
-                    let path = app.resolve_input_path(&filename);
-                    if let Some(parent) = path.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                        buffer.path = Some(path.clone());
-                        if let Err(err) = buffer.save() {
-                            app.show_notification(
-                                format!("Could not save file: {}", err),
-                                crate::app::NotificationType::Error,
-                            );
-                            return;
-                        }
-                        app.record_file_mtime(&path);
-                    }
-                    app.refresh_explorer();
-                }
-                if app.pending_action.is_some() {
-                    handle_unsaved_changes_completion(app);
-                } else {
-                    app.is_fuzzy = false;
-                }
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::Local {
-                if let Some((line_idx, _)) = app.fuzzy_lines.get(app.fuzzy_idx) {
-                    if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                        buffer.cursor_row = *line_idx;
-                        buffer.move_to_line_start();
-                        let height = app.editor_area.height as usize;
-                        if buffer.cursor_row < buffer.scroll_row {
-                            buffer.scroll_row = buffer.cursor_row;
-                        } else if buffer.cursor_row >= buffer.scroll_row + height {
-                            buffer.scroll_row =
-                                buffer.cursor_row.saturating_sub(height).saturating_add(1);
-                        }
-                    }
-                }
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::Content {
-                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    let prefer_home = app
-                        .fuzzy_query
-                        .trim()
-                        .strip_prefix('@')
-                        .map(|query| query.starts_with('~'))
-                        .unwrap_or(false);
-                    let path_text = app.format_search_dir_for_query(&path, prefer_home);
-                    app.set_fuzzy_query(format!("@{}/", path_text.trim_end_matches('/')));
-                    app.update_fuzzy(true);
-                    return;
-                }
-                if let Some((path, line_idx, _)) = app.fuzzy_global_results.get(app.fuzzy_idx) {
-                    let path = path.clone();
-                    let line_idx = *line_idx;
-                    app.open_file(path);
-                    if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                        buffer.cursor_row = line_idx;
-                        buffer.move_to_line_start();
-                        let height = app.editor_area.height as usize;
-                        if buffer.cursor_row < buffer.scroll_row {
-                            buffer.scroll_row = buffer.cursor_row;
-                        } else if buffer.cursor_row >= buffer.scroll_row + height {
-                            buffer.scroll_row =
-                                buffer.cursor_row.saturating_sub(height).saturating_add(1);
-                        }
-                    }
-                }
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::Files {
-                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                    let is_scoped_dir_pick = path.is_dir()
-                        && app
-                            .fuzzy_query
-                            .trim()
-                            .strip_prefix('@')
-                            .map(|query| !query.chars().any(char::is_whitespace))
-                            .unwrap_or(false);
-                    if is_scoped_dir_pick {
-                        let prefer_home = app
-                            .fuzzy_query
-                            .trim()
-                            .strip_prefix('@')
-                            .map(|query| query.starts_with('~'))
-                            .unwrap_or(false);
-                        let path_text = app.format_search_dir_for_query(&path, prefer_home);
-                        app.set_fuzzy_query(format!("@{}/", path_text.trim_end_matches('/')));
-                        app.update_fuzzy(true);
-                        return;
-                    }
-                    app.open_file(path);
-                }
-            } else if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
-                if let Some(theme) = app.fuzzy_themes.get(app.fuzzy_idx) {
-                    app.apply_theme(theme.clone());
-                    app.save_current_theme();
-                }
-            } else {
-                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx) {
-                    app.open_file(path.clone());
-                }
-            }
-            app.is_fuzzy = false;
+            execute_fuzzy_enter(app);
         }
         // Reachable for non-editable modes and for key combos with
         // modifiers that handle_fuzzy_text_keys leaves alone (e.g. Alt+char).
@@ -1508,8 +1742,8 @@ fn handle_run_live_script(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::{handle_fuzzy_input, handle_paste};
-    use crate::app::{App, Focus, FuzzyMode};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use crate::app::{App, Focus, FuzzyMode, ModalAction, ModalButtonHitbox};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -2145,5 +2379,144 @@ mod tests {
         assert!(!buf.show_autocomplete_list);
         assert!(buf.autocomplete_options.is_empty());
         assert_eq!(buf.line_text(1), "us");
+    }
+
+    #[test]
+    fn test_mouse_move_updates_mouse_pos_and_triggers_redraw() {
+        let mut app = App::new(&[]);
+        app.needs_redraw = false;
+        app.mouse_pos = None;
+
+        let event = MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 15,
+            row: 8,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event);
+
+        assert_eq!(app.mouse_pos, Some((15, 8)));
+        assert!(app.needs_redraw);
+    }
+
+    #[test]
+    fn test_mouse_click_tab_close_button_closes_tab() {
+        let mut app = App::new(&[]);
+        let buf1 = crate::buffer::EditorBuffer::new();
+        let buf2 = crate::buffer::EditorBuffer::new();
+        app.buffers.push(buf1);
+        app.buffers.push(buf2);
+        assert_eq!(app.buffers.len(), 2);
+
+        app.tab_hitboxes.push(crate::app::types::TabHitbox {
+            buffer_idx: 0,
+            tab_start_x: 0,
+            tab_end_x: 15,
+            close_start_x: Some(12),
+            close_end_x: Some(15),
+        });
+
+        // Click on close button (col 13, row 0)
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 13,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event);
+
+        assert_eq!(app.buffers.len(), 1);
+    }
+
+    #[test]
+    fn test_mouse_click_tab_body_switches_buffer() {
+        let mut app = App::new(&[]);
+        let buf1 = crate::buffer::EditorBuffer::new();
+        let buf2 = crate::buffer::EditorBuffer::new();
+        app.buffers.push(buf1);
+        app.buffers.push(buf2);
+        app.current_buffer_idx = 0;
+
+        app.tab_hitboxes.push(crate::app::types::TabHitbox {
+            buffer_idx: 1,
+            tab_start_x: 20,
+            tab_end_x: 35,
+            close_start_x: None,
+            close_end_x: None,
+        });
+
+        // Click on tab body (col 25, row 0)
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 25,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event);
+
+        assert_eq!(app.current_buffer_idx, 1);
+        assert_eq!(app.focus, Focus::Editor);
+    }
+
+    #[test]
+    fn test_explorer_double_click_expands_directory() {
+        let mut app = App::new(&[]);
+        app.show_explorer = true;
+        app.explorer_area = ratatui::layout::Rect::new(0, 0, 30, 20);
+        app.explorer.items.push(crate::explorer::FileItem {
+            path: std::path::PathBuf::from("/tmp/test_dir"),
+            is_dir: true,
+            name: "test_dir".to_string(),
+            depth: 0,
+            expanded: false,
+        });
+
+        // Click 1: row 4 (first item) -> single click selects item
+        let click1 = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 5,
+            row: 4,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click1);
+        assert_eq!(app.explorer.selected_idx, 0);
+        assert_eq!(app.last_explorer_click_item, Some(0));
+        assert!(!app.explorer.items[0].expanded);
+
+        // Click 2: row 4 immediately after -> double click toggles expand
+        let click2 = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 5,
+            row: 4,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click2);
+        assert!(app.explorer.items[0].expanded);
+    }
+
+    #[test]
+    fn test_modal_button_click_executes_action() {
+        let mut app = App::new(&[]);
+        app.is_fuzzy = true;
+        app.fuzzy_mode = crate::app::FuzzyMode::DeleteConfirm;
+
+        app.modal_button_hitboxes.push(crate::app::types::ModalButtonHitbox {
+            x: 10,
+            y: 12,
+            width: 8,
+            height: 1,
+            action: ModalAction::Cancel,
+        });
+
+        // Click on Cancel button (col 12, row 12)
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 12,
+            row: 12,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event);
+
+        assert!(!app.is_fuzzy);
     }
 }

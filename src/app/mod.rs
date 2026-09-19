@@ -16,4 +16,5 @@ pub(crate) const DOC_BINDS: &str = include_str!("../../docs/binds.md");
 pub(crate) const DOC_MAIN: &str = include_str!("../../docs/docs.md");
 
 pub use app::{App, LargeFileLoadResult};
-pub use types::{Focus, FuzzyMode, NotificationType};
+pub use file_ops::trim_memory;
+pub use types::{Focus, FuzzyMode, ModalAction, ModalButtonHitbox, NotificationType, TabHitbox};

@@ -1,7 +1,8 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use super::FileItem;
 use crate::app::matcher::FuzzyMatcher;
@@ -76,6 +77,10 @@ pub struct FileExplorer {
     pub search_scroll: usize,
     /// Horizontal scroll offset for the explorer search input field.
     pub search_hscroll: Cell<usize>,
+    /// Tracks the currently selected item and when it was selected for the marquee effect.
+    pub marquee_state: RefCell<(Option<PathBuf>, Instant)>,
+    /// Indicates whether an animated marquee is actively rolling on the selected item.
+    pub has_active_marquee: Cell<bool>,
     /// Every file and directory under `root`, ignoring expansion state.
     /// Rebuilt on refresh; the search filter runs over this cache so each
     /// keystroke is an in-memory pass instead of a filesystem walk.
@@ -96,6 +101,8 @@ impl FileExplorer {
             search_selected: 0,
             search_scroll: 0,
             search_hscroll: Cell::new(0),
+            marquee_state: RefCell::new((None, Instant::now())),
+            has_active_marquee: Cell::new(false),
             search_corpus: Vec::new(),
         }
     }

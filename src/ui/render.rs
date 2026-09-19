@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph},
     Frame,
 };
 use std::path::Path;
@@ -11,11 +11,11 @@ use syntect::highlighting::{HighlightIterator, HighlightState, Highlighter};
 use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, Focus, FuzzyMode};
+use crate::app::{App, Focus, FuzzyMode, ModalAction, ModalButtonHitbox, TabHitbox};
 use crate::buffer::{column::TAB_WIDTH, EditorBuffer};
 
 use super::welcome::draw_welcome_screen;
-use super::{centered_rect, get_colors, UIColors};
+use super::{get_colors, UIColors};
 
 fn syntect_foreground_or(fg: syntect::highlighting::Color, fallback: Color) -> Color {
     if fg.a == 0 || (fg.r == 0 && fg.g == 0 && fg.b == 0) {
@@ -123,6 +123,83 @@ fn markdown_line_spans(
     spans
 }
 
+pub const DEFAULT_EXPLORER_WIDTH_PERCENT: u16 = 20;
+
+/// Truncates string `s` so that it occupies at most `max_chars` characters,
+/// appending `...` if truncated.
+pub fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    let count = s.chars().count();
+    if count <= max_chars {
+        s.to_string()
+    } else if max_chars <= 3 {
+        s.chars().take(max_chars).collect()
+    } else {
+        let keep = max_chars.saturating_sub(3);
+        let prefix: String = s.chars().take(keep).collect();
+        format!("{prefix}...")
+    }
+}
+
+/// Calculates the horizontal marquee offset for a long filename being viewed/selected.
+///
+/// 1. Pauses at offset 0 for `pause_start_ms` (1.0s) so the start is immediately legible.
+/// 2. Rolls one character every `step_ms` (220ms) until reaching the end of the text.
+/// 3. Pauses at the end (`max_offset`) for `pause_end_ms` (1.2s) so the extension/tail is legible.
+/// 4. Restarts smoothly from the beginning.
+pub fn calculate_marquee_offset(
+    name_len: usize,
+    available_width: usize,
+    elapsed: std::time::Duration,
+) -> (usize, bool) {
+    if name_len <= available_width || available_width == 0 {
+        return (0, false);
+    }
+
+    let max_offset = name_len.saturating_sub(available_width);
+    let step_ms = 220;
+    let pause_start_ms = 1000;
+    let pause_end_ms = 1200;
+    let scroll_duration_ms = max_offset as u128 * step_ms;
+    let total_cycle_ms = pause_start_ms + scroll_duration_ms + pause_end_ms;
+
+    let cycle_pos = elapsed.as_millis() % total_cycle_ms;
+
+    let offset = if cycle_pos < pause_start_ms {
+        0
+    } else if cycle_pos < pause_start_ms + scroll_duration_ms {
+        ((cycle_pos - pause_start_ms) / step_ms) as usize
+    } else {
+        max_offset
+    };
+
+    (offset.min(max_offset), true)
+}
+
+/// Formats an explorer filename with horizontal marquee scrolling when selected,
+/// or truncates with an ellipsis (`…`) when not selected.
+pub fn format_explorer_name(
+    name: &str,
+    available_width: usize,
+    is_selected: bool,
+    elapsed: std::time::Duration,
+) -> (String, bool) {
+    let chars: Vec<char> = name.chars().collect();
+    if chars.len() <= available_width || available_width == 0 {
+        return (name.to_string(), false);
+    }
+
+    if is_selected {
+        let (offset, animating) = calculate_marquee_offset(chars.len(), available_width, elapsed);
+        let visible: String = chars.iter().skip(offset).take(available_width).collect();
+        (visible, animating)
+    } else {
+        let keep = available_width.saturating_sub(1);
+        let mut s: String = chars.iter().take(keep).collect();
+        s.push('…');
+        (s, false)
+    }
+}
+
 pub fn render(f: &mut Frame, app: &mut App) {
     let colors = get_colors(app);
 
@@ -136,12 +213,10 @@ pub fn render(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(f.area());
 
-    // We calculate the explorer width dynamically based on the longest filename
-    // to minimize wasted space while ensuring names remain readable.
+    // Explorer sidebar has a consistent standard width (20%) so large file names
+    // never distort the panel layout or squeeze the editor pane.
     let explorer_width = if app.show_explorer {
-        let max_len = app.explorer.max_item_width;
-        let percent = (max_len as f32 / f.area().width as f32 * 100.0) as u16;
-        percent.clamp(20, 45)
+        DEFAULT_EXPLORER_WIDTH_PERCENT
     } else {
         0
     };
@@ -379,12 +454,19 @@ fn draw_header_status_bar(
     );
 }
 
-fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
+fn draw_tab_bar(f: &mut Frame, app: &mut App, area: Rect, colors: &UIColors) {
+    app.tab_hitboxes.clear();
     if app.buffers.is_empty() {
         return;
     }
 
+    let is_bar_hovered = app.mouse_pos.map(|(_, my)| my == area.y).unwrap_or(false);
+    let mouse_x = app.mouse_pos.map(|(mx, _)| mx).unwrap_or(0);
+
     let mut spans = Vec::new();
+    let mut cur_x = area.x;
+    let max_x = area.x.saturating_add(area.width);
+
     for (i, buffer) in app.buffers.iter().enumerate() {
         let is_live_script = Some(i) == app.live_script_buffer_idx;
         let is_preview = buffer.is_preview;
@@ -392,16 +474,20 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             continue;
         }
 
-        let name = buffer
+        if cur_x >= max_x {
+            break;
+        }
+
+        let full_name = buffer
             .path
             .as_ref()
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "[No Name]".to_string());
+        let name = truncate_with_ellipsis(&full_name, 20);
 
-        let modified = if buffer.modified { "*" } else { "" };
         let is_current = i == app.current_buffer_idx;
-        let style = if is_current {
+        let tab_style = if is_current {
             Style::default()
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD)
@@ -416,11 +502,58 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             "󰈔 "
         };
 
-        spans.push(Span::styled(
-            format!(" {} {} {} ", icon, name, modified),
-            style,
-        ));
+        let mod_str = if buffer.modified { " *" } else { "" };
+        let tab_content = format!(" {icon}{name}{mod_str} ");
+        let tab_content_len = UnicodeWidthStr::width(tab_content.as_str()) as u16;
+
+        let close_btn_w = 3u16;
+        let is_tab_hovered = is_bar_hovered
+            && mouse_x >= cur_x
+            && mouse_x < cur_x + tab_content_len + close_btn_w;
+
+        if is_tab_hovered {
+            let close_start_x = cur_x + tab_content_len;
+            let close_end_x = close_start_x + close_btn_w;
+            let is_close_hovered = mouse_x >= close_start_x && mouse_x < close_end_x;
+
+            let close_style = if is_close_hovered {
+                Style::default()
+                    .fg(colors.error)
+                    .add_modifier(Modifier::BOLD)
+                    .bg(if is_current { colors.sel } else { colors.bg })
+            } else {
+                Style::default()
+                    .fg(colors.text_muted())
+                    .bg(if is_current { colors.sel } else { colors.bg })
+            };
+
+            spans.push(Span::styled(tab_content, tab_style));
+            spans.push(Span::styled("󰅖 ", close_style));
+
+            let total_w = tab_content_len + close_btn_w;
+            app.tab_hitboxes.push(TabHitbox {
+                buffer_idx: i,
+                tab_start_x: cur_x,
+                tab_end_x: (cur_x + total_w).min(max_x),
+                close_start_x: Some(close_start_x),
+                close_end_x: Some(close_end_x),
+            });
+            cur_x += total_w;
+        } else {
+            spans.push(Span::styled(tab_content, tab_style));
+            let total_w = tab_content_len;
+            app.tab_hitboxes.push(TabHitbox {
+                buffer_idx: i,
+                tab_start_x: cur_x,
+                tab_end_x: (cur_x + total_w).min(max_x),
+                close_start_x: None,
+                close_end_x: None,
+            });
+            cur_x += total_w;
+        }
+
         spans.push(Span::raw(" "));
+        cur_x += 1;
     }
 
     f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.bg), area);
@@ -638,9 +771,25 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     let selected = selected.min(len.saturating_sub(1));
     let end = (scroll + list_height).min(len);
 
+    let mut marquee_animating = false;
+    let marquee_elapsed = if len > 0 {
+        let sel_item = if searching {
+            &app.explorer.search_results[selected]
+        } else {
+            &app.explorer.items[selected]
+        };
+        let mut marquee = app.explorer.marquee_state.borrow_mut();
+        if marquee.0.as_ref() != Some(&sel_item.path) {
+            *marquee = (Some(sel_item.path.clone()), std::time::Instant::now());
+        }
+        marquee.1.elapsed()
+    } else {
+        std::time::Duration::ZERO
+    };
+
     let mut items: Vec<ListItem> = Vec::new();
     if searching && len == 0 {
-        items.push(ListItem::new(" No matches").style(Style::default().fg(colors.surface)));
+        items.push(ListItem::new(" No matches").style(Style::default().fg(colors.text_muted())));
     }
     for actual_idx in scroll..end {
         let item = if searching {
@@ -648,7 +797,8 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         } else {
             &app.explorer.items[actual_idx]
         };
-        let style = if actual_idx == selected {
+        let is_selected = actual_idx == selected;
+        let style = if is_selected {
             Style::default()
                 .bg(colors.sel)
                 .fg(colors.accent)
@@ -666,11 +816,41 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
                 .and_then(|p| p.strip_prefix(&app.explorer.root).ok())
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let mut spans = vec![Span::raw(format!(" {}{}", icon, item.name))];
-            if !parent.is_empty() {
+            let prefix = format!(" {icon}");
+            let prefix_w = UnicodeWidthStr::width(prefix.as_str());
+            let parent_suffix = if !parent.is_empty() {
+                format!("  {parent}")
+            } else {
+                String::new()
+            };
+            let parent_w = UnicodeWidthStr::width(parent_suffix.as_str());
+
+            // Reserve space for parent path if it fits comfortably alongside the name,
+            // otherwise prioritize displaying the file name cleanly.
+            let avail_w = if !parent.is_empty() && (inner.width as usize) > prefix_w + parent_w + 6 {
+                (inner.width as usize).saturating_sub(prefix_w + parent_w)
+            } else {
+                (inner.width as usize).saturating_sub(prefix_w)
+            };
+
+            let (name_display, animating) = format_explorer_name(
+                &item.name,
+                avail_w.max(1),
+                is_selected,
+                marquee_elapsed,
+            );
+            if is_selected && animating {
+                marquee_animating = true;
+            }
+
+            let mut spans = vec![Span::raw(format!("{prefix}{name_display}"))];
+            if !parent.is_empty()
+                && prefix_w + UnicodeWidthStr::width(name_display.as_str()) + parent_w
+                    <= inner.width as usize
+            {
                 spans.push(Span::styled(
-                    format!("  {parent}"),
-                    Style::default().fg(colors.surface),
+                    parent_suffix,
+                    Style::default().fg(colors.text_muted()),
                 ));
             }
             items.push(ListItem::new(Line::from(spans)).style(style));
@@ -679,24 +859,40 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             let icon = app
                 .icon_registry
                 .get_icon(&item.path, item.is_dir, item.expanded);
+            let arrow = if item.is_dir && !item.expanded {
+                "›"
+            } else if item.is_dir {
+                "⌄"
+            } else {
+                ""
+            };
+            let prefix = format!(" {indent}{icon}");
+            let arrow_suffix = if arrow.is_empty() {
+                String::new()
+            } else {
+                format!(" {arrow}")
+            };
+            let prefix_w = UnicodeWidthStr::width(prefix.as_str());
+            let arrow_w = UnicodeWidthStr::width(arrow_suffix.as_str());
+            let avail_w = (inner.width as usize).saturating_sub(prefix_w + arrow_w);
+
+            let (name_display, animating) = format_explorer_name(
+                &item.name,
+                avail_w.max(1),
+                is_selected,
+                marquee_elapsed,
+            );
+            if is_selected && animating {
+                marquee_animating = true;
+            }
+
             items.push(
-                ListItem::new(format!(
-                    " {}{}{} {}",
-                    indent,
-                    icon,
-                    item.name,
-                    if item.is_dir && !item.expanded {
-                        "›"
-                    } else if item.is_dir {
-                        "⌄"
-                    } else {
-                        ""
-                    }
-                ))
-                .style(style),
+                ListItem::new(format!("{prefix}{name_display}{arrow_suffix}")).style(style),
             );
         }
     }
+
+    app.explorer.has_active_marquee.set(marquee_animating);
 
     if list_height > 0 {
         let list_top = inner.y.saturating_add(4);
@@ -1424,18 +1620,34 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             ));
 
             let components: Vec<_> = path.components().collect();
-            let path_str = if components.len() > 4 {
-                let last_parts: Vec<_> = components.iter().rev().take(4).rev().collect();
-                let mut p = String::new();
-                for (i, part) in last_parts.iter().enumerate() {
-                    if i > 0 {
+            let raw_file_name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "[No Name]".to_string());
+            let trunc_file_name = truncate_with_ellipsis(&raw_file_name, 25);
+
+            let path_str = if components.len() > 1 {
+                let parent_parts: Vec<_> = components[..components.len() - 1].iter().collect();
+                let parent_str = if parent_parts.len() > 2 {
+                    let last_dirs: Vec<_> = parent_parts.iter().rev().take(2).rev().collect();
+                    let mut p = String::new();
+                    for part in last_dirs {
+                        p.push_str(&part.as_os_str().to_string_lossy());
                         p.push('/');
                     }
-                    p.push_str(&part.as_os_str().to_string_lossy());
-                }
-                format!(".../{}", p)
+                    format!(".../{p}")
+                } else {
+                    let mut p = String::new();
+                    for part in parent_parts {
+                        p.push_str(&part.as_os_str().to_string_lossy());
+                        p.push('/');
+                    }
+                    p
+                };
+                let combined = format!("{parent_str}{trunc_file_name}");
+                truncate_with_ellipsis(&combined, 38)
             } else {
-                path.to_string_lossy().to_string()
+                trunc_file_name
             };
 
             file_spans.push(Span::styled(path_str, Style::default().fg(colors.fg)));
@@ -1597,49 +1809,23 @@ fn fuzzy_cursor_position(app: &App, input_area: Rect, prefix_width: usize) -> Op
     Some((x.min(max_x), input_area.y))
 }
 
-fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
-    let is_small = matches!(
-        app.fuzzy_mode,
-        FuzzyMode::SaveAs
-            | FuzzyMode::Rename
-            | FuzzyMode::DeleteConfirm
-            | FuzzyMode::Create
-            | FuzzyMode::UnsavedChanges
-            | FuzzyMode::ExternalChange
-    );
-    let is_two_line_popup = matches!(
-        app.fuzzy_mode,
-        FuzzyMode::UnsavedChanges | FuzzyMode::ExternalChange | FuzzyMode::DeleteConfirm
-    );
+fn centered_rect_fixed(w: u16, h: u16, r: Rect) -> Rect {
+    let w = w.min(r.width.saturating_sub(2)).max(1);
+    let h = h.min(r.height.saturating_sub(2)).max(1);
+    let x = r.x + (r.width.saturating_sub(w)) / 2;
+    let y = r.y + (r.height.saturating_sub(h)) / 2;
+    Rect::new(x, y, w, h)
+}
 
-    let area = if is_small {
-        let (w, h) = if is_two_line_popup {
-            (70, 6)
-        } else {
-            (70, 3)
-        };
-        let centered_y = (f.area().height.saturating_sub(h)) / 2;
-        let centered_x = (f.area().width.saturating_sub(w)) / 2;
-        Rect::new(centered_x, centered_y, w.min(f.area().width), h)
-    } else {
-        centered_rect(70, 50, f.area())
-    };
-
+fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
+    let area = centered_rect_fixed(66, 9, f.area());
     f.render_widget(Clear, area);
 
-    let title = match app.fuzzy_mode {
-        FuzzyMode::Content => format!("   {} ", app.i18n.t("global_search_content")),
-        FuzzyMode::Local => format!("   {} ", app.i18n.t("local_search_file")),
-        FuzzyMode::Files => format!("   {} ", app.i18n.t("fuzzy_finder_files")),
-        FuzzyMode::Themes => format!(" 󰏘  {} ", app.i18n.t("select_color_theme")),
-        FuzzyMode::SaveAs => format!(" 󰆓  {} ", app.i18n.t("save_as")),
-        FuzzyMode::Rename => format!(" 󰏫  {} ", app.i18n.t("rename")),
+    let is_delete = app.fuzzy_mode == FuzzyMode::DeleteConfirm;
+    let border_color = if is_delete { colors.error } else { colors.accent };
+
+    let title_text = match app.fuzzy_mode {
         FuzzyMode::DeleteConfirm => format!(" 󰆴  {} ", app.i18n.t("delete_confirm")),
-        FuzzyMode::FileOptions => format!(" 󰘳  {} ", app.i18n.t("file_options")),
-        FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
-        FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
-        FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
-        FuzzyMode::Create => " 󰉋  New Name (trailing / = folder) ".to_string(),
         FuzzyMode::UnsavedChanges => {
             if app.pending_action == Some(crate::app::types::PendingAction::Quit) {
                 " 󰆓  Quit NEdit ".to_string()
@@ -1649,7 +1835,257 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                 format!(" 󰆓  {} ", app.i18n.t("unsaved_changes"))
             }
         }
-        FuzzyMode::ExternalChange => format!(" 󰆓  {} ", app.i18n.t("external_change")),
+        FuzzyMode::ExternalChange => format!(" 󰑐  {} ", app.i18n.t("external_change")),
+        _ => " Dialog ".to_string(),
+    };
+
+    let block = Block::default()
+        .title(
+            Line::from(title_text).style(
+                Style::default()
+                    .fg(border_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        )
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(border_color))
+        .bg(colors.bg);
+
+    f.render_widget(block, area);
+
+    let inner_y = area.y + 1;
+    let inner_x = area.x + 2;
+    let inner_w = area.width.saturating_sub(4);
+
+    let (prompt_line, target_line, subtitle_line, buttons, hint_line) = match app.fuzzy_mode {
+        FuzzyMode::DeleteConfirm => {
+            let path_str = app
+                .pending_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let trunc_path = truncate_with_ellipsis(&path_str, inner_w.saturating_sub(6) as usize);
+            (
+                Line::from(vec![
+                    Span::styled(
+                        " Are you sure you want to delete?",
+                        Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled("  󰈔 ", Style::default().fg(colors.error)),
+                    Span::styled(
+                        trunc_path,
+                        Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled(
+                        "  This action cannot be undone.",
+                        Style::default().fg(colors.text_muted()),
+                    ),
+                ]),
+                vec![
+                    (" 󰆴 Delete (Enter) ", ModalAction::ConfirmDelete, true),
+                    (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
+                ],
+                Line::from(vec![
+                    Span::styled(
+                        " [Enter] Confirm   [Esc] Cancel",
+                        Style::default().fg(colors.text_muted()),
+                    ),
+                ]),
+            )
+        }
+        FuzzyMode::UnsavedChanges => {
+            let is_script = app.live_script_mode
+                && app.pending_buffer_idx == app.live_script_buffer_idx;
+            let is_quit = app.pending_action == Some(crate::app::types::PendingAction::Quit);
+
+            let filename = if is_script {
+                "Live Script".to_string()
+            } else {
+                app.pending_buffer_idx
+                    .and_then(|idx| app.buffers.get(idx))
+                    .and_then(|buf| buf.path.as_ref())
+                    .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+                    .unwrap_or_else(|| app.i18n.t("no_name").to_string())
+            };
+            let trunc_name = truncate_with_ellipsis(&filename, inner_w.saturating_sub(6) as usize);
+
+            let (prompt, sub, btns, hints) = if is_script {
+                (
+                    " Close Live Script? Modifications will be lost.",
+                    " Unsaved script content will not be recoverable.",
+                    vec![
+                        (" 󰆴 Discard (D) ", ModalAction::DiscardUnsaved, true),
+                        (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
+                    ],
+                    " [D] Discard   [Esc] Cancel",
+                )
+            } else if is_quit {
+                (
+                    " Quit application? Save changes before exit?",
+                    " Unsaved modifications will be permanently lost.",
+                    vec![
+                        (" 󰆓 Save (S) ", ModalAction::SaveUnsaved, false),
+                        (" 󰆴 Discard (D) ", ModalAction::DiscardUnsaved, true),
+                        (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
+                    ],
+                    " [S] Save   [D] Discard   [Esc] Cancel",
+                )
+            } else {
+                (
+                    " Save changes to file before closing?",
+                    " Unsaved modifications will be permanently lost.",
+                    vec![
+                        (" 󰆓 Save (S) ", ModalAction::SaveUnsaved, false),
+                        (" 󰆴 Discard (D) ", ModalAction::DiscardUnsaved, true),
+                        (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
+                    ],
+                    " [S] Save   [D] Discard   [Esc] Cancel",
+                )
+            };
+
+            (
+                Line::from(vec![
+                    Span::styled(
+                        prompt,
+                        Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled("  󰈔 ", Style::default().fg(colors.accent)),
+                    Span::styled(
+                        trunc_name,
+                        Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled(format!("  {sub}"), Style::default().fg(colors.text_muted())),
+                ]),
+                btns,
+                Line::from(vec![
+                    Span::styled(format!(" {hints}"), Style::default().fg(colors.text_muted())),
+                ]),
+            )
+        }
+        FuzzyMode::ExternalChange => {
+            let filename = app
+                .pending_buffer_idx
+                .and_then(|idx| app.buffers.get(idx))
+                .and_then(|buf| buf.path.as_ref())
+                .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+                .unwrap_or_else(|| app.i18n.t("no_name").to_string());
+            let trunc_name = truncate_with_ellipsis(&filename, inner_w.saturating_sub(6) as usize);
+
+            (
+                Line::from(vec![
+                    Span::styled(
+                        " File changed on disk by another application:",
+                        Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled("  󰈔 ", Style::default().fg(colors.accent)),
+                    Span::styled(
+                        trunc_name,
+                        Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled(
+                        "  Choose whether to reload from disk or keep editor version.",
+                        Style::default().fg(colors.text_muted()),
+                    ),
+                ]),
+                vec![
+                    (" 󰑐 Reload (R) ", ModalAction::ReloadExternal, false),
+                    (" 󰄬 Keep (K) ", ModalAction::KeepExternal, false),
+                    (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
+                ],
+                Line::from(vec![
+                    Span::styled(
+                        " [R] Reload   [K] Keep   [Esc] Cancel",
+                        Style::default().fg(colors.text_muted()),
+                    ),
+                ]),
+            )
+        }
+        _ => return,
+    };
+
+    f.render_widget(Paragraph::new(prompt_line), Rect::new(inner_x, inner_y, inner_w, 1));
+    f.render_widget(Paragraph::new(target_line), Rect::new(inner_x, inner_y + 1, inner_w, 1));
+    f.render_widget(Paragraph::new(subtitle_line), Rect::new(inner_x, inner_y + 2, inner_w, 1));
+
+    let btn_row_y = inner_y + 4;
+    let mut btn_cur_x = inner_x + 1;
+
+    for (label, action, is_danger) in buttons {
+        let label_len = UnicodeWidthStr::width(label) as u16;
+        let is_hovered = app
+            .mouse_pos
+            .map(|(mx, my)| my == btn_row_y && mx >= btn_cur_x && mx < btn_cur_x + label_len)
+            .unwrap_or(false);
+
+        let btn_style = if is_danger {
+            if is_hovered {
+                Style::default()
+                    .bg(colors.error)
+                    .fg(Color::Rgb(0, 0, 0))
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .bg(colors.button_danger_bg())
+                    .fg(Color::Rgb(255, 255, 255))
+                    .add_modifier(Modifier::BOLD)
+            }
+        } else if is_hovered {
+            Style::default()
+                .bg(colors.accent)
+                .fg(Color::Rgb(0, 0, 0))
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .bg(colors.button_bg())
+                .fg(colors.fg)
+                .add_modifier(Modifier::BOLD)
+        };
+
+        f.render_widget(
+            Paragraph::new(Span::styled(label, btn_style)),
+            Rect::new(btn_cur_x, btn_row_y, label_len, 1),
+        );
+
+        app.modal_button_hitboxes.push(ModalButtonHitbox {
+            x: btn_cur_x,
+            y: btn_row_y,
+            width: label_len,
+            height: 1,
+            action,
+        });
+
+        btn_cur_x += label_len + 2;
+    }
+
+    f.render_widget(Paragraph::new(hint_line), Rect::new(inner_x, inner_y + 6, inner_w, 1));
+}
+
+fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
+    let area = centered_rect_fixed(66, 8, f.area());
+    f.render_widget(Clear, area);
+
+    let (title, prompt, icon) = match app.fuzzy_mode {
+        FuzzyMode::Create => (
+            " 󰉋  New File / Folder ",
+            " Enter path (trailing / creates a folder):",
+            "󰉋 ",
+        ),
+        FuzzyMode::Rename => (" 󰏫  Rename Item ", " Enter new name:", "󰏫 "),
+        FuzzyMode::SaveAs => (" 󰆓  Save Buffer As ", " Enter destination file path:", "󰆓 "),
+        _ => return,
     };
 
     let block = Block::default()
@@ -1661,27 +2097,140 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
             ),
         )
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(colors.accent))
         .bg(colors.bg);
 
-    let constraints = if is_small {
-        if is_two_line_popup {
-            vec![Constraint::Min(1)]
+    f.render_widget(block, area);
+
+    let inner_y = area.y + 1;
+    let inner_x = area.x + 2;
+    let inner_w = area.width.saturating_sub(4);
+
+    f.render_widget(
+        Paragraph::new(Line::from(vec![Span::styled(
+            format!(" {prompt}"),
+            Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+        )])),
+        Rect::new(inner_x, inner_y, inner_w, 1),
+    );
+
+    let query_spans = fuzzy_query_spans(app, colors);
+    let mut spans = vec![Span::styled(format!(" {icon} "), Style::default().fg(colors.accent))];
+    let prefix_width = UnicodeWidthStr::width(format!(" {icon} ").as_str());
+    spans.extend(query_spans);
+
+    let input_area = Rect::new(inner_x + 1, inner_y + 2, inner_w.saturating_sub(2), 1);
+    f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.button_bg()), input_area);
+
+    if let Some((cursor_x, cursor_y)) = fuzzy_cursor_position(app, input_area, prefix_width) {
+        f.set_cursor_position((cursor_x, cursor_y));
+    }
+
+    let btn_row_y = inner_y + 4;
+    let buttons = [
+        (" 󰄬 Confirm (Enter) ", ModalAction::ConfirmInput),
+        (" 󰅖 Cancel (Esc) ", ModalAction::Cancel),
+    ];
+    let mut btn_cur_x = inner_x + 1;
+    for (label, action) in buttons {
+        let label_len = UnicodeWidthStr::width(label) as u16;
+        let is_hovered = app
+            .mouse_pos
+            .map(|(mx, my)| my == btn_row_y && mx >= btn_cur_x && mx < btn_cur_x + label_len)
+            .unwrap_or(false);
+
+        let btn_style = if action == ModalAction::ConfirmInput {
+            if is_hovered {
+                Style::default()
+                    .bg(colors.accent)
+                    .fg(Color::Rgb(0, 0, 0))
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .bg(colors.button_bg())
+                    .fg(colors.accent)
+                    .add_modifier(Modifier::BOLD)
+            }
+        } else if is_hovered {
+            Style::default()
+                .bg(colors.accent)
+                .fg(Color::Rgb(0, 0, 0))
+                .add_modifier(Modifier::BOLD)
         } else {
-            vec![Constraint::Length(1)]
-        }
-    } else {
-        vec![
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(0),
-        ]
+            Style::default()
+                .bg(colors.button_bg())
+                .fg(colors.fg)
+                .add_modifier(Modifier::BOLD)
+        };
+
+        f.render_widget(
+            Paragraph::new(Span::styled(label, btn_style)),
+            Rect::new(btn_cur_x, btn_row_y, label_len, 1),
+        );
+
+        app.modal_button_hitboxes.push(ModalButtonHitbox {
+            x: btn_cur_x,
+            y: btn_row_y,
+            width: label_len,
+            height: 1,
+            action,
+        });
+
+        btn_cur_x += label_len + 2;
+    }
+
+    f.render_widget(
+        Paragraph::new(Line::from(vec![Span::styled(
+            "  [Enter] Confirm   [Esc] Cancel",
+            Style::default().fg(colors.text_muted()),
+        )])),
+        Rect::new(inner_x, inner_y + 5, inner_w, 1),
+    );
+}
+
+fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
+    let w: u16 = 74.min(f.area().width.saturating_sub(4));
+    let h: u16 = ((f.area().height as f32 * 0.6) as u16)
+        .max(16)
+        .min(f.area().height.saturating_sub(2));
+    let area = centered_rect_fixed(w, h, f.area());
+
+    f.render_widget(Clear, area);
+
+    let title = match app.fuzzy_mode {
+        FuzzyMode::Content => format!("   {} ", app.i18n.t("global_search_content")),
+        FuzzyMode::Local => format!("   {} ", app.i18n.t("local_search_file")),
+        FuzzyMode::Files => format!("   {} ", app.i18n.t("fuzzy_finder_files")),
+        FuzzyMode::Themes => format!(" 󰏘  {} ", app.i18n.t("select_color_theme")),
+        FuzzyMode::FileOptions => format!(" 󰘳  {} ", app.i18n.t("file_options")),
+        FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
+        FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
+        FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
+        _ => " Search ".to_string(),
     };
+
+    let block = Block::default()
+        .title(
+            Line::from(title).style(
+                Style::default()
+                    .fg(colors.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        )
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(colors.accent))
+        .bg(colors.bg);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
-        .constraints(constraints)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
         .split(area);
 
     let query_spans = fuzzy_query_spans(app, colors);
@@ -1696,181 +2245,143 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
         let mut spans = vec![Span::styled(prefix, Style::default().fg(colors.accent))];
         spans.extend(query_spans);
         spans.push(Span::styled(
-            " (Tab: Move here, Enter: Open folder)",
-            Style::default().fg(colors.surface),
+            " (Tab: Move here, Enter: Open)",
+            Style::default().fg(colors.text_muted()),
         ));
         (Paragraph::new(Line::from(spans)), prefix_width)
-    } else if app.fuzzy_mode == FuzzyMode::DeleteConfirm {
-        let path_str = app
-            .pending_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        (
-            Paragraph::new(vec![
-                Line::from(vec![
-                    Span::styled(" 󰆴 ", Style::default().fg(colors.error)),
-                    Span::styled(
-                        "Confirm Delete:",
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
-                ]),
-                Line::from(Span::raw(path_str)),
-                Line::from(vec![Span::styled(
-                    format!("(Enter: Confirm  Esc: {})", app.i18n.t("cancel")),
-                    Style::default().fg(colors.surface),
-                )]),
-            ])
-            .wrap(Wrap { trim: false }),
-            0,
-        )
-    } else if app.fuzzy_mode == FuzzyMode::UnsavedChanges {
-        let is_script = app.live_script_mode
-            && app.pending_buffer_idx == app.live_script_buffer_idx;
-        let is_quit = app.pending_action == Some(crate::app::types::PendingAction::Quit);
-
-        let (msg_line, hint_line) = if is_script {
-            if is_quit {
-                (
-                    "Quit application? A live script is open and will be lost.".to_string(),
-                    format!("(D: Discard & Quit  Esc: {})", app.i18n.t("cancel")),
-                )
-            } else {
-                (
-                    "Close Live Script? Script content will be lost.".to_string(),
-                    format!("(D: Discard  Esc: {})", app.i18n.t("cancel")),
-                )
-            }
-        } else {
-            let filename = app
-                .pending_buffer_idx
-                .and_then(|idx| app.buffers.get(idx))
-                .and_then(|buf| buf.path.as_ref())
-                .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
-                .unwrap_or_else(|| app.i18n.t("no_name").to_string());
-
-            if is_quit {
-                (
-                    format!("Quit application: Save changes to {}?", filename),
-                    format!("(S: Save  D: Discard  Esc: {})", app.i18n.t("cancel")),
-                )
-            } else {
-                (
-                    format!("Save changes to {}?", filename),
-                    format!("(S: Save  D: Discard  Esc: {})", app.i18n.t("cancel")),
-                )
-            }
-        };
-
-        (
-            Paragraph::new(vec![
-                Line::from(vec![
-                    Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
-                    Span::styled(
-                        msg_line,
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
-                ]),
-                Line::from(vec![Span::styled(
-                    hint_line,
-                    Style::default().fg(colors.accent),
-                )]),
-            ])
-            .wrap(Wrap { trim: true }),
-            0,
-        )
-    } else if app.fuzzy_mode == FuzzyMode::ExternalChange {
-        let filename = app
-            .pending_buffer_idx
-            .and_then(|idx| app.buffers.get(idx))
-            .and_then(|buf| buf.path.as_ref())
-            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
-            .unwrap_or_else(|| app.i18n.t("no_name").to_string());
-        // Short, two-line layout to avoid truncation on narrow terminals.
-        (
-            Paragraph::new(vec![
-                Line::from(vec![
-                    Span::styled(" 󰆓 ", Style::default().fg(colors.accent)),
-                    Span::styled(
-                        format!("{} — {}", filename, app.i18n.t("file_changed")),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
-                ]),
-                Line::from(vec![Span::styled(
-                    format!(
-                        "({}: R  {}: K  Esc: {})",
-                        app.i18n.t("reload"),
-                        app.i18n.t("keep"),
-                        app.i18n.t("cancel")
-                    ),
-                    Style::default().fg(colors.accent),
-                )]),
-            ])
-            .wrap(Wrap { trim: true }),
-            0,
-        )
     } else {
-        let mut spans = vec![Span::styled(" 󰍉 ", Style::default().fg(colors.accent))];
+        let mut spans = vec![Span::styled("   ", Style::default().fg(colors.accent))];
         spans.extend(query_spans);
         (
             Paragraph::new(Line::from(spans)),
-            UnicodeWidthStr::width(" 󰍉 "),
+            UnicodeWidthStr::width("   "),
         )
     };
+
     f.render_widget(input, chunks[0]);
+
     if let Some((cursor_x, cursor_y)) = fuzzy_cursor_position(app, chunks[0], prefix_width) {
         f.set_cursor_position((cursor_x, cursor_y));
     }
 
-    if !is_small {
-        f.render_widget(
-            Block::default()
-                .borders(Borders::TOP)
-                .border_style(Style::default().fg(colors.surface)),
-            chunks[1],
-        );
-
-        let list_height = chunks[2].height as usize;
-        let start_idx = app.fuzzy_idx.saturating_sub(list_height / 2);
-
-        let items: Vec<ListItem> = if app.fuzzy_mode == FuzzyMode::Local {
-            let safe_start = start_idx.min(app.fuzzy_lines.len().saturating_sub(1));
-            let end_idx = (safe_start + list_height).min(app.fuzzy_lines.len());
-            if app.fuzzy_lines.is_empty() {
-                vec![]
-            } else {
-                app.fuzzy_lines[safe_start..end_idx]
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, (line_num, text))| {
-                        let i = safe_start + idx;
-                        let style = if i == app.fuzzy_idx {
-                            Style::default()
-                                .bg(colors.sel)
-                                .fg(colors.accent)
-                                .add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(colors.fg)
-                        };
-                        ListItem::new(format!(" {}: {}", line_num + 1, text.trim())).style(style)
-                    })
-                    .collect()
-            }
-        } else if app.fuzzy_mode == FuzzyMode::Content {
+    let total_matches = match app.fuzzy_mode {
+        FuzzyMode::Local => app.fuzzy_lines.len(),
+        FuzzyMode::Content => {
             if !app.fuzzy_results.is_empty() {
-                let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
-                let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
-                let prefer_home = app
-                    .fuzzy_query
-                    .trim()
-                    .strip_prefix('@')
-                    .map(|query| query.starts_with('~'))
-                    .unwrap_or(false);
-                app.fuzzy_results[safe_start..end_idx]
+                app.fuzzy_results.len()
+            } else {
+                app.fuzzy_global_results.len()
+            }
+        }
+        FuzzyMode::Themes => app.fuzzy_themes.len(),
+        FuzzyMode::Files => {
+            if !app.fuzzy_file_results.is_empty() {
+                app.fuzzy_file_results.len()
+            } else {
+                app.fuzzy_results.len()
+            }
+        }
+        FuzzyMode::CommandPalette
+        | FuzzyMode::FileOptions
+        | FuzzyMode::Move
+        | FuzzyMode::DocSelect => app.fuzzy_results.len(),
+        _ => 0,
+    };
+
+    if total_matches > 0 && chunks[0].width > 25 {
+        let counter_text = format!(" [{} matches] ", total_matches);
+        let counter_w = UnicodeWidthStr::width(counter_text.as_str()) as u16;
+        if counter_w < chunks[0].width {
+            let counter_x = chunks[0].x + chunks[0].width.saturating_sub(counter_w);
+            f.render_widget(
+                Paragraph::new(Span::styled(
+                    counter_text,
+                    Style::default().fg(colors.text_muted()),
+                )),
+                Rect::new(counter_x, chunks[0].y, counter_w, 1),
+            );
+        }
+    }
+
+    f.render_widget(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(colors.indent_guide)),
+        chunks[1],
+    );
+
+    let list_height = chunks[2].height as usize;
+    let start_idx = app.fuzzy_idx.saturating_sub(list_height / 2);
+
+    app.modal_list_area = Some(chunks[2]);
+    app.modal_list_start_idx = start_idx;
+
+    let items: Vec<ListItem> = if app.fuzzy_mode == FuzzyMode::Local {
+        let safe_start = start_idx.min(app.fuzzy_lines.len().saturating_sub(1));
+        let end_idx = (safe_start + list_height).min(app.fuzzy_lines.len());
+        if app.fuzzy_lines.is_empty() {
+            vec![]
+        } else {
+            app.fuzzy_lines[safe_start..end_idx]
+                .iter()
+                .enumerate()
+                .map(|(idx, (line_num, text))| {
+                    let i = safe_start + idx;
+                    let style = if i == app.fuzzy_idx {
+                        Style::default()
+                            .bg(colors.sel)
+                            .fg(colors.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(colors.fg)
+                    };
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!(" {:4}: ", line_num + 1), Style::default().fg(colors.accent)),
+                        Span::styled(text.trim(), style),
+                    ]))
+                })
+                .collect()
+        }
+    } else if app.fuzzy_mode == FuzzyMode::Content {
+        if !app.fuzzy_results.is_empty() {
+            let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
+            let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
+            let prefer_home = app
+                .fuzzy_query
+                .trim()
+                .strip_prefix('@')
+                .map(|query| query.starts_with('~'))
+                .unwrap_or(false);
+            app.fuzzy_results[safe_start..end_idx]
+                .iter()
+                .enumerate()
+                .map(|(idx, path)| {
+                    let i = safe_start + idx;
+                    let style = if i == app.fuzzy_idx {
+                        Style::default()
+                            .bg(colors.sel)
+                            .fg(colors.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(colors.fg)
+                    };
+                    let label = app.format_search_dir_for_query(path, prefer_home);
+                    ListItem::new(format!(" {} {}/", "󰉋", label.trim_end_matches('/')))
+                        .style(style)
+                })
+                .collect()
+        } else {
+            let safe_start = start_idx.min(app.fuzzy_global_results.len().saturating_sub(1));
+            let end_idx = (safe_start + list_height).min(app.fuzzy_global_results.len());
+            if app.fuzzy_global_results.is_empty() {
+                vec![]
+            } else {
+                app.fuzzy_global_results[safe_start..end_idx]
                     .iter()
                     .enumerate()
-                    .map(|(idx, path)| {
+                    .map(|(idx, (path, line_num, text))| {
                         let i = safe_start + idx;
+                        let name = path.file_name().unwrap_or_default().to_string_lossy();
                         let style = if i == app.fuzzy_idx {
                             Style::default()
                                 .bg(colors.sel)
@@ -1879,153 +2390,48 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                         } else {
                             Style::default().fg(colors.fg)
                         };
-                        let label = app.format_search_dir_for_query(path, prefer_home);
-                        ListItem::new(format!(" {} {}/", "󰉋", label.trim_end_matches('/')))
-                            .style(style)
-                    })
-                    .collect()
-            } else {
-                let safe_start = start_idx.min(app.fuzzy_global_results.len().saturating_sub(1));
-                let end_idx = (safe_start + list_height).min(app.fuzzy_global_results.len());
-                if app.fuzzy_global_results.is_empty() {
-                    vec![]
-                } else {
-                    app.fuzzy_global_results[safe_start..end_idx]
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, (path, line_num, text))| {
-                            let i = safe_start + idx;
-                            let name = path.file_name().unwrap_or_default().to_string_lossy();
-                            let style = if i == app.fuzzy_idx {
-                                Style::default()
-                                    .bg(colors.sel)
-                                    .fg(colors.accent)
-                                    .add_modifier(Modifier::BOLD)
-                            } else {
-                                Style::default().fg(colors.fg)
-                            };
-                            ListItem::new(format!(" {} (L{}): {}", name, line_num + 1, text.trim()))
-                                .style(style)
-                        })
-                        .collect()
-                }
-            }
-        } else if app.fuzzy_mode == FuzzyMode::Themes {
-            let safe_start = start_idx.min(app.fuzzy_themes.len().saturating_sub(1));
-            let end_idx = (safe_start + list_height).min(app.fuzzy_themes.len());
-            if app.fuzzy_themes.is_empty() {
-                vec![]
-            } else {
-                app.fuzzy_themes[safe_start..end_idx]
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, theme_name)| {
-                        let i = safe_start + idx;
-                        let style = if i == app.fuzzy_idx {
-                            Style::default()
-                                .bg(colors.sel)
-                                .fg(colors.accent)
-                                .add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(colors.fg)
-                        };
-                        let indicator = if theme_name == &app.current_theme {
-                            "󰄬 "
-                        } else {
-                            "  "
-                        };
-                        ListItem::new(format!(" {} {}", indicator, theme_name)).style(style)
+                        ListItem::new(Line::from(vec![
+                            Span::styled(format!(" {name}"), style),
+                            Span::styled(format!(" (L{}): ", line_num + 1), Style::default().fg(colors.text_muted())),
+                            Span::styled(text.trim(), style),
+                        ]))
                     })
                     .collect()
             }
-        } else if matches!(
-            app.fuzzy_mode,
-            FuzzyMode::CommandPalette | FuzzyMode::FileOptions | FuzzyMode::DocSelect
-        ) {
-            if app.fuzzy_results.is_empty() {
-                vec![]
-            } else {
-                let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
-                let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
-                app.fuzzy_results[safe_start..end_idx]
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, path)| {
-                        let i = safe_start + idx;
-                        let name = path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
-                        let style = if i == app.fuzzy_idx {
-                            Style::default()
-                                .bg(colors.sel)
-                                .fg(colors.accent)
-                                .add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(colors.fg)
-                        };
-                        let icon = match app.fuzzy_mode {
-                            FuzzyMode::CommandPalette
-                            | FuzzyMode::FileOptions => app.icon_registry.get_command_icon(&name),
-                            FuzzyMode::DocSelect => app.icon_registry.get_icon(path, false, false),
-                            _ => "  ",
-                        };
-                        ListItem::new(format!(" {} {}", icon, name)).style(style)
-                    })
-                    .collect()
-            }
-        } else if app.fuzzy_mode == FuzzyMode::Files {
-            if app.fuzzy_file_results.is_empty() {
-                vec![]
-            } else {
-                let safe_start = start_idx.min(app.fuzzy_file_results.len().saturating_sub(1));
-                let end_idx = (safe_start + list_height).min(app.fuzzy_file_results.len());
-                app.fuzzy_file_results[safe_start..end_idx]
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, fr)| {
-                        let i = safe_start + idx;
-                        let is_selected = i == app.fuzzy_idx;
-
-                        let icon = app.icon_registry.get_icon(&fr.full_path, fr.full_path.is_dir(), false);
-
-                        // Build highlighted spans for the relative path.
-                        let match_set: std::collections::HashSet<usize> =
-                            fr.match_positions.iter().copied().collect();
-                        let mut spans = Vec::new();
-                        spans.push(Span::raw(format!(" {} ", icon)));
-
-                        for (ci, ch) in fr.relative_path.char_indices() {
-                            let style = if is_selected {
-                                if match_set.contains(&ci) {
-                                    Style::default()
-                                        .bg(colors.sel)
-                                        .fg(colors.accent)
-                                        .add_modifier(Modifier::BOLD)
-                                } else {
-                                    Style::default().bg(colors.sel).fg(colors.accent)
-                                }
-                            } else {
-                                if match_set.contains(&ci) {
-                                    Style::default().fg(colors.accent).add_modifier(Modifier::BOLD)
-                                } else {
-                                    Style::default().fg(colors.fg)
-                                }
-                            };
-                            spans.push(Span::styled(ch.to_string(), style));
-                        }
-
-                        let line_style = if is_selected {
-                            Style::default().bg(colors.sel).fg(colors.accent).add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(colors.fg)
-                        };
-                        ListItem::new(Line::from(spans)).style(line_style)
-                    })
-                    .collect()
-            }
-        } else if app.fuzzy_results.is_empty() {
+        }
+    } else if app.fuzzy_mode == FuzzyMode::Themes {
+        let safe_start = start_idx.min(app.fuzzy_themes.len().saturating_sub(1));
+        let end_idx = (safe_start + list_height).min(app.fuzzy_themes.len());
+        if app.fuzzy_themes.is_empty() {
+            vec![]
+        } else {
+            app.fuzzy_themes[safe_start..end_idx]
+                .iter()
+                .enumerate()
+                .map(|(idx, theme_name)| {
+                    let i = safe_start + idx;
+                    let style = if i == app.fuzzy_idx {
+                        Style::default()
+                            .bg(colors.sel)
+                            .fg(colors.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(colors.fg)
+                    };
+                    let indicator = if theme_name == &app.current_theme {
+                        "󰄬 "
+                    } else {
+                        "  "
+                    };
+                    ListItem::new(format!(" {} {}", indicator, theme_name)).style(style)
+                })
+                .collect()
+        }
+    } else if matches!(
+        app.fuzzy_mode,
+        FuzzyMode::CommandPalette | FuzzyMode::FileOptions | FuzzyMode::DocSelect
+    ) {
+        if app.fuzzy_results.is_empty() {
             vec![]
         } else {
             let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
@@ -2035,11 +2441,11 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                 .enumerate()
                 .map(|(idx, path)| {
                     let i = safe_start + idx;
-                    let name = path.file_name().unwrap_or_default().to_string_lossy();
-                    let rel_path = path
-                        .strip_prefix(&app.explorer.root)
-                        .unwrap_or(path)
-                        .to_string_lossy();
+                    let name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
                     let style = if i == app.fuzzy_idx {
                         Style::default()
                             .bg(colors.sel)
@@ -2048,16 +2454,115 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &App, colors: &UIColors) {
                     } else {
                         Style::default().fg(colors.fg)
                     };
-                    let icon = app.icon_registry.get_icon(path, path.is_dir(), false);
-                    ListItem::new(format!(" {} {} ({})", icon, name, rel_path)).style(style)
+                    let icon = match app.fuzzy_mode {
+                        FuzzyMode::CommandPalette | FuzzyMode::FileOptions => {
+                            app.icon_registry.get_command_icon(&name)
+                        }
+                        FuzzyMode::DocSelect => app.icon_registry.get_icon(path, false, false),
+                        _ => "  ",
+                    };
+                    ListItem::new(format!(" {} {}", icon, name)).style(style)
                 })
                 .collect()
-        };
+        }
+    } else if app.fuzzy_mode == FuzzyMode::Files {
+        if app.fuzzy_file_results.is_empty() {
+            vec![]
+        } else {
+            let safe_start = start_idx.min(app.fuzzy_file_results.len().saturating_sub(1));
+            let end_idx = (safe_start + list_height).min(app.fuzzy_file_results.len());
+            app.fuzzy_file_results[safe_start..end_idx]
+                .iter()
+                .enumerate()
+                .map(|(idx, fr)| {
+                    let i = safe_start + idx;
+                    let is_selected = i == app.fuzzy_idx;
 
-        f.render_widget(List::new(items), chunks[2]);
-    }
+                    let icon = app.icon_registry.get_icon(&fr.full_path, fr.full_path.is_dir(), false);
 
+                    let match_set: std::collections::HashSet<usize> =
+                        fr.match_positions.iter().copied().collect();
+                    let mut spans = Vec::new();
+                    spans.push(Span::raw(format!(" {} ", icon)));
+
+                    for (ci, ch) in fr.relative_path.char_indices() {
+                        let style = if is_selected {
+                            if match_set.contains(&ci) {
+                                Style::default()
+                                    .bg(colors.sel)
+                                    .fg(colors.accent)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().bg(colors.sel).fg(colors.accent)
+                            }
+                        } else if match_set.contains(&ci) {
+                            Style::default().fg(colors.accent).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(colors.fg)
+                        };
+                        spans.push(Span::styled(ch.to_string(), style));
+                    }
+
+                    let line_style = if is_selected {
+                        Style::default().bg(colors.sel).fg(colors.accent).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(colors.fg)
+                    };
+                    ListItem::new(Line::from(spans)).style(line_style)
+                })
+                .collect()
+        }
+    } else if app.fuzzy_results.is_empty() {
+        vec![]
+    } else {
+        let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
+        let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
+        app.fuzzy_results[safe_start..end_idx]
+            .iter()
+            .enumerate()
+            .map(|(idx, path)| {
+                let i = safe_start + idx;
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                let rel_path = path
+                    .strip_prefix(&app.explorer.root)
+                    .unwrap_or(path)
+                    .to_string_lossy();
+                let style = if i == app.fuzzy_idx {
+                    Style::default()
+                        .bg(colors.sel)
+                        .fg(colors.accent)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(colors.fg)
+                };
+                let icon = app.icon_registry.get_icon(path, path.is_dir(), false);
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" {} {} ", icon, name), style),
+                    Span::styled(format!("({})", rel_path), Style::default().fg(colors.text_muted())),
+                ]))
+            })
+            .collect()
+    };
+
+    f.render_widget(List::new(items), chunks[2]);
     f.render_widget(block, area);
+}
+
+fn draw_fuzzy_finder(f: &mut Frame, app: &mut App, colors: &UIColors) {
+    app.modal_button_hitboxes.clear();
+    app.modal_list_area = None;
+
+    match app.fuzzy_mode {
+        FuzzyMode::DeleteConfirm | FuzzyMode::UnsavedChanges | FuzzyMode::ExternalChange => {
+            draw_confirmation_modal(f, app, colors);
+        }
+        FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs => {
+            draw_input_modal(f, app, colors);
+        }
+        _ => {
+            draw_list_search_modal(f, app, colors);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2468,5 +2973,293 @@ mod indent_guide_tests {
         assert_eq!(level, 1);
         assert_eq!(start, 1);
         assert_eq!(end, 3);
+    }
+}
+
+#[cfg(test)]
+mod explorer_marquee_and_truncation_tests {
+    use super::*;
+    use crate::app::App;
+    use crate::explorer::FileItem;
+    use ratatui::{backend::TestBackend, Terminal};
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    #[test]
+    fn test_truncate_with_ellipsis() {
+        assert_eq!(truncate_with_ellipsis("short.rs", 10), "short.rs");
+        assert_eq!(truncate_with_ellipsis("exact10len", 10), "exact10len");
+        assert_eq!(
+            truncate_with_ellipsis("very_long_filename_here.txt", 15),
+            "very_long_fi..."
+        );
+        assert_eq!(truncate_with_ellipsis("ab", 2), "ab");
+        assert_eq!(truncate_with_ellipsis("abcdef", 2), "ab");
+        assert_eq!(truncate_with_ellipsis("abcdef", 3), "abc");
+        assert_eq!(truncate_with_ellipsis("abcdef", 4), "a...");
+        // Multibyte unicode characters
+        assert_eq!(truncate_with_ellipsis("ação_coração", 8), "ação_...");
+    }
+
+    #[test]
+    fn test_calculate_marquee_offset() {
+        // Fits within width: no scroll
+        let (offset, animating) = calculate_marquee_offset(10, 15, Duration::from_secs(5));
+        assert_eq!(offset, 0);
+        assert!(!animating);
+
+        // Long name: 30 chars, avail_width: 10 -> max_offset = 20
+        // pause_start: 1000ms, step: 220ms, pause_end: 1200ms
+        // scroll_duration: 20 * 220 = 4400ms. total_cycle = 1000 + 4400 + 1200 = 6600ms
+        let (offset_start, anim) = calculate_marquee_offset(30, 10, Duration::from_millis(500));
+        assert_eq!(offset_start, 0);
+        assert!(anim);
+
+        // 1000ms + 220ms * 2 = 1440ms -> offset 2
+        let (offset_mid, _) = calculate_marquee_offset(30, 10, Duration::from_millis(1440));
+        assert_eq!(offset_mid, 2);
+
+        // During end pause: 1000 + 4400 + 500 = 5900ms -> max_offset (20)
+        let (offset_end, _) = calculate_marquee_offset(30, 10, Duration::from_millis(5900));
+        assert_eq!(offset_end, 20);
+
+        // After full cycle (6600ms + 100ms) -> restarts from beginning (offset 0)
+        let (offset_restarted, _) = calculate_marquee_offset(30, 10, Duration::from_millis(6700));
+        assert_eq!(offset_restarted, 0);
+    }
+
+    #[test]
+    fn test_format_explorer_name_selected_vs_unselected() {
+        let long_name = "pi-session-2026-08-05T17-41-53-338Z_019fd304-7839-7357-8568-aaaef680af";
+        let avail = 15;
+
+        // Unselected item is truncated with ellipsis '…'
+        let (unselected, anim) = format_explorer_name(long_name, avail, false, Duration::ZERO);
+        assert_eq!(unselected.chars().count(), avail);
+        assert!(unselected.ends_with('…'));
+        assert!(!anim);
+
+        // Selected item starts with marquee at offset 0
+        let (selected_start, anim) = format_explorer_name(long_name, avail, true, Duration::ZERO);
+        assert_eq!(selected_start.chars().count(), avail);
+        assert_eq!(selected_start, &long_name[..avail]);
+        assert!(anim);
+
+        // Selected item after scroll time advances
+        let (selected_later, _) = format_explorer_name(
+            long_name,
+            avail,
+            true,
+            Duration::from_millis(1000 + 220 * 5),
+        );
+        assert_eq!(selected_later.chars().count(), avail);
+        let expected_slice: String = long_name.chars().skip(5).take(avail).collect();
+        assert_eq!(selected_later, expected_slice);
+    }
+
+    #[test]
+    fn test_explorer_renders_with_standard_width_and_no_overflow() {
+        let mut app = App::new(&[]);
+        app.show_explorer = true;
+        app.focus = Focus::Explorer;
+        let long_name =
+            "pi-session-2026-08-05T17-41-53-338Z_019fd304-7839-7357-8568-aaaef680af.json";
+        app.explorer.items.push(FileItem {
+            path: PathBuf::from(format!("/root/{long_name}")),
+            is_dir: false,
+            name: long_name.to_string(),
+            depth: 0,
+            expanded: false,
+        });
+        app.explorer.selected_idx = 0;
+
+        let width = 120;
+        let height = 20;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                render(f, &mut app);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+
+        // Standard explorer width is 20% of 120 = 24 cols.
+        // Therefore, column 23 must be the explorer right border '│'.
+        assert_eq!(buf[(23, 0)].symbol(), "│");
+        assert_eq!(buf[(23, 5)].symbol(), "│");
+        assert_eq!(buf[(23, 10)].symbol(), "│");
+
+        // The active marquee flag should be set since the filename exceeds 20 cols
+        assert!(app.explorer.has_active_marquee.get());
+    }
+
+    #[test]
+    fn test_tab_bar_truncates_long_filename() {
+        let mut app = App::new(&[]);
+        let long_name =
+            "pi-session-2026-08-05T17-41-53-338Z_019fd304-7839-7357-8568-aaaef680af.json";
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.path = Some(PathBuf::from(format!("/tmp/{long_name}")));
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+        app.is_welcome = false;
+
+        let width = 100;
+        let height = 10;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_tab_bar(f, &mut app, Rect::new(0, 0, width, 1), &colors);
+            })
+            .unwrap();
+        let rendered_buffer = terminal.backend().buffer().clone();
+        let row0: String = (0..width)
+            .map(|x| rendered_buffer[(x, 0)].symbol().to_string())
+            .collect();
+
+        // Row should contain truncated tab name with '...' and NOT full 75-char name
+        assert!(row0.contains("..."));
+        assert!(!row0.contains(long_name));
+    }
+
+    #[test]
+    fn test_status_bar_truncates_long_filename() {
+        let mut app = App::new(&[]);
+        let long_name =
+            "pi-session-2026-08-05T17-41-53-338Z_019fd304-7839-7357-8568-aaaef680af.json";
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.path = Some(PathBuf::from(format!("/tmp/{long_name}")));
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+        app.is_welcome = false;
+
+        let width = 120;
+        let height = 5;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_status_bar(f, &app, Rect::new(0, 4, width, 1), &colors);
+            })
+            .unwrap();
+        let rendered_buffer = terminal.backend().buffer().clone();
+        let row4: String = (0..width)
+            .map(|x| rendered_buffer[(x, 4)].symbol().to_string())
+            .collect();
+
+        // Status bar should contain truncated name with '...' and keep shortcuts
+        assert!(row4.contains("..."));
+        assert!(!row4.contains(long_name));
+        assert!(row4.contains("Save"));
+    }
+
+    #[test]
+    fn test_tab_bar_hover_shows_close_button_and_hitboxes() {
+        let mut app = App::new(&[]);
+        let mut buf1 = crate::buffer::EditorBuffer::new();
+        buf1.path = Some(PathBuf::from("/tmp/first.rs"));
+        let mut buf2 = crate::buffer::EditorBuffer::new();
+        buf2.path = Some(PathBuf::from("/tmp/second.rs"));
+        app.buffers.push(buf1);
+        app.buffers.push(buf2);
+        app.current_buffer_idx = 0;
+        app.is_welcome = false;
+
+        let width = 100;
+        let height = 5;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        // 1. Without mouse hover: no close button rendered, hitboxes have close_start_x == None
+        app.mouse_pos = None;
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_tab_bar(f, &mut app, Rect::new(0, 0, width, 1), &colors);
+            })
+            .unwrap();
+
+        let rendered = terminal.backend().buffer().clone();
+        let row0_unhovered: String = (0..width).map(|x| rendered[(x, 0)].symbol().to_string()).collect();
+        assert!(!row0_unhovered.contains("󰅖"));
+        assert_eq!(app.tab_hitboxes.len(), 2);
+        assert!(app.tab_hitboxes[0].close_start_x.is_none());
+        assert!(app.tab_hitboxes[1].close_start_x.is_none());
+
+        // 2. With mouse hover over tab 0: tab 0 shows close button and records close hitbox
+        app.mouse_pos = Some((5, 0));
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_tab_bar(f, &mut app, Rect::new(0, 0, width, 1), &colors);
+            })
+            .unwrap();
+
+        let rendered = terminal.backend().buffer().clone();
+        let row0_hovered: String = (0..width).map(|x| rendered[(x, 0)].symbol().to_string()).collect();
+        assert!(row0_hovered.contains("󰅖"));
+        assert!(app.tab_hitboxes[0].close_start_x.is_some());
+        assert!(app.tab_hitboxes[0].close_end_x.is_some());
+        assert!(app.tab_hitboxes[1].close_start_x.is_none());
+    }
+
+    #[test]
+    fn test_confirmation_modal_renders_buttons_and_hitboxes() {
+        let mut app = App::new(&[]);
+        app.is_fuzzy = true;
+        app.fuzzy_mode = FuzzyMode::DeleteConfirm;
+        app.pending_path = Some(PathBuf::from("/tmp/important_file.rs"));
+
+        let width = 100;
+        let height = 30;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_fuzzy_finder(f, &mut app, &colors);
+            })
+            .unwrap();
+
+        assert_eq!(app.modal_button_hitboxes.len(), 2);
+        assert_eq!(app.modal_button_hitboxes[0].action, ModalAction::ConfirmDelete);
+        assert_eq!(app.modal_button_hitboxes[1].action, ModalAction::Cancel);
+
+        let rendered = terminal.backend().buffer().clone();
+        let all_text: String = (0..height)
+            .flat_map(|y| (0..width).map(move |x| (x, y)))
+            .map(|(x, y)| rendered[(x, y)].symbol().to_string())
+            .collect();
+        assert!(all_text.contains("Delete"));
+        assert!(all_text.contains("Cancel"));
+        assert!(all_text.contains("important_file.rs"));
+    }
+
+    #[test]
+    fn test_input_modal_renders_buttons_and_hitboxes() {
+        let mut app = App::new(&[]);
+        app.is_fuzzy = true;
+        app.fuzzy_mode = FuzzyMode::Create;
+
+        let width = 100;
+        let height = 30;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_fuzzy_finder(f, &mut app, &colors);
+            })
+            .unwrap();
+
+        assert_eq!(app.modal_button_hitboxes.len(), 2);
+        assert_eq!(app.modal_button_hitboxes[0].action, ModalAction::ConfirmInput);
+        assert_eq!(app.modal_button_hitboxes[1].action, ModalAction::Cancel);
     }
 }
