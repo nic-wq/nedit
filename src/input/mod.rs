@@ -114,6 +114,7 @@ pub(crate) fn cancel_modal(app: &mut App) {
         app.current_theme = app.original_theme.clone();
     }
     app.is_fuzzy = false;
+    app.modal_button_idx = None;
     app.clear_fuzzy_query();
     app.pending_path = None;
     app.move_dir = None;
@@ -139,6 +140,7 @@ pub(crate) fn execute_delete_confirm(app: &mut App) {
                     crate::app::NotificationType::Info,
                 );
                 app.is_fuzzy = false;
+                app.modal_button_idx = None;
             }
             Err(err) => {
                 app.pending_path = Some(path);
@@ -168,6 +170,7 @@ pub(crate) fn execute_save_unsaved(app: &mut App) {
             if !has_path {
                 app.current_buffer_idx = idx;
                 app.fuzzy_mode = crate::app::FuzzyMode::SaveAs;
+                app.modal_button_idx = None;
                 app.clear_fuzzy_query();
                 app.needs_redraw = true;
                 return;
@@ -204,6 +207,7 @@ pub(crate) fn execute_reload_external(app: &mut App) {
         app.reload_buffer_from_disk(idx);
     }
     app.is_fuzzy = false;
+    app.modal_button_idx = None;
     app.clear_fuzzy_query();
     app.pending_path = None;
     app.pending_buffer_idx = None;
@@ -217,6 +221,7 @@ pub(crate) fn execute_keep_external(app: &mut App) {
         }
     }
     app.is_fuzzy = false;
+    app.modal_button_idx = None;
     app.clear_fuzzy_query();
     app.pending_path = None;
     app.pending_buffer_idx = None;
@@ -508,6 +513,14 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
     match mouse.kind {
         MouseEventKind::Moved => {
             app.mouse_pos = Some((mouse.column, mouse.row));
+            if app.is_fuzzy {
+                for (i, btn) in app.modal_button_hitboxes.iter().enumerate() {
+                    if mouse.row == btn.y && mouse.column >= btn.x && mouse.column < btn.x + btn.width {
+                        app.modal_button_idx = Some(i);
+                        break;
+                    }
+                }
+            }
             app.needs_redraw = true;
         }
         MouseEventKind::ScrollUp => {
@@ -640,7 +653,7 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
 
             // 3. Tab bar clicks
             for tab in app.tab_hitboxes.clone() {
-                if mouse.column >= tab.tab_start_x && mouse.column <= tab.tab_end_x {
+                if mouse.row == tab.y && mouse.column >= tab.tab_start_x && mouse.column <= tab.tab_end_x {
                     // Check if close button clicked
                     if let (Some(cs), Some(ce)) = (tab.close_start_x, tab.close_end_x) {
                         if mouse.column >= cs && mouse.column <= ce {
@@ -979,19 +992,23 @@ fn handle_unsaved_changes_completion(app: &mut App) {
                 app.force_close_buffer(idx);
             }
             app.is_fuzzy = false;
+            app.modal_button_idx = None;
         }
         Some(crate::app::types::PendingAction::Quit) => {
             if let Some(idx) = next_quit_pending_buffer(app) {
                 app.pending_action = Some(crate::app::types::PendingAction::Quit);
                 app.pending_buffer_idx = Some(idx);
+                app.modal_button_idx = Some(0);
                 // Stay in UnsavedChanges mode for the next buffer
             } else {
                 app.should_quit = true;
                 app.is_fuzzy = false;
+                app.modal_button_idx = None;
             }
         }
         None => {
             app.is_fuzzy = false;
+            app.modal_button_idx = None;
         }
     }
 }
@@ -1064,21 +1081,49 @@ fn handle_fuzzy_text_keys(app: &mut App, key: KeyEvent) -> bool {
 }
 
 fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
-    if app.fuzzy_has_editable_input() && handle_fuzzy_text_keys(app, key) {
-        return;
-    }
     if matches!(
         app.fuzzy_mode,
-        crate::app::FuzzyMode::Rename
-            | crate::app::FuzzyMode::SaveAs
-            | crate::app::FuzzyMode::Create
-            | crate::app::FuzzyMode::UnsavedChanges
+        crate::app::FuzzyMode::UnsavedChanges
             | crate::app::FuzzyMode::ExternalChange
             | crate::app::FuzzyMode::DeleteConfirm
     ) {
+        let buttons = app.modal_buttons();
+        let btn_count = buttons.len();
+        let cur_idx = app.modal_button_idx.unwrap_or(0);
+
         match key.code {
             KeyCode::Esc => {
                 cancel_modal(app);
+                return;
+            }
+            KeyCode::Left | KeyCode::Up => {
+                if btn_count > 0 {
+                    let next = if cur_idx == 0 { btn_count - 1 } else { cur_idx - 1 };
+                    app.modal_button_idx = Some(next);
+                    app.needs_redraw = true;
+                }
+                return;
+            }
+            KeyCode::Right | KeyCode::Down | KeyCode::Tab => {
+                if btn_count > 0 {
+                    let next = (cur_idx + 1) % btn_count;
+                    app.modal_button_idx = Some(next);
+                    app.needs_redraw = true;
+                }
+                return;
+            }
+            KeyCode::BackTab => {
+                if btn_count > 0 {
+                    let next = if cur_idx == 0 { btn_count - 1 } else { cur_idx - 1 };
+                    app.modal_button_idx = Some(next);
+                    app.needs_redraw = true;
+                }
+                return;
+            }
+            KeyCode::Enter => {
+                if let Some((_, action, _)) = buttons.get(cur_idx) {
+                    execute_modal_action(app, *action);
+                }
                 return;
             }
             KeyCode::Char('s') | KeyCode::Char('S')
@@ -1105,11 +1150,94 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 execute_keep_external(app);
                 return;
             }
-            _ => {}
+            _ => return,
         }
-        if key.code != KeyCode::Enter {
+    }
+
+    if matches!(
+        app.fuzzy_mode,
+        crate::app::FuzzyMode::Create
+            | crate::app::FuzzyMode::Rename
+            | crate::app::FuzzyMode::SaveAs
+    ) {
+        if let Some(btn_idx) = app.modal_button_idx {
+            match key.code {
+                KeyCode::Esc => {
+                    cancel_modal(app);
+                    return;
+                }
+                KeyCode::Left => {
+                    app.modal_button_idx = Some(0);
+                    app.needs_redraw = true;
+                    return;
+                }
+                KeyCode::Right => {
+                    app.modal_button_idx = Some(1);
+                    app.needs_redraw = true;
+                    return;
+                }
+                KeyCode::Tab => {
+                    app.modal_button_idx = Some((btn_idx + 1) % 2);
+                    app.needs_redraw = true;
+                    return;
+                }
+                KeyCode::BackTab => {
+                    if btn_idx == 0 {
+                        app.modal_button_idx = None;
+                    } else {
+                        app.modal_button_idx = Some(0);
+                    }
+                    app.needs_redraw = true;
+                    return;
+                }
+                KeyCode::Up => {
+                    app.modal_button_idx = None;
+                    app.needs_redraw = true;
+                    return;
+                }
+                KeyCode::Enter => {
+                    if btn_idx == 1 {
+                        cancel_modal(app);
+                    } else {
+                        execute_fuzzy_enter(app);
+                    }
+                    return;
+                }
+                KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete => {
+                    app.modal_button_idx = None;
+                    if handle_fuzzy_text_keys(app, key) {
+                        return;
+                    }
+                }
+                _ => return,
+            }
+        } else {
+            match key.code {
+                KeyCode::Esc => {
+                    cancel_modal(app);
+                    return;
+                }
+                KeyCode::Down | KeyCode::Tab => {
+                    app.modal_button_idx = Some(0);
+                    app.needs_redraw = true;
+                    return;
+                }
+                KeyCode::Enter => {
+                    execute_fuzzy_enter(app);
+                    return;
+                }
+                _ => {
+                    if handle_fuzzy_text_keys(app, key) {
+                        return;
+                    }
+                }
+            }
             return;
         }
+    }
+
+    if app.fuzzy_has_editable_input() && handle_fuzzy_text_keys(app, key) {
+        return;
     }
 
     match key.code {
@@ -2410,6 +2538,7 @@ mod tests {
 
         app.tab_hitboxes.push(crate::app::types::TabHitbox {
             buffer_idx: 0,
+            y: 0,
             tab_start_x: 0,
             tab_end_x: 15,
             close_start_x: Some(12),
@@ -2439,6 +2568,7 @@ mod tests {
 
         app.tab_hitboxes.push(crate::app::types::TabHitbox {
             buffer_idx: 1,
+            y: 0,
             tab_start_x: 20,
             tab_end_x: 35,
             close_start_x: None,
@@ -2456,6 +2586,82 @@ mod tests {
 
         assert_eq!(app.current_buffer_idx, 1);
         assert_eq!(app.focus, Focus::Editor);
+    }
+
+    #[test]
+    fn test_editor_click_does_not_switch_tab_when_row_differs() {
+        let mut app = App::new(&[]);
+        let mut buf1 = crate::buffer::EditorBuffer::new();
+        buf1.insert_text("line 0\nline 1\nline 2\nline 3\nline 4\nline 5\n");
+        let buf2 = crate::buffer::EditorBuffer::new();
+        app.buffers.push(buf1);
+        app.buffers.push(buf2);
+        app.current_buffer_idx = 0;
+
+        // Tab 1 hitbox is at row 0, cols 0..=30
+        app.tab_hitboxes.push(crate::app::types::TabHitbox {
+            buffer_idx: 1,
+            y: 0,
+            tab_start_x: 0,
+            tab_end_x: 30,
+            close_start_x: None,
+            close_end_x: None,
+        });
+        app.editor_area = ratatui::layout::Rect::new(0, 1, 80, 24);
+
+        // Click inside editor area at column 10, row 4 (within tab_start_x..tab_end_x horizontally, but row 4 != row 0)
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 10,
+            row: 4,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event);
+
+        // Buffer must NOT have switched to 1!
+        assert_eq!(app.current_buffer_idx, 0);
+        assert_eq!(app.focus, Focus::Editor);
+    }
+
+    #[test]
+    fn test_confirmation_modal_arrow_keys_change_selected_button() {
+        let mut app = App::new(&[]);
+        app.is_fuzzy = true;
+        app.fuzzy_mode = crate::app::FuzzyMode::DeleteConfirm;
+        app.modal_button_idx = Some(0); // 0: Delete, 1: Cancel
+
+        // Press Right arrow -> selects Cancel (index 1)
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Right));
+        assert_eq!(app.modal_button_idx, Some(1));
+
+        // Press Right arrow again -> wraps around to Delete (index 0)
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Right));
+        assert_eq!(app.modal_button_idx, Some(0));
+
+        // Press Left arrow -> wraps to Cancel (index 1)
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Left));
+        assert_eq!(app.modal_button_idx, Some(1));
+
+        // Press Left arrow again -> selects Delete (index 0)
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Left));
+        assert_eq!(app.modal_button_idx, Some(0));
+    }
+
+    #[test]
+    fn test_confirmation_modal_enter_on_cancel_cancels_modal() {
+        let mut app = App::new(&[]);
+        app.is_fuzzy = true;
+        app.fuzzy_mode = crate::app::FuzzyMode::DeleteConfirm;
+        app.modal_button_idx = Some(0);
+
+        // Press Right arrow to select Cancel
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Right));
+        assert_eq!(app.modal_button_idx, Some(1));
+
+        // Press Enter on selected Cancel button -> cancels modal
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Enter));
+        assert!(!app.is_fuzzy);
+        assert_eq!(app.modal_button_idx, None);
     }
 
     #[test]

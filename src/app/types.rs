@@ -41,6 +41,7 @@ pub enum NotificationType {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TabHitbox {
     pub buffer_idx: usize,
+    pub y: u16,
     pub tab_start_x: u16,
     pub tab_end_x: u16,
     pub close_start_x: Option<u16>,

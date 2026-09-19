@@ -533,6 +533,7 @@ fn draw_tab_bar(f: &mut Frame, app: &mut App, area: Rect, colors: &UIColors) {
             let total_w = tab_content_len + close_btn_w;
             app.tab_hitboxes.push(TabHitbox {
                 buffer_idx: i,
+                y: area.y,
                 tab_start_x: cur_x,
                 tab_end_x: (cur_x + total_w).min(max_x),
                 close_start_x: Some(close_start_x),
@@ -544,6 +545,7 @@ fn draw_tab_bar(f: &mut Frame, app: &mut App, area: Rect, colors: &UIColors) {
             let total_w = tab_content_len;
             app.tab_hitboxes.push(TabHitbox {
                 buffer_idx: i,
+                y: area.y,
                 tab_start_x: cur_x,
                 tab_end_x: (cur_x + total_w).min(max_x),
                 close_start_x: None,
@@ -1858,7 +1860,7 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     let inner_x = area.x + 2;
     let inner_w = area.width.saturating_sub(4);
 
-    let (prompt_line, target_line, subtitle_line, buttons, hint_line) = match app.fuzzy_mode {
+    let (prompt_line, target_line, subtitle_line, hint_line) = match app.fuzzy_mode {
         FuzzyMode::DeleteConfirm => {
             let path_str = app
                 .pending_path
@@ -1886,13 +1888,9 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                         Style::default().fg(colors.text_muted()),
                     ),
                 ]),
-                vec![
-                    (" 󰆴 Delete (Enter) ", ModalAction::ConfirmDelete, true),
-                    (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
-                ],
                 Line::from(vec![
                     Span::styled(
-                        " [Enter] Confirm   [Esc] Cancel",
+                        " [←/→] Select   [Enter] Confirm   [Esc] Cancel",
                         Style::default().fg(colors.text_muted()),
                     ),
                 ]),
@@ -1914,37 +1912,23 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             };
             let trunc_name = truncate_with_ellipsis(&filename, inner_w.saturating_sub(6) as usize);
 
-            let (prompt, sub, btns, hints) = if is_script {
+            let (prompt, sub, hints) = if is_script {
                 (
                     " Close Live Script? Modifications will be lost.",
                     " Unsaved script content will not be recoverable.",
-                    vec![
-                        (" 󰆴 Discard (D) ", ModalAction::DiscardUnsaved, true),
-                        (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
-                    ],
-                    " [D] Discard   [Esc] Cancel",
+                    " [←/→] Select   [Enter] Confirm   [Esc] Cancel",
                 )
             } else if is_quit {
                 (
                     " Quit application? Save changes before exit?",
                     " Unsaved modifications will be permanently lost.",
-                    vec![
-                        (" 󰆓 Save (S) ", ModalAction::SaveUnsaved, false),
-                        (" 󰆴 Discard (D) ", ModalAction::DiscardUnsaved, true),
-                        (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
-                    ],
-                    " [S] Save   [D] Discard   [Esc] Cancel",
+                    " [←/→] Select   [Enter] Confirm   [S] Save   [D] Discard   [Esc] Cancel",
                 )
             } else {
                 (
                     " Save changes to file before closing?",
                     " Unsaved modifications will be permanently lost.",
-                    vec![
-                        (" 󰆓 Save (S) ", ModalAction::SaveUnsaved, false),
-                        (" 󰆴 Discard (D) ", ModalAction::DiscardUnsaved, true),
-                        (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
-                    ],
-                    " [S] Save   [D] Discard   [Esc] Cancel",
+                    " [←/→] Select   [Enter] Confirm   [S] Save   [D] Discard   [Esc] Cancel",
                 )
             };
 
@@ -1965,7 +1949,6 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 Line::from(vec![
                     Span::styled(format!("  {sub}"), Style::default().fg(colors.text_muted())),
                 ]),
-                btns,
                 Line::from(vec![
                     Span::styled(format!(" {hints}"), Style::default().fg(colors.text_muted())),
                 ]),
@@ -2000,14 +1983,9 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                         Style::default().fg(colors.text_muted()),
                     ),
                 ]),
-                vec![
-                    (" 󰑐 Reload (R) ", ModalAction::ReloadExternal, false),
-                    (" 󰄬 Keep (K) ", ModalAction::KeepExternal, false),
-                    (" 󰅖 Cancel (Esc) ", ModalAction::Cancel, false),
-                ],
                 Line::from(vec![
                     Span::styled(
-                        " [R] Reload   [K] Keep   [Esc] Cancel",
+                        " [←/→] Select   [Enter] Confirm   [R] Reload   [K] Keep   [Esc] Cancel",
                         Style::default().fg(colors.text_muted()),
                     ),
                 ]),
@@ -2020,18 +1998,26 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     f.render_widget(Paragraph::new(target_line), Rect::new(inner_x, inner_y + 1, inner_w, 1));
     f.render_widget(Paragraph::new(subtitle_line), Rect::new(inner_x, inner_y + 2, inner_w, 1));
 
+    let buttons = app.modal_buttons();
+    let selected_idx = app.modal_button_idx.unwrap_or(0);
     let btn_row_y = inner_y + 4;
     let mut btn_cur_x = inner_x + 1;
 
-    for (label, action, is_danger) in buttons {
-        let label_len = UnicodeWidthStr::width(label) as u16;
+    for (i, (base_label, action, is_danger)) in buttons.into_iter().enumerate() {
+        let is_selected = selected_idx == i;
+        let display_label = if is_selected {
+            format!(" ▸ {base_label} ")
+        } else {
+            format!("   {base_label} ")
+        };
+        let label_len = UnicodeWidthStr::width(display_label.as_str()) as u16;
         let is_hovered = app
             .mouse_pos
             .map(|(mx, my)| my == btn_row_y && mx >= btn_cur_x && mx < btn_cur_x + label_len)
             .unwrap_or(false);
 
         let btn_style = if is_danger {
-            if is_hovered {
+            if is_selected || is_hovered {
                 Style::default()
                     .bg(colors.error)
                     .fg(Color::Rgb(0, 0, 0))
@@ -2042,7 +2028,7 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                     .fg(Color::Rgb(255, 255, 255))
                     .add_modifier(Modifier::BOLD)
             }
-        } else if is_hovered {
+        } else if is_selected || is_hovered {
             Style::default()
                 .bg(colors.accent)
                 .fg(Color::Rgb(0, 0, 0))
@@ -2055,7 +2041,7 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         };
 
         f.render_widget(
-            Paragraph::new(Span::styled(label, btn_style)),
+            Paragraph::new(Span::styled(display_label, btn_style)),
             Rect::new(btn_cur_x, btn_row_y, label_len, 1),
         );
 
@@ -2128,34 +2114,30 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     }
 
     let btn_row_y = inner_y + 4;
-    let buttons = [
-        (" 󰄬 Confirm (Enter) ", ModalAction::ConfirmInput),
-        (" 󰅖 Cancel (Esc) ", ModalAction::Cancel),
-    ];
+    let buttons = app.modal_buttons();
     let mut btn_cur_x = inner_x + 1;
-    for (label, action) in buttons {
-        let label_len = UnicodeWidthStr::width(label) as u16;
+    for (i, (base_label, action, _)) in buttons.into_iter().enumerate() {
+        let is_selected = app.modal_button_idx == Some(i);
+        let display_label = if is_selected {
+            format!(" ▸ {base_label} ")
+        } else {
+            format!("   {base_label} ")
+        };
+        let label_len = UnicodeWidthStr::width(display_label.as_str()) as u16;
         let is_hovered = app
             .mouse_pos
             .map(|(mx, my)| my == btn_row_y && mx >= btn_cur_x && mx < btn_cur_x + label_len)
             .unwrap_or(false);
 
-        let btn_style = if action == ModalAction::ConfirmInput {
-            if is_hovered {
-                Style::default()
-                    .bg(colors.accent)
-                    .fg(Color::Rgb(0, 0, 0))
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-                    .bg(colors.button_bg())
-                    .fg(colors.accent)
-                    .add_modifier(Modifier::BOLD)
-            }
-        } else if is_hovered {
+        let btn_style = if is_selected || is_hovered {
             Style::default()
                 .bg(colors.accent)
                 .fg(Color::Rgb(0, 0, 0))
+                .add_modifier(Modifier::BOLD)
+        } else if action == ModalAction::ConfirmInput {
+            Style::default()
+                .bg(colors.button_bg())
+                .fg(colors.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
@@ -2165,7 +2147,7 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         };
 
         f.render_widget(
-            Paragraph::new(Span::styled(label, btn_style)),
+            Paragraph::new(Span::styled(display_label, btn_style)),
             Rect::new(btn_cur_x, btn_row_y, label_len, 1),
         );
 
@@ -2182,10 +2164,10 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
 
     f.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            "  [Enter] Confirm   [Esc] Cancel",
+            " [Tab/↓] Buttons   [Enter] Confirm   [Esc] Cancel",
             Style::default().fg(colors.text_muted()),
         )])),
-        Rect::new(inner_x, inner_y + 5, inner_w, 1),
+        Rect::new(inner_x, inner_y + 6, inner_w, 1),
     );
 }
 

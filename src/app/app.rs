@@ -109,6 +109,7 @@ pub struct App {
     pub modal_list_start_idx: usize,
     pub last_explorer_click_item: Option<usize>,
     pub last_explorer_click_time: std::time::Instant,
+    pub modal_button_idx: Option<usize>,
 }
 
 impl App {
@@ -294,6 +295,7 @@ impl App {
             modal_list_start_idx: 0,
             last_explorer_click_item: None,
             last_explorer_click_time: std::time::Instant::now(),
+            modal_button_idx: None,
         };
 
         let is_huge_system_dir = initial_root == Path::new("/")
@@ -786,6 +788,42 @@ impl App {
                 format!("Could not reload {}", path.display()),
                 crate::app::NotificationType::Error,
             );
+        }
+    }
+
+    pub fn modal_buttons(&self) -> Vec<(&'static str, crate::app::types::ModalAction, bool)> {
+        use crate::app::types::{FuzzyMode, ModalAction};
+        match self.fuzzy_mode {
+            FuzzyMode::DeleteConfirm => vec![
+                ("󰆴 Delete", ModalAction::ConfirmDelete, true),
+                ("󰅖 Cancel", ModalAction::Cancel, false),
+            ],
+            FuzzyMode::UnsavedChanges => {
+                let is_script = self.live_script_mode
+                    && self.pending_buffer_idx == self.live_script_buffer_idx;
+                if is_script {
+                    vec![
+                        ("󰆴 Discard", ModalAction::DiscardUnsaved, true),
+                        ("󰅖 Cancel", ModalAction::Cancel, false),
+                    ]
+                } else {
+                    vec![
+                        ("󰆓 Save", ModalAction::SaveUnsaved, false),
+                        ("󰆴 Discard", ModalAction::DiscardUnsaved, true),
+                        ("󰅖 Cancel", ModalAction::Cancel, false),
+                    ]
+                }
+            }
+            FuzzyMode::ExternalChange => vec![
+                ("󰑐 Reload", ModalAction::ReloadExternal, false),
+                ("󰄬 Keep", ModalAction::KeepExternal, false),
+                ("󰅖 Cancel", ModalAction::Cancel, false),
+            ],
+            FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs => vec![
+                ("󰄬 Confirm", ModalAction::ConfirmInput, false),
+                ("󰅖 Cancel", ModalAction::Cancel, false),
+            ],
+            _ => Vec::new(),
         }
     }
 }
