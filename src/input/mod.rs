@@ -2,7 +2,7 @@ use crossterm::event::{
     self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
 
-use crate::app::{App, Focus, ModalAction};
+use crate::app::{App, ContextMenuAction, ContextMenuTarget, Focus, ModalAction, NotificationType};
 
 pub fn handle_events(app: &mut App) -> anyhow::Result<()> {
     // We use a short poll duration (16ms ~ 60fps) to keep the UI responsive
@@ -509,10 +509,157 @@ pub(crate) fn execute_fuzzy_enter(app: &mut App) {
     app.needs_redraw = true;
 }
 
+fn execute_context_menu_action(app: &mut App, action: ContextMenuAction, target: ContextMenuTarget) {
+    match action {
+        ContextMenuAction::Copy => {
+            if let Some(buf) = app.buffers.get_mut(app.current_buffer_idx) {
+                buf.copy();
+            }
+            app.show_notification("Copied to clipboard".into(), NotificationType::Info);
+        }
+        ContextMenuAction::Cut => {
+            if let Some(buf) = app.buffers.get_mut(app.current_buffer_idx) {
+                buf.cut();
+            }
+            app.show_notification("Cut to clipboard".into(), NotificationType::Info);
+        }
+        ContextMenuAction::Paste => {
+            if let Some(buf) = app.buffers.get_mut(app.current_buffer_idx) {
+                buf.paste();
+            }
+            app.show_notification("Pasted from clipboard".into(), NotificationType::Info);
+        }
+        ContextMenuAction::DeleteSelection => {
+            if let Some(buf) = app.buffers.get_mut(app.current_buffer_idx) {
+                buf.delete_selection();
+            }
+        }
+        ContextMenuAction::SelectAll => {
+            if let Some(buf) = app.buffers.get_mut(app.current_buffer_idx) {
+                buf.select_all();
+            }
+        }
+        ContextMenuAction::SelectWord => {
+            if let Some(buf) = app.buffers.get_mut(app.current_buffer_idx) {
+                buf.select_word();
+            }
+        }
+        ContextMenuAction::OpenFile => {
+            if let ContextMenuTarget::ExplorerItem(path, false) = target {
+                app.open_file(path);
+                app.focus = Focus::Editor;
+            }
+        }
+        ContextMenuAction::Rename => {
+            if let ContextMenuTarget::ExplorerItem(path, _) = target {
+                let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                app.pending_path = Some(path);
+                app.fuzzy_mode = crate::app::types::FuzzyMode::Rename;
+                app.is_fuzzy = true;
+                app.set_fuzzy_query(name);
+                app.modal_button_idx = None;
+            }
+        }
+        ContextMenuAction::Delete => {
+            if let ContextMenuTarget::ExplorerItem(path, _) = target {
+                app.pending_path = Some(path);
+                app.fuzzy_mode = crate::app::types::FuzzyMode::DeleteConfirm;
+                app.is_fuzzy = true;
+                app.clear_fuzzy_query();
+                app.modal_button_idx = Some(0);
+            }
+        }
+        ContextMenuAction::NewFile => {
+            app.fuzzy_mode = crate::app::types::FuzzyMode::Create;
+            app.is_fuzzy = true;
+            app.clear_fuzzy_query();
+            app.pending_path = None;
+            app.modal_button_idx = None;
+        }
+        ContextMenuAction::NewFolder => {
+            app.fuzzy_mode = crate::app::types::FuzzyMode::Create;
+            app.is_fuzzy = true;
+            app.set_fuzzy_query("/".to_string());
+            app.pending_path = None;
+            app.modal_button_idx = None;
+        }
+        ContextMenuAction::Move => {
+            if let ContextMenuTarget::ExplorerItem(path, _) = target {
+                app.fuzzy_mode = crate::app::types::FuzzyMode::Move;
+                app.is_fuzzy = true;
+                app.move_dir = path.parent().map(|p| p.to_path_buf());
+                app.pending_path = Some(path);
+                app.clear_fuzzy_query();
+                app.update_fuzzy(true);
+            }
+        }
+        ContextMenuAction::CopyPath => {
+            if let ContextMenuTarget::ExplorerItem(path, _) = target {
+                crate::clipboard::copy(&path.to_string_lossy());
+                app.show_notification("Copied path to clipboard".into(), NotificationType::Info);
+            }
+        }
+        ContextMenuAction::SetRoot => {
+            if let ContextMenuTarget::ExplorerItem(path, true) = target {
+                app.set_explorer_root(path);
+            }
+        }
+    }
+    app.needs_redraw = true;
+}
+
+fn handle_context_menu_input(app: &mut App, key: KeyEvent) {
+    let Some(menu) = app.context_menu.clone() else {
+        return;
+    };
+
+    match key.code {
+        KeyCode::Esc => {
+            app.close_context_menu();
+        }
+        KeyCode::Up => {
+            if let Some(m) = &mut app.context_menu {
+                m.selected_idx = if m.selected_idx == 0 {
+                    m.items.len().saturating_sub(1)
+                } else {
+                    m.selected_idx - 1
+                };
+                app.needs_redraw = true;
+            }
+        }
+        KeyCode::Down => {
+            if let Some(m) = &mut app.context_menu {
+                if !m.items.is_empty() {
+                    m.selected_idx = (m.selected_idx + 1) % m.items.len();
+                    app.needs_redraw = true;
+                }
+            }
+        }
+        KeyCode::Enter => {
+            if let Some(item) = menu.items.get(menu.selected_idx) {
+                let action = item.action;
+                let target = menu.target;
+                app.close_context_menu();
+                execute_context_menu_action(app, action, target);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
     match mouse.kind {
         MouseEventKind::Moved => {
             app.mouse_pos = Some((mouse.column, mouse.row));
+            if let Some(menu) = &mut app.context_menu {
+                let menu_rect = ratatui::layout::Rect::new(menu.x, menu.y, menu.width, menu.height);
+                if menu_rect.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                    let rel_y = mouse.row.saturating_sub(menu.y + 1) as usize;
+                    if rel_y < menu.items.len() {
+                        menu.selected_idx = rel_y;
+                    }
+                }
+            }
             if app.is_fuzzy {
                 for (i, btn) in app.modal_button_hitboxes.iter().enumerate() {
                     if mouse.row == btn.y && mouse.column >= btn.x && mouse.column < btn.x + btn.width {
@@ -594,6 +741,23 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             }
         }
         MouseEventKind::Down(event::MouseButton::Left) => {
+            // 0. Context menu intercepts click
+            if let Some(menu) = app.context_menu.clone() {
+                let menu_rect = ratatui::layout::Rect::new(menu.x, menu.y, menu.width, menu.height);
+                if menu_rect.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                    let rel_y = mouse.row.saturating_sub(menu.y + 1) as usize;
+                    if rel_y < menu.items.len() {
+                        let action = menu.items[rel_y].action;
+                        let target = menu.target;
+                        app.close_context_menu();
+                        execute_context_menu_action(app, action, target);
+                        return;
+                    }
+                }
+                app.close_context_menu();
+                return;
+            }
+
             // 1. Toasts float above everything: their close button wins the click.
             if app.dismiss_toast_at(mouse.column, mouse.row) {
                 return;
@@ -776,6 +940,89 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 }
             }
         }
+        MouseEventKind::Down(event::MouseButton::Right) => {
+            app.close_context_menu();
+
+            if app.is_fuzzy {
+                return;
+            }
+
+            if app
+                .editor_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                app.focus = Focus::Editor;
+                if let Some(idx) = app.preview_buffer_idx {
+                    app.clear_preview(idx);
+                }
+                let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
+                let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
+                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                    if !buffer.is_loading {
+                        let has_selection = buffer.selection_start.is_some()
+                            && buffer.get_selected_text().map(|s| !s.is_empty()).unwrap_or(false);
+
+                        let click_in_selection = if has_selection {
+                            if let Some(start) = buffer.selection_start {
+                                let start_idx = buffer.to_char_idx(start.0, start.1);
+                                let end_idx = buffer.to_char_idx(buffer.cursor_row, buffer.cursor_col);
+                                let (s, e) = if start_idx < end_idx { (start_idx, end_idx) } else { (end_idx, start_idx) };
+                                let target_row = buffer.scroll_row + rel_row;
+                                let target_col =
+                                    buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
+                                let row = target_row.min(buffer.content.len_lines().saturating_sub(1));
+                                let max_col = buffer.line_max_char_col(row);
+                                let col = target_col.min(max_col);
+                                let target_idx = buffer.to_char_idx(row, col);
+                                target_idx >= s && target_idx < e
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        if !click_in_selection {
+                            let target_row = buffer.scroll_row + rel_row;
+                            let target_col =
+                                buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
+                            let row = target_row.min(buffer.content.len_lines().saturating_sub(1));
+                            buffer.place_cursor(row, target_col);
+                            buffer.selection_start = None;
+                        }
+                    }
+                }
+
+                let screen_w = app.screen_area.width;
+                let screen_h = app.screen_area.height;
+                app.open_editor_context_menu(mouse.column, mouse.row, screen_w, screen_h);
+                return;
+            } else if app
+                .explorer_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                app.focus = Focus::Explorer;
+                let rel_row = mouse.row.saturating_sub(app.explorer_area.y) as usize;
+                if let Some(item_row) = rel_row.checked_sub(4) {
+                    let target_idx = if app.explorer.is_searching() {
+                        app.explorer.search_scroll + item_row
+                    } else {
+                        app.explorer.scroll_offset + item_row
+                    };
+                    let item_count = if app.explorer.is_searching() {
+                        app.explorer.search_results.len()
+                    } else {
+                        app.explorer.items.len()
+                    };
+                    if target_idx < item_count {
+                        let screen_w = app.screen_area.width;
+                        let screen_h = app.screen_area.height;
+                        app.open_explorer_context_menu(mouse.column, mouse.row, screen_w, screen_h, target_idx);
+                        return;
+                    }
+                }
+            }
+        }
         MouseEventKind::Drag(event::MouseButton::Left)
             if app
                 .editor_area
@@ -803,6 +1050,11 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
 }
 
 fn handle_key_event(app: &mut App, key: KeyEvent) {
+    if app.context_menu.is_some() {
+        handle_context_menu_input(app, key);
+        return;
+    }
+
     if app.is_fuzzy {
         handle_fuzzy_input(app, key);
         return;
@@ -1870,8 +2122,8 @@ fn handle_run_live_script(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::{handle_fuzzy_input, handle_paste};
-    use crate::app::{App, Focus, FuzzyMode, ModalAction, ModalButtonHitbox};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use crate::app::{App, ContextMenuAction, ContextMenuTarget, Focus, FuzzyMode, ModalAction};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -2724,5 +2976,234 @@ mod tests {
         super::handle_mouse_event(&mut app, event);
 
         assert!(!app.is_fuzzy);
+    }
+
+    #[test]
+    fn test_editor_right_click_without_selection_places_cursor_and_opens_menu() {
+        let mut app = App::new(&[]);
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.insert_text("hello world\nsecond line\n");
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+        app.screen_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        app.editor_area = ratatui::layout::Rect::new(0, 1, 80, 23);
+
+        let pad = app.buffers[0].line_number_width() as u16;
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Right),
+            column: pad + 5,
+            row: 1, // first editor line
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event);
+
+        assert_eq!(app.buffers[0].cursor_row, 0);
+        assert_eq!(app.buffers[0].cursor_col, 5);
+        assert!(app.buffers[0].selection_start.is_none());
+
+        let menu = app.context_menu.as_ref().expect("Context menu should be open");
+        assert_eq!(menu.target, ContextMenuTarget::Editor);
+        // Without selection: Colar, Selecionar Palavra, Selecionar Tudo
+        assert_eq!(menu.items.len(), 3);
+        assert_eq!(menu.items[0].action, ContextMenuAction::Paste);
+        assert_eq!(menu.items[1].action, ContextMenuAction::SelectWord);
+        assert_eq!(menu.items[2].action, ContextMenuAction::SelectAll);
+    }
+
+    #[test]
+    fn test_editor_right_click_inside_selection_preserves_selection() {
+        let mut app = App::new(&[]);
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.insert_text("hello world\nsecond line\n");
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+        app.screen_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        app.editor_area = ratatui::layout::Rect::new(0, 1, 80, 23);
+
+        // Select "hello" (chars 0..5 on row 0)
+        app.buffers[0].selection_start = Some((0, 0));
+        app.buffers[0].cursor_row = 0;
+        app.buffers[0].cursor_col = 5;
+
+        let pad = app.buffers[0].line_number_width() as u16;
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Right),
+            column: pad + 2, // inside "hello"
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event);
+
+        assert!(app.buffers[0].selection_start.is_some());
+        assert_eq!(app.buffers[0].get_selected_text().as_deref(), Some("hello"));
+
+        let menu = app.context_menu.as_ref().expect("Context menu should be open");
+        assert_eq!(menu.target, ContextMenuTarget::Editor);
+        // With selection: Copiar, Cortar, Colar (Substituir), Excluir Seleção, Selecionar Tudo
+        assert_eq!(menu.items.len(), 5);
+        assert_eq!(menu.items[0].action, ContextMenuAction::Copy);
+        assert_eq!(menu.items[1].action, ContextMenuAction::Cut);
+        assert_eq!(menu.items[2].action, ContextMenuAction::Paste);
+        assert_eq!(menu.items[3].action, ContextMenuAction::DeleteSelection);
+        assert_eq!(menu.items[4].action, ContextMenuAction::SelectAll);
+    }
+
+    #[test]
+    fn test_editor_right_click_outside_selection_clears_selection_and_places_cursor() {
+        let mut app = App::new(&[]);
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.insert_text("hello world\nsecond line\n");
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+        app.screen_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        app.editor_area = ratatui::layout::Rect::new(0, 1, 80, 23);
+
+        // Select "hello"
+        app.buffers[0].selection_start = Some((0, 0));
+        app.buffers[0].cursor_row = 0;
+        app.buffers[0].cursor_col = 5;
+
+        let pad = app.buffers[0].line_number_width() as u16;
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Right),
+            column: pad + 3,
+            row: 2, // on row 1 ("second line")
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event);
+
+        // Selection should be cleared and cursor placed at row 1, col 3
+        assert!(app.buffers[0].selection_start.is_none());
+        assert_eq!(app.buffers[0].cursor_row, 1);
+        assert_eq!(app.buffers[0].cursor_col, 3);
+
+        let menu = app.context_menu.as_ref().expect("Context menu should be open");
+        assert_eq!(menu.items.len(), 3);
+    }
+
+    #[test]
+    fn test_context_menu_keyboard_navigation_and_esc() {
+        let mut app = App::new(&[]);
+        app.screen_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        app.open_editor_context_menu(10, 10, 80, 24);
+        assert!(app.context_menu.is_some());
+        assert_eq!(app.context_menu.as_ref().unwrap().selected_idx, 0);
+
+        // Down moves to 1
+        super::handle_key_event(&mut app, key(KeyCode::Down));
+        assert_eq!(app.context_menu.as_ref().unwrap().selected_idx, 1);
+
+        // Up moves back to 0
+        super::handle_key_event(&mut app, key(KeyCode::Up));
+        assert_eq!(app.context_menu.as_ref().unwrap().selected_idx, 0);
+
+        // Up wraps to last item
+        let total = app.context_menu.as_ref().unwrap().items.len();
+        super::handle_key_event(&mut app, key(KeyCode::Up));
+        assert_eq!(app.context_menu.as_ref().unwrap().selected_idx, total - 1);
+
+        // Esc closes menu
+        super::handle_key_event(&mut app, key(KeyCode::Esc));
+        assert!(app.context_menu.is_none());
+    }
+
+    #[test]
+    fn test_context_menu_click_item_executes_and_closes() {
+        let mut app = App::new(&[]);
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.insert_text("hello world");
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+        app.screen_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        app.open_editor_context_menu(10, 10, 80, 24);
+
+        // Menu is at x: 10, y: 10. Item 0 is at row 11.
+        let click_item = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 15,
+            row: 11,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click_item);
+
+        // Item 0 without selection is Paste
+        assert!(app.context_menu.is_none());
+        assert_eq!(app.notifications.len(), 1);
+        assert_eq!(app.notifications[0].message, "Pasted from clipboard");
+    }
+
+    #[test]
+    fn test_context_menu_click_outside_closes() {
+        let mut app = App::new(&[]);
+        app.screen_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        app.open_editor_context_menu(10, 10, 80, 24);
+
+        let click_outside = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click_outside);
+
+        assert!(app.context_menu.is_none());
+    }
+
+    #[test]
+    fn test_explorer_right_click_opens_context_menu_reusing_file_options() {
+        let mut app = App::new(&[]);
+        app.show_explorer = true;
+        app.explorer_area = ratatui::layout::Rect::new(0, 0, 30, 20);
+        app.screen_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        app.explorer.items.push(crate::explorer::FileItem {
+            path: std::path::PathBuf::from("/tmp/test_dir"),
+            is_dir: true,
+            name: "test_dir".to_string(),
+            depth: 0,
+            expanded: false,
+        });
+        app.explorer.items.push(crate::explorer::FileItem {
+            path: std::path::PathBuf::from("/tmp/test_file.rs"),
+            is_dir: false,
+            name: "test_file.rs".to_string(),
+            depth: 0,
+            expanded: false,
+        });
+
+        // Right click on item 1 (rel_row = 4 + 1 = 5)
+        let right_click = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Right),
+            column: 5,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, right_click);
+
+        assert_eq!(app.explorer.selected_idx, 1);
+        let menu = app.context_menu.as_ref().expect("Explorer context menu should open");
+        match &menu.target {
+            ContextMenuTarget::ExplorerItem(path, is_dir) => {
+                assert_eq!(path, &std::path::PathBuf::from("/tmp/test_file.rs"));
+                assert!(!is_dir);
+            }
+            _ => panic!("Expected ExplorerItem target"),
+        }
+
+        // Check options include Rename and Delete
+        assert!(menu.items.iter().any(|i| i.action == ContextMenuAction::Rename));
+        assert!(menu.items.iter().any(|i| i.action == ContextMenuAction::Delete));
+        assert!(menu.items.iter().any(|i| i.action == ContextMenuAction::NewFile));
+        assert!(menu.items.iter().any(|i| i.action == ContextMenuAction::NewFolder));
+
+        // Trigger rename via context menu
+        let rename_item = menu.items.iter().position(|i| i.action == ContextMenuAction::Rename).unwrap();
+        app.context_menu.as_mut().unwrap().selected_idx = rename_item;
+        super::handle_key_event(&mut app, key(KeyCode::Enter));
+
+        // Should open Rename modal directly reusing existing modal state
+        assert!(app.is_fuzzy);
+        assert_eq!(app.fuzzy_mode, crate::app::FuzzyMode::Rename);
+        assert_eq!(app.fuzzy_query, "test_file.rs");
+        assert_eq!(app.pending_path, Some(std::path::PathBuf::from("/tmp/test_file.rs")));
     }
 }

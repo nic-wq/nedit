@@ -353,6 +353,10 @@ pub fn render(f: &mut Frame, app: &mut App) {
         draw_fuzzy_finder(f, app, &colors);
     }
 
+    if app.context_menu.is_some() {
+        draw_context_menu(f, app, &colors);
+    }
+
     // Toasts float above everything, including modals.
     draw_toasts(f, app, &colors);
 }
@@ -1501,6 +1505,107 @@ fn draw_autocomplete_popup(
     }
 
     f.render_widget(Paragraph::new(lines).bg(colors.bg), inner);
+}
+
+fn draw_context_menu(f: &mut Frame, app: &App, colors: &UIColors) {
+    let Some(menu) = &app.context_menu else {
+        return;
+    };
+
+    let area = Rect::new(menu.x, menu.y, menu.width, menu.height);
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(colors.accent))
+        .bg(colors.bg);
+
+    f.render_widget(block, area);
+
+    let inner_x = area.x + 1;
+    let inner_w = area.width.saturating_sub(2);
+    let start_y = area.y + 1;
+
+    let mouse_y = app.mouse_pos.map(|(_, my)| my);
+    let mouse_x = app.mouse_pos.map(|(mx, _)| mx);
+
+    for (i, item) in menu.items.iter().enumerate() {
+        let row_y = start_y + i as u16;
+        if row_y >= area.y + area.height - 1 {
+            break;
+        }
+
+        let is_mouse_hover = mouse_y == Some(row_y)
+            && mouse_x.map(|mx| mx >= inner_x && mx < inner_x + inner_w).unwrap_or(false);
+        let is_selected = menu.selected_idx == i || is_mouse_hover;
+
+        let icon_span = Span::styled(
+            format!("{} ", item.icon),
+            if item.is_danger {
+                Style::default().fg(colors.error)
+            } else {
+                Style::default().fg(colors.accent)
+            },
+        );
+
+        let label_span = Span::styled(
+            item.label,
+            if is_selected {
+                Style::default().fg(Color::Rgb(0, 0, 0)).add_modifier(Modifier::BOLD)
+            } else if item.is_danger {
+                Style::default().fg(colors.error)
+            } else {
+                Style::default().fg(colors.fg)
+            },
+        );
+
+        let shortcut_str = item.shortcut.unwrap_or("");
+        let shortcut_len = UnicodeWidthStr::width(shortcut_str) as u16;
+        let prefix_len = 2 + UnicodeWidthStr::width(item.label) as u16;
+        let spaces_needed = (inner_w as usize).saturating_sub(prefix_len as usize + shortcut_len as usize + 2);
+        let padding_span = Span::raw(" ".repeat(spaces_needed));
+
+        let shortcut_span = Span::styled(
+            shortcut_str,
+            if is_selected {
+                Style::default().fg(Color::Rgb(50, 50, 50))
+            } else {
+                Style::default().fg(colors.text_muted())
+            },
+        );
+
+        let row_style = if is_selected {
+            if item.is_danger {
+                Style::default().bg(colors.error)
+            } else {
+                Style::default().bg(colors.accent)
+            }
+        } else {
+            Style::default().bg(colors.bg)
+        };
+
+        let pointer = if is_selected { "▸" } else { " " };
+        let pointer_span = Span::styled(
+            pointer,
+            if is_selected {
+                Style::default().fg(Color::Rgb(0, 0, 0)).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(colors.bg)
+            },
+        );
+
+        let line = Line::from(vec![
+            pointer_span,
+            Span::raw(" "),
+            icon_span,
+            label_span,
+            padding_span,
+            shortcut_span,
+        ]);
+
+        f.render_widget(Paragraph::new(line).style(row_style), Rect::new(inner_x, row_y, inner_w, 1));
+    }
 }
 
 /// Floating notification toasts stacked in the configured corner.

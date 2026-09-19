@@ -110,6 +110,7 @@ pub struct App {
     pub last_explorer_click_item: Option<usize>,
     pub last_explorer_click_time: std::time::Instant,
     pub modal_button_idx: Option<usize>,
+    pub context_menu: Option<crate::app::types::ContextMenu>,
 }
 
 impl App {
@@ -296,6 +297,7 @@ impl App {
             last_explorer_click_item: None,
             last_explorer_click_time: std::time::Instant::now(),
             modal_button_idx: None,
+            context_menu: None,
         };
 
         let is_huge_system_dir = initial_root == Path::new("/")
@@ -824,6 +826,132 @@ impl App {
                 ("󰅖 Cancel", ModalAction::Cancel, false),
             ],
             _ => Vec::new(),
+        }
+    }
+
+    pub fn open_editor_context_menu(&mut self, mouse_x: u16, mouse_y: u16, screen_w: u16, screen_h: u16) {
+        use crate::app::types::{ContextMenu, ContextMenuAction, ContextMenuItem, ContextMenuTarget};
+
+        let has_selection = self
+            .buffers
+            .get(self.current_buffer_idx)
+            .map(|b| b.selection_start.is_some() && b.get_selected_text().map(|s| !s.is_empty()).unwrap_or(false))
+            .unwrap_or(false);
+
+        let items = if has_selection {
+            vec![
+                ContextMenuItem { label: "Copiar", icon: "󰆏", shortcut: Some("Ctrl+C"), action: ContextMenuAction::Copy, is_danger: false },
+                ContextMenuItem { label: "Cortar", icon: "󰆐", shortcut: Some("Ctrl+X"), action: ContextMenuAction::Cut, is_danger: false },
+                ContextMenuItem { label: "Colar (Substituir)", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
+                ContextMenuItem { label: "Excluir Seleção", icon: "󰆴", shortcut: Some("Del"), action: ContextMenuAction::DeleteSelection, is_danger: true },
+                ContextMenuItem { label: "Selecionar Tudo", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
+            ]
+        } else {
+            vec![
+                ContextMenuItem { label: "Colar", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
+                ContextMenuItem { label: "Selecionar Palavra", icon: "󰈔", shortcut: None, action: ContextMenuAction::SelectWord, is_danger: false },
+                ContextMenuItem { label: "Selecionar Tudo", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
+            ]
+        };
+
+        let menu_width = 28u16.min(screen_w.saturating_sub(2));
+        let menu_height = (items.len() as u16 + 2).min(screen_h.saturating_sub(2));
+
+        let x = if mouse_x + menu_width > screen_w {
+            screen_w.saturating_sub(menu_width)
+        } else {
+            mouse_x
+        };
+        let y = if mouse_y + menu_height > screen_h {
+            screen_h.saturating_sub(menu_height)
+        } else {
+            mouse_y
+        };
+
+        self.context_menu = Some(ContextMenu {
+            x,
+            y,
+            width: menu_width,
+            height: menu_height,
+            items,
+            selected_idx: 0,
+            target: ContextMenuTarget::Editor,
+        });
+        self.needs_redraw = true;
+    }
+
+    pub fn open_explorer_context_menu(&mut self, mouse_x: u16, mouse_y: u16, screen_w: u16, screen_h: u16, item_idx: usize) {
+        use crate::app::types::{ContextMenu, ContextMenuAction, ContextMenuItem, ContextMenuTarget};
+
+        let (path, is_dir) = if self.explorer.is_searching() {
+            if item_idx >= self.explorer.search_results.len() {
+                return;
+            }
+            self.explorer.search_selected = item_idx;
+            let item = &self.explorer.search_results[item_idx];
+            (item.path.clone(), item.path.is_dir())
+        } else {
+            if item_idx >= self.explorer.items.len() {
+                return;
+            }
+            self.explorer.selected_idx = item_idx;
+            let item = &self.explorer.items[item_idx];
+            (item.path.clone(), item.is_dir)
+        };
+        self.update_preview_from_explorer_selection();
+
+        let items = if is_dir {
+            vec![
+                ContextMenuItem { label: "Novo Arquivo", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
+                ContextMenuItem { label: "Nova Pasta", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
+                ContextMenuItem { label: "Renomear", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
+                ContextMenuItem { label: "Excluir", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
+                ContextMenuItem { label: "Mover", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
+                ContextMenuItem { label: "Copiar Caminho", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
+                ContextMenuItem { label: "Definir como Raiz", icon: "󰆓", shortcut: None, action: ContextMenuAction::SetRoot, is_danger: false },
+            ]
+        } else {
+            vec![
+                ContextMenuItem { label: "Abrir", icon: "󰈔", shortcut: Some("Enter"), action: ContextMenuAction::OpenFile, is_danger: false },
+                ContextMenuItem { label: "Renomear", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
+                ContextMenuItem { label: "Excluir", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
+                ContextMenuItem { label: "Novo Arquivo", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
+                ContextMenuItem { label: "Nova Pasta", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
+                ContextMenuItem { label: "Mover", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
+                ContextMenuItem { label: "Copiar Caminho", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
+            ]
+        };
+
+        let menu_width = 28u16.min(screen_w.saturating_sub(2));
+        let menu_height = (items.len() as u16 + 2).min(screen_h.saturating_sub(2));
+
+        let x = if mouse_x + menu_width > screen_w {
+            screen_w.saturating_sub(menu_width)
+        } else {
+            mouse_x
+        };
+        let y = if mouse_y + menu_height > screen_h {
+            screen_h.saturating_sub(menu_height)
+        } else {
+            mouse_y
+        };
+
+        self.context_menu = Some(ContextMenu {
+            x,
+            y,
+            width: menu_width,
+            height: menu_height,
+            items,
+            selected_idx: 0,
+            target: ContextMenuTarget::ExplorerItem(path, is_dir),
+        });
+        self.needs_redraw = true;
+    }
+
+    pub fn close_context_menu(&mut self) {
+        if self.context_menu.is_some() {
+            self.context_menu = None;
+            self.needs_redraw = true;
         }
     }
 }

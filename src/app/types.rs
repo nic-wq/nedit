@@ -67,3 +67,50 @@ pub struct ModalButtonHitbox {
     pub height: u16,
     pub action: ModalAction,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContextMenuAction {
+    // Editor actions
+    Copy,
+    Cut,
+    Paste,
+    DeleteSelection,
+    SelectAll,
+    SelectWord,
+    // Explorer actions (reusing existing FileOptions)
+    OpenFile,
+    Rename,
+    Delete,
+    NewFile,
+    NewFolder,
+    Move,
+    CopyPath,
+    SetRoot,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContextMenuItem {
+    pub label: &'static str,
+    pub icon: &'static str,
+    pub shortcut: Option<&'static str>,
+    pub action: ContextMenuAction,
+    pub is_danger: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ContextMenuTarget {
+    Editor,
+    ExplorerItem(std::path::PathBuf, bool),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContextMenu {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+    pub items: Vec<ContextMenuItem>,
+    pub selected_idx: usize,
+    pub target: ContextMenuTarget,
+}
+
