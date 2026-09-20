@@ -1,43 +1,49 @@
 # 📝 NEdit
 
-> **🚀 Rolling Release Update:** NEdit has moved to a Rolling Release model. We now offer a **Real-time** channel which provides the latest features and fixes directly from the `main` branch. Check the [Installation](#-installation) section to learn how to switch.
+> **🚀 Rolling Release Update:** NEdit follows a rolling release model. We provide a **Real-time** channel delivering the latest features and improvements directly from the `main` branch. Check the [Installation](#-installation) section to get started.
 
-A modern, lightweight terminal text editor written in Rust. Fast, extensible, and packed with features for productive terminal-based editing.
+A modern, fast, and feature-packed terminal text editor written in Rust with [Ratatui](https://github.com/ratatui/ratatui). Built for speed, ergonomics, and seamless terminal-based workflows.
+
+---
 
 ## ✨ Features
 
-- 🎨 **Syntax Highlighting** - High-performance code highlighting with support for dozens of languages.
-- 📁 **File Explorer** - Interactive navigation with keyboard-only scrolling and file preview.
-- 📋 **Clipboard Integration** - Seamless copy/paste with system clipboard.
-- 🔧 **Lua Extensibility** - Customize and extend the editor with live Lua scripts.
-- 🌍 **Internationalization (i18n)** - Multi-language support.
-- 🐭 **Mouse Support** - Scroll independently of cursor, click to position, and drag for selection.
-- 🔍 **Fuzzy Finder & Global Search** - Quick file opening and content search across your projects.
-- ⚡ **Autocomplete** - Built-in word-based autocomplete.
-- 🎯 **Matching Bracket & Word Highlighting** - Visual aids for code navigation.
-- 🎨 **Dynamic Theme System** - Live preview of themes.
-- 📑 **Tab Management** - Open and switch between multiple files easily.
+- 🎨 **Syntax Highlighting** — High-performance syntax highlighting for 50+ languages with on-disk caching and background computation.
+- 📁 **File Explorer** — Fixed standard sidebar with marquee text scrolling for long file names, integrated real-time search, directory expansion, and instant file preview.
+- 🖱️ **Full Mouse Support** — Click to place cursor, drag to select, double-click for word selection, hover tab close buttons, double-click explorer navigation, and modal button clicks.
+- 📋 **Right-Click Context Menus** — Native context menus for editor text (Copy, Cut, Paste/Replace, Delete Selection, Select All) and file explorer items (Rename, Delete, New File/Folder, Move, Copy Path).
+- ⚡ **Word Autocomplete** — Fast word-based completion with inline ghost text.
+- 🔍 **Fuzzy Finder & Global Search** — Subsequence file matching (`Ctrl+O`), full-text project search (`Ctrl+G`) with `@dir` scoping, and local search (`Ctrl+F`).
+- 📜 **Lua Live Scripts** — Interactive side-by-side Lua scripting panel (`F9`) to automate document transformations with instant undo.
+- 🎨 **Dynamic Theme System** — Sublime `.tmTheme` support with live preview while browsing themes.
+- 🎯 **Visual Helpers** — Matching bracket pairs, current word occurrences, and vertical indent guide lines.
+- 💬 **Floating Toast Notifications** — Non-blocking notification toasts with progress bars and configurable corner placement (`bottom-right`, `top-right`, `bottom-left`, `top-left`).
+- 🌍 **Internationalization (i18n)** — Customizable interface labels via `language.toml`.
+- 📑 **Tab Management** — Multi-file editing with clean ellipsis truncation and unsaved change detection.
+
+---
 
 ## 📋 Requirements
 
-Before installing, make sure you have:
-- **Nerd Fonts** installed in your terminal for file icons and UI icons to render correctly.
-- A modern terminal emulator with true color and mouse support (e.g., kitty, Alacritty, WezTerm, GNOME Terminal).
+- **Nerd Fonts**: A Nerd Font must be configured in your terminal for icons to render properly.
+- **Terminal Emulator**: A terminal emulator supporting 24-bit true color and mouse events (e.g., Kitty, Alacritty, WezTerm, GNOME Terminal, Foot, Windows Terminal).
+
+---
 
 ## 🚀 Quick Start
-
-After installation, you can start using NEdit right away:
 
 ```bash
 # Open NEdit in the current directory
 nedit .
 
 # Open a specific file
-nedit file.txt
+nedit src/main.rs
 
-# Open multiple files
-nedit file1.txt file2.txt
+# Open multiple files in tabs
+nedit file1.txt file2.txt file3.rs
 ```
+
+---
 
 ## 📦 Installation
 
@@ -67,9 +73,7 @@ iwr https://raw.githubusercontent.com/nic-wq/nedit/main/install.ps1 -useb | iex
 iex (iwr https://raw.githubusercontent.com/nic-wq/nedit/main/install.ps1 -useb).Content; install-nedit -RealTime
 ```
 
-> **Note:** The `--unstable` and `-Unstable` flags are deprecated and have been replaced by the Real-time channel.
-
-### From Source
+### Build From Source
 
 ```bash
 git clone https://github.com/nic-wq/nedit
@@ -78,54 +82,33 @@ cargo build --release
 ./target/release/nedit
 ```
 
+---
+
 ## 📚 Documentation
 
-For complete documentation, check out the [docs](docs/) directory:
+Detailed guides and references are available in the [docs/](docs/) directory:
 
-- [General Documentation](docs/docs.md) - Comprehensive guide covering all features.
-- [Keyboard Shortcuts](docs/binds.md) - Complete keybind reference.
-- [Lua Scripting API](docs/lua.md) - Guide to live Lua scripts.
+- 📖 [General Documentation](docs/docs.md) — Comprehensive guide covering configuration, UI, and workflows.
+- ⌨️ [Keyboard & Mouse Shortcuts](docs/binds.md) — Complete keybinding and gesture reference.
+- 📜 [Lua Live Scripts API](docs/lua.md) — Guide and API reference for Lua scripting.
+- 📋 [Expected Behavior & Specification](docs/expected_behavior.md) — Comprehensive guide detailing all capabilities and expected behaviors of NEdit.
 
-## 🛠️ Technologies
+---
 
-- **Ratatui** - Terminal UI framework.
-- **Crossterm** - Mouse and keyboard event handling.
-- **Ropey** - Efficient text editing data structure.
-- **Syntect** - Advanced syntax highlighting.
-- **MLua** - Deep Lua integration.
+## 🛠️ Built With
 
-## 📂 Project Structure
+- **[Ratatui](https://github.com/ratatui/ratatui)** — Terminal user interface framework.
+- **[Crossterm](https://github.com/crossterm-rs/crossterm)** — Cross-platform terminal keyboard and mouse events.
+- **[Ropey](https://github.com/cessen/ropey)** — Fast, memory-efficient rope data structure for text manipulation.
+- **[Syntect](https://github.com/trishume/syntect)** — Rich syntax highlighting using Sublime Text definitions.
+- **[MLua](https://github.com/khvzak/mlua)** — High-level Lua bindings.
 
-The codebase is organized into modular components for better maintainability:
-
-```
-src/
-├── main.rs             # Entry point and terminal setup
-├── app/                # Application state & orchestration
-├── buffer/             # Text editing core (piece table, cursor, history)
-├── clipboard/          # System clipboard integration
-├── config/             # TOML-based configuration and keybinds
-├── explorer/           # File system navigation logic
-├── i18n/               # Translation engine
-├── input/              # Key and Mouse event processing
-├── lua/                # Lua scripting runtime
-└── ui/                   # Ratatui rendering and layouts
-```
-
-## ⚙️ Configuration
-
-All settings are stored in `~/.config/nedit/`:
-
-- `config.toml` - General settings (keybinds, theme, autocomplete).
-- `theme.txt` - Last selected theme.
-- `themes/` - Custom .tmTheme files.
-- `syntax/` - Custom .sublime-syntax files.
-- `icons/` - Custom icon mappings.
+---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) to get started.
+Contributions and feedback are always welcome! Check our [Contributing Guide](CONTRIBUTING.md) to get started.
 
 ## 📄 License
 
-This project is open source. Feel free to use and modify it as you wish.
+Open source project. Distributed under the MIT license.

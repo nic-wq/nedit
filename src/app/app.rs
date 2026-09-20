@@ -840,17 +840,17 @@ impl App {
 
         let items = if has_selection {
             vec![
-                ContextMenuItem { label: "Copiar", icon: "󰆏", shortcut: Some("Ctrl+C"), action: ContextMenuAction::Copy, is_danger: false },
-                ContextMenuItem { label: "Cortar", icon: "󰆐", shortcut: Some("Ctrl+X"), action: ContextMenuAction::Cut, is_danger: false },
-                ContextMenuItem { label: "Colar (Substituir)", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
-                ContextMenuItem { label: "Excluir Seleção", icon: "󰆴", shortcut: Some("Del"), action: ContextMenuAction::DeleteSelection, is_danger: true },
-                ContextMenuItem { label: "Selecionar Tudo", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
+                ContextMenuItem { label: "Copy", icon: "󰆏", shortcut: Some("Ctrl+C"), action: ContextMenuAction::Copy, is_danger: false },
+                ContextMenuItem { label: "Cut", icon: "󰆐", shortcut: Some("Ctrl+X"), action: ContextMenuAction::Cut, is_danger: false },
+                ContextMenuItem { label: "Paste (Replace)", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
+                ContextMenuItem { label: "Delete Selection", icon: "󰆴", shortcut: Some("Del"), action: ContextMenuAction::DeleteSelection, is_danger: true },
+                ContextMenuItem { label: "Select All", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
             ]
         } else {
             vec![
-                ContextMenuItem { label: "Colar", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
-                ContextMenuItem { label: "Selecionar Palavra", icon: "󰈔", shortcut: None, action: ContextMenuAction::SelectWord, is_danger: false },
-                ContextMenuItem { label: "Selecionar Tudo", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
+                ContextMenuItem { label: "Paste", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
+                ContextMenuItem { label: "Select Word", icon: "󰈔", shortcut: None, action: ContextMenuAction::SelectWord, is_danger: false },
+                ContextMenuItem { label: "Select All", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
             ]
         };
 
@@ -902,23 +902,23 @@ impl App {
 
         let items = if is_dir {
             vec![
-                ContextMenuItem { label: "Novo Arquivo", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
-                ContextMenuItem { label: "Nova Pasta", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
-                ContextMenuItem { label: "Renomear", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
-                ContextMenuItem { label: "Excluir", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
-                ContextMenuItem { label: "Mover", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
-                ContextMenuItem { label: "Copiar Caminho", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
-                ContextMenuItem { label: "Definir como Raiz", icon: "󰆓", shortcut: None, action: ContextMenuAction::SetRoot, is_danger: false },
+                ContextMenuItem { label: "New File", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
+                ContextMenuItem { label: "New Folder", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
+                ContextMenuItem { label: "Rename", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
+                ContextMenuItem { label: "Delete", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
+                ContextMenuItem { label: "Move", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
+                ContextMenuItem { label: "Copy Path", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
+                ContextMenuItem { label: "Set as Root", icon: "󰆓", shortcut: None, action: ContextMenuAction::SetRoot, is_danger: false },
             ]
         } else {
             vec![
-                ContextMenuItem { label: "Abrir", icon: "󰈔", shortcut: Some("Enter"), action: ContextMenuAction::OpenFile, is_danger: false },
-                ContextMenuItem { label: "Renomear", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
-                ContextMenuItem { label: "Excluir", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
-                ContextMenuItem { label: "Novo Arquivo", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
-                ContextMenuItem { label: "Nova Pasta", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
-                ContextMenuItem { label: "Mover", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
-                ContextMenuItem { label: "Copiar Caminho", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
+                ContextMenuItem { label: "Open", icon: "󰈔", shortcut: Some("Enter"), action: ContextMenuAction::OpenFile, is_danger: false },
+                ContextMenuItem { label: "Rename", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
+                ContextMenuItem { label: "Delete", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
+                ContextMenuItem { label: "New File", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
+                ContextMenuItem { label: "New Folder", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
+                ContextMenuItem { label: "Move", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
+                ContextMenuItem { label: "Copy Path", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
             ]
         };
 

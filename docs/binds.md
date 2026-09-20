@@ -1,184 +1,176 @@
-# Keyboard Shortcuts
+# ⌨️ NEdit Keyboard & Mouse Shortcuts
 
 > [!NOTE]
-> The shortcuts below are organized into **Configurable** (can be remapped in `~/.config/nedit/config.toml`) and **Hardcoded** (built-in, cannot be remapped).
+> Shortcuts are categorized into **Configurable** (can be remapped in `~/.config/nedit/config.toml`) and **Hardcoded** (built-in terminal interaction standards).
 
 ---
 
-## Configurable Keybinds
+## ⚙️ Configurable Keybinds
 
-These can be customized in the `[keybinds]` section of `~/.config/nedit/config.toml`.
+Configure these in the `[keybinds]` section of `~/.config/nedit/config.toml`:
 
 ### General
 
-| Action            | Default         | Description                                         |
-| ----------------- | --------------- | --------------------------------------------------- |
-| `quit`            | `ctrl+q`        | Quit the editor (prompts on unsaved changes)        |
-| `toggle_explorer` | `ctrl+b`        | Toggle file explorer panel (smart: show/focus/hide) |
-| `open_file`       | `ctrl+o`        | Open file fuzzy finder                              |
-| `command_palette` | `ctrl+p`        | Open command palette                                |
-| `global_search`   | `ctrl+g`        | Global search across all files                      |
-| `local_search`    | `ctrl+f`        | Search within current file                          |
-| `theme_select`    | `ctrl+alt+t`    | Open theme selector                                 |
-| `open_help`       | `ctrl+h`        | Open documentation menu                             |
-| `new_file`        | `ctrl+n`        | New file (editor) or New Folder (explorer)          |
-| `toggle_focus`    | `shift+backtab` | Toggle focus between editor and explorer            |
+| Action | Default | Description |
+| :--- | :--- | :--- |
+| `quit` | `ctrl+q` | Quit the editor (prompts to save if buffers are modified) |
+| `toggle_explorer` | `ctrl+b` | Smart toggle for file explorer (open, focus, or close) |
+| `open_file` | `ctrl+o` | Open fuzzy file finder |
+| `command_palette` | `ctrl+p` | Open command palette (18 actions) |
+| `global_search` | `ctrl+g` | Global full-text search across project files |
+| `local_search` | `ctrl+f` | Local substring search within current file |
+| `theme_select` | `ctrl+alt+t` | Open color theme selector with real-time preview |
+| `open_help` | `ctrl+h` | Open documentation chooser |
+| `new_file` | `ctrl+n` | New untitled file (editor) or create item dialog (explorer) |
+| `toggle_focus` | `shift+backtab` | Toggle focus between editor and file explorer |
 
 ### Editor
 
-| Action        | Default   | Description               |
-| ------------- | --------- | ------------------------- |
-| `save`        | `ctrl+s`  | Save current buffer       |
-| `close_tab`   | `ctrl+w`  | Close current tab         |
-| `undo`        | `ctrl+z`  | Undo last change          |
-| `redo`        | `ctrl+y`  | Redo last undone change   |
-| `copy`        | `ctrl+c`  | Copy selected text        |
-| `paste`       | `ctrl+v`  | Paste text                |
-| `cut`         | `ctrl+x`  | Cut selected text         |
-| `select_all`  | `ctrl+a`  | Select all text in buffer |
-| `select_line` | `ctrl+l`  | Select current line       |
+| Action | Default | Description |
+| :--- | :--- | :--- |
+| `save` | `ctrl+s` | Save current file |
+| `close_tab` | `ctrl+w` | Close active tab |
+| `undo` | `ctrl+z` | Undo last change |
+| `redo` | `ctrl+y` | Redo last undone change |
+| `copy` | `ctrl+c` | Copy selected text to system clipboard |
+| `paste` | `ctrl+v` | Paste text (atomically replaces active selection) |
+| `cut` | `ctrl+x` | Cut selected text to clipboard |
+| `select_all` | `ctrl+a` | Select all text in current buffer |
+| `select_line` | `ctrl+l` | Select entire current line |
 
 ### Explorer
 
-| Action        | Default      | Description                                                                                                           |
-| ------------- | ------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `set_as_root` | `ctrl+enter` | Set selected directory as explorer root (may not work on all terminals; use `ALT+O` → "Set as Root" as alternative) |
+| Action | Default | Description |
+| :--- | :--- | :--- |
+| `set_as_root` | `ctrl+enter` | Set selected folder as explorer root (`Alt+O` alternative) |
 
 ### Live Script
 
-| Action            | Default | Description                                                  |
-| ----------------- | ------- | ------------------------------------------------------------ |
-| `run_live_script` | `f9`    | Execute the live script (applies immediately to target file) |
+| Action | Default | Description |
+| :--- | :--- | :--- |
+| `run_live_script` | `f9` | Execute active Lua Live Script on the left target file |
 
 ---
 
-## Hardcoded Shortcuts
+## 🔒 Hardcoded Shortcuts
 
-These shortcuts are built into NEdit and **cannot be remapped** through `config.toml`.
+These shortcuts are built into NEdit's core engine and cannot be rebound:
 
 ### Cursor Navigation (Editor)
 
-| Shortcut       | Action                             |
-| -------------- | ---------------------------------- |
-| `UP`           | Move cursor up                     |
-| `DOWN`         | Move cursor down                   |
-| `LEFT`         | Move cursor left                   |
-| `RIGHT`        | Move cursor right                  |
-| `CTRL + LEFT`  | Move to beginning of previous word |
-| `CTRL + RIGHT` | Move to beginning of next word     |
-| `HOME`         | Move to beginning of line          |
-| `END`          | Move to end of line                |
+| Shortcut | Action |
+| :--- | :--- |
+| `UP` / `DOWN` / `LEFT` / `RIGHT` | Move cursor one cell in direction |
+| `CTRL + LEFT` | Jump backward to previous word |
+| `CTRL + RIGHT` | Jump forward to next word |
+| `HOME` | Move to beginning of current line |
+| `END` | Move to end of current line |
 
 ### Selection (Editor)
 
-| Shortcut        | Action                    |
-| --------------- | ------------------------- |
-| `SHIFT + UP`    | Extend selection upward   |
-| `SHIFT + DOWN`  | Extend selection downward |
-| `SHIFT + LEFT`  | Extend selection left     |
-| `SHIFT + RIGHT` | Extend selection right    |
+| Shortcut | Action |
+| :--- | :--- |
+| `SHIFT + UP/DOWN/LEFT/RIGHT` | Extend selection in specified direction |
+| `SHIFT + HOME` / `SHIFT + END` | Extend selection to start / end of line |
 
 ### Text Editing (Editor)
 
-| Shortcut                        | Action                         |
-| ------------------------------- | ------------------------------ |
-| `ENTER`                         | Insert newline                 |
-| `BACKSPACE`                     | Delete character before cursor |
-| `TAB`                           | Insert 4 spaces                |
-| `CTRL + BACKSPACE` / `CTRL + H` | Delete word backward           |
-| Any printable character         | Insert character at cursor     |
+| Shortcut | Action |
+| :--- | :--- |
+| `ENTER` | Insert newline (with automatic indentation) |
+| `BACKSPACE` | Delete character before cursor (or delete selection) |
+| `DELETE` | Delete character after cursor (or delete selection) |
+| `TAB` | Insert 4 spaces (soft tab) |
+| `CTRL + BACKSPACE` / `CTRL + H` | Delete previous word |
 
 ### Tab Management
 
-| Shortcut                    | Action                 |
-| --------------------------- | ---------------------- |
-| `CTRL + TAB`                | Switch to next tab     |
-| `CTRL + SHIFT + TAB`        | Switch to previous tab |
-| `CTRL + ALT + LEFT`         | Switch to previous tab |
-| `CTRL + ALT + RIGHT`        | Switch to next tab     |
-| `ALT + 1` through `ALT + 9` | Switch to tab 1–9      |
-
-In Live Script mode the script pane is pinned as the last tab, so `CTRL + ALT + RIGHT` from any file reaches it.
+| Shortcut | Action |
+| :--- | :--- |
+| `CTRL + TAB` | Switch to next tab |
+| `CTRL + SHIFT + TAB` | Switch to previous tab |
+| `CTRL + ALT + RIGHT` | Cycle to next tab (script pane is always last) |
+| `CTRL + ALT + LEFT` | Cycle to previous tab |
+| `ALT + 1` through `ALT + 9` | Jump directly to tab index 1 through 9 |
 
 ### Autocomplete
 
-| Shortcut        | Action                         |
-| --------------- | ------------------------------ |
-| `SHIFT + RIGHT` | Accept autocomplete suggestion |
-| `ESC`           | Hide autocomplete suggestion   |
+| Shortcut | Action |
+| :--- | :--- |
+| `SHIFT + RIGHT` | Accept suggested autocomplete word |
+| `ESC` | Dismiss autocomplete suggestion |
 
-### Fuzzy Finder
+### Context Menus (Right-Click Menus)
 
-| Shortcut    | Action                                  |
-| ----------- | --------------------------------------- |
-| `UP`        | Move selection up                       |
-| `DOWN`      | Move selection down                     |
-| `ENTER`     | Confirm selection                       |
-| `ESC`       | Cancel / close fuzzy finder             |
-| `BACKSPACE` | Delete last character in query          |
-| `TAB`       | Confirm directory move (Move mode only) |
+| Shortcut | Action |
+| :--- | :--- |
+| `UP` / `DOWN` | Cycle through menu items |
+| `ENTER` | Execute highlighted item and close menu |
+| `ESC` | Close context menu without performing any action |
 
-### Explorer
+### Modals & Dialogs
 
-| Shortcut          | Action                                             |
-| ----------------- | -------------------------------------------------- |
-| `UP`              | Move selection up                                  |
-| `DOWN`            | Move selection down                                |
-| `ENTER`           | Open file / Toggle directory expansion             |
-| `ALT + LEFT`      | Go to parent directory                             |
-| `ALT + O`         | Open file options (Rename/Move/Delete/Set as Root) |
+| Modal Type | Shortcut | Action |
+| :--- | :--- | :--- |
+| **Confirmation** (`DeleteConfirm`, `UnsavedChanges`, `ExternalChange`) | `LEFT` / `RIGHT` / `UP` / `DOWN` / `TAB` / `SHIFT+TAB` | Cycle through available buttons |
+| **Confirmation** | `ENTER` | Execute selected button action |
+| **Confirmation** | `S` / `D` / `R` / `K` | Quick hotkeys: Save, Discard, Reload, Keep |
+| **Confirmation** | `ESC` | Cancel and close dialog |
+| **Text Prompts** (`Create`, `Rename`, `Save As`) | `TAB` / `DOWN` | Move focus from text input to action buttons (`Confirm`, `Cancel`) |
+| **Text Prompts** | `UP` | Move focus back to text input |
+| **Text Prompts** | `ENTER` | Submit and confirm text |
 
-### Explorer Search
+### Explorer Navigation & Search
 
-The explorer always shows a search bar on its first row. Typing filters files **and** folders across the whole tree (including collapsed directories) with the same fuzzy matching as the file finder (`CTRL+O`):
-
-| Shortcut                     | Action                                              |
-| ---------------------------- | --------------------------------------------------- |
-| Any text                     | Filter the explorer                                 |
-| `LEFT` / `RIGHT`             | Move cursor in the search field                     |
-| `HOME` / `END`               | Jump to start/end of the search field               |
-| `DELETE`                     | Delete character after the cursor                   |
-| `SHIFT` + arrows/`HOME`/`END`| Extend the search field selection                   |
-| `CTRL + A`                   | Select all search text                              |
-| `CTRL + LEFT` / `CTRL + RIGHT` | Jump by word in the search field                  |
-| `CTRL + U` / `CTRL + K`      | Delete to start/end of the search field             |
-| `CTRL + W` / `CTRL + BACKSPACE` | Delete previous word                             |
-| `ENTER`                      | Open the selected match (expands the selected folder) |
-| `ESC`                        | Clear the search                                    |
-
-### Unsaved Changes Prompt
-
-| Shortcut   | Action                       |
-| ---------- | ---------------------------- |
-| `S` / `s`  | Save changes and continue    |
-| `D` / `d`  | Discard changes and continue |
-| `ESC`      | Cancel (return to editor)    |
-
-### Mouse
-
-| Shortcut                        | Action                                                |
-| ------------------------------- | ----------------------------------------------------- |
-| Scroll `UP` / `DOWN`            | Scroll editor by 3 rows                               |
-| Left click (editor area)        | Set focus to editor, place cursor at clicked position |
-| Left double-click (editor area) | Select word under cursor                              |
-| Left click (explorer area)      | Set focus to explorer, select item                    |
-| Left drag (editor area)         | Extend text selection                                 |
+| Shortcut | Action |
+| :--- | :--- |
+| `UP` / `DOWN` | Navigate files and folders |
+| `ENTER` | Open file in editor or expand/collapse directory |
+| `ALT + LEFT` | Navigate up to parent directory |
+| `ALT + O` | Open File Options menu (Rename, Delete, Move, etc.) |
+| Any typed character | Filter explorer files in real-time via top search bar |
+| `ESC` | Clear search query and restore full tree view |
 
 ---
 
-## Custom Keybinds
+## 🖱️ Complete Mouse Controls Reference
 
-Edit `~/.config/nedit/config.toml`:
+| Component | Gesture | Action |
+| :--- | :--- | :--- |
+| **Editor** | **Left Click** | Place cursor at cell position |
+| **Editor** | **Double Click** | Select word under cursor |
+| **Editor** | **Left Drag** | Dynamically expand text selection |
+| **Editor** | **Scroll Wheel** | Scroll editor 3 rows up / down |
+| **Editor** | **Right Click (selection)** | Open context menu (`Copy`, `Cut`, `Paste (Replace)`, `Delete Selection`, `Select All`) |
+| **Editor** | **Right Click (no selection)** | Move cursor to click and open context menu (`Paste`, `Select Word`, `Select All`) |
+| **Tab Bar** | **Left Click** | Switch to clicked tab |
+| **Tab Bar** | **Hover** | Show tab close icon `󰅖` |
+| **Tab Bar** | **Left Click (`󰅖`)** | Close tab (prompts if file is modified) |
+| **Explorer** | **Single Click** | Select item and show instant preview |
+| **Explorer** | **Double Click (file)** | Open file in editor and shift focus to editor |
+| **Explorer** | **Double Click (folder)** | Toggle directory expansion (expand / collapse) |
+| **Explorer** | **Right Click** | Select item and open context menu (`Open`, `Rename`, `Delete`, `New File`, `New Folder`, `Move`, `Copy Path`, `Set as Root`) |
+| **Explorer** | **Scroll Wheel** | Scroll file list up / down |
+| **Modals** | **Left Click** | Click button directly (`Confirm`, `Cancel`, `Save`, `Discard`, etc.) |
+| **Modals** | **Hover** | Highlight button under mouse pointer |
+| **Toasts** | **Left Click (`󰅖`)** | Instantly dismiss floating notification toast |
+| **Context Menu** | **Left Click (item)** | Run selected action and close menu |
+| **Context Menu** | **Left Click (outside)**| Dismiss context menu |
+
+---
+
+## 🛠️ Configuration Example
 
 ```toml
+# ~/.config/nedit/config.toml
 [keybinds]
 quit = "ctrl+q"
+save = "ctrl+s"
 new_file = "ctrl+n"
 open_file = "ctrl+o"
 command_palette = "ctrl+p"
 global_search = "ctrl+g"
 local_search = "ctrl+f"
-save = "ctrl+s"
 toggle_explorer = "ctrl+b"
 theme_select = "ctrl+alt+t"
 toggle_focus = "shift+backtab"
@@ -193,41 +185,4 @@ select_line = "ctrl+l"
 open_help = "ctrl+h"
 run_live_script = "f9"
 set_as_root = "ctrl+enter"
-```
-
-## Modifier & Key Reference
-
-Available tokens for use in `config.toml` keybind strings:
-
-### Modifiers
-
-| Token   | Description    |
-| ------- | -------------- |
-| `ctrl`  | Control key    |
-| `alt`   | Alt / Meta key |
-| `shift` | Shift key      |
-
-Modifiers are combined with `+` (e.g., `ctrl+alt+t`).
-
-### Key Names
-
-| Token                            | Description                                  |
-| -------------------------------- | -------------------------------------------- |
-| `backtab`                        | Shift+Tab                                    |
-| `tab`                            | Tab key                                      |
-| `enter`                          | Enter/Return                                 |
-| `esc`                            | Escape                                       |
-| `up` / `down` / `left` / `right` | Arrow keys                                   |
-| `backspace`                      | Backspace                                    |
-| `f1` through `f12`               | Function keys                                |
-| Any single character             | `q`, `w`, `e`, `a`, `1`, `2`, `.`, `,`, etc. |
-
-### Examples
-
-```toml
-[keybinds]
-quit = "ctrl+q"          # Ctrl + Q
-save = "ctrl+s"          # Ctrl + S
-toggle_focus = "shift+backtab"  # Shift + Tab
-run_live_script = "f9"          # F9
 ```
