@@ -1,0 +1,57 @@
+%YAML 1.2
+---
+name: GraphQL
+file_extensions: [graphql, gql]
+scope: source.graphql
+contexts:
+  main:
+    - include: comments
+    - include: strings
+    - include: keywords
+    - include: types
+    - include: variables
+    - include: numbers
+
+  comments:
+    - match: '#'
+      scope: punctuation.definition.comment.graphql
+      push:
+        - meta_scope: comment.line.number-sign.graphql
+        - match: \n
+          pop: true
+
+  strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.graphql
+      push:
+        - meta_scope: string.quoted.triple.graphql
+        - match: '"""'
+          scope: punctuation.definition.string.end.graphql
+          pop: true
+    - match: '"'
+      scope: punctuation.definition.string.begin.graphql
+      push:
+        - meta_scope: string.quoted.double.graphql
+        - match: '"'
+          scope: punctuation.definition.string.end.graphql
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.graphql
+
+  keywords:
+    - match: '\b(query|mutation|subscription|fragment|on|type|input|interface|union|enum|scalar|directive|extend|implements|schema)\b'
+      scope: keyword.control.graphql
+    - match: '@[A-Za-z0-9_]+'
+      scope: entity.name.directive.graphql
+
+  types:
+    - match: '\b(Int|Float|String|Boolean|ID)\b'
+      scope: storage.type.graphql
+
+  variables:
+    - match: '\$[A-Za-z0-9_]+'
+      scope: variable.other.graphql
+
+  numbers:
+    - match: '\b-?[0-9]+(\.[0-9]+)?\b'
+      scope: constant.numeric.graphql

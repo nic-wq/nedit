@@ -162,10 +162,10 @@ NEdit provides first-class, intuitive mouse interactions across all interface co
 | :--- | :--- | :--- |
 | `quit` | `CTRL + Q` | Exit NEdit (prompts if unsaved changes exist) |
 | `toggle_explorer` | `CTRL + B` | Smart toggle for file explorer (open, focus, close) |
-| `open_file` | `CTRL + O` | Open fuzzy file finder |
-| `command_palette` | `CTRL + P` | Open command palette (18 actions) |
-| `global_search` | `CTRL + G` | Full-text global search across project files |
-| `local_search` | `CTRL + F` | Search within the current active file |
+| `open_file` | `CTRL + O` | File Name Search (fuzzy search across project files) |
+| `command_palette` | `CTRL + P` | Open command palette (contextual actions & shortcuts) |
+| `global_search` | `CTRL + G` | Content Search (full-text search across project files) |
+| `local_search` | `CTRL + F` | Local Search (search within current file) |
 | `theme_select` | `CTRL + ALT + T` | Open color theme selector with live preview |
 | `open_help` | `CTRL + H` | Open documentation viewer |
 | `new_file` | `CTRL + N` | New untitled file (editor) or create dialog (explorer) |
@@ -197,10 +197,10 @@ NEdit provides first-class, intuitive mouse interactions across all interface co
 
 Pressing search shortcuts activates specialized modal finders:
 
-1. **Fuzzy File Finder (`Ctrl+O`)**: Subsequence search matching files in the project tree. Supports scoped directory queries prefixing `@` (e.g. `@src/ utils`).
-2. **Global Full-Text Search (`Ctrl+G`)**: Fast text search across files. Prefix with `@dir` to restrict scope.
+1. **File Name Search (`Ctrl+O`)**: Subsequence search matching files in the project tree. Supports scoped directory queries prefixing `@` (e.g. `@src/ utils`).
+2. **Content Search (`Ctrl+G`)**: Fast text search across files. Prefix with `@dir` to restrict scope.
 3. **Local Search (`Ctrl+F`)**: Real-time substring search highlighting occurrences within current file.
-4. **Command Palette (`Ctrl+P`)**: Quick searchable palette displaying keyboard shortcuts directly aligned on the right of each action. Commands are context-aware (e.g. `Close Tab`, `Save`, `Undo`, `Redo`, `Copy`, `Paste`, `Cut`, `Select All`, and `Local Search` are only displayed when an active buffer is open; `Undo Last Script` only appears after running a live script). Both command names and shortcut keys can be typed into the query to filter matches.
+4. **Command Palette (`Ctrl+P`)**: Quick searchable palette displaying keyboard shortcuts directly aligned on the right of each action. Commands are context-aware (e.g. `Close Tab`, `Save`, `Undo`, `Redo`, `Copy`, `Paste`, `Cut`, `Select All`, and `Local Search` are only displayed when an active buffer is open; `Undo Last Script` only appears after running a live script). Both command names, common aliases (`open`, `grep`, `global`), and shortcut keys can be typed into the query to filter matches.
 5. **Theme Selector (`Ctrl+Alt+T`)**: Live preview of installed Sublime `.tmTheme` color themes.
 6. **File Operations (`Alt+O` in Explorer)**: Rename, Delete, Move, Create, and Set as Root.
 
@@ -230,7 +230,7 @@ See [docs/lua.md](lua.md) for full documentation, examples, and script guideline
 ## 🌐 Customization & Themes
 
 - **Themes**: Drop `.tmTheme` files into `~/.config/nedit/themes/`. Subdirectories are supported and automatically indexed.
-- **Syntax Highlighting**: Built-in support is bundled directly into the binary for Rust, Python, C, C++, JavaScript, TypeScript (`.ts`, `.tsx`), HTML, CSS, Bash/Shell, JSON, YAML, TOML, INI/conf/cfg/env, Dockerfile, SQL, Lua, and more. Users can drop custom `.sublime-syntax` files into `~/.config/nedit/syntax/` to add or override syntax grammars.
+- **Syntax Highlighting**: Built-in support is bundled directly into the binary for Rust, Python, C, C++, JavaScript, TypeScript (`.ts`, `.tsx`), Kotlin (`.kt`, `.kts`), Swift (`.swift`), Zig (`.zig`, `.zon`), SCSS/Sass (`.scss`, `.sass`), PowerShell (`.ps1`, `.psm1`), GraphQL (`.graphql`), HTML, CSS, Bash/Shell, JSON, YAML, TOML, INI/conf/cfg/env, Dockerfile, SQL, Lua, and more. Users can drop custom `.sublime-syntax` files into `~/.config/nedit/syntax/` to add or override syntax grammars.
 - **Icons**: Customize file, folder, and command icons via `~/.config/nedit/icons/*.toml`.
 - **Internationalization (i18n)**: All UI titles, buttons, prompts, and context menu labels can be localized or customized via `~/.config/nedit/language.toml`. See [docs/i18n.md](i18n.md) for the complete reference.
 - **Expected Behavior Reference**: See [docs/expected_behavior.md](expected_behavior.md) for the full behavioral and UX specification of NEdit.

@@ -1,0 +1,65 @@
+%YAML 1.2
+---
+name: Kotlin
+file_extensions: [kt, kts]
+scope: source.kotlin
+contexts:
+  main:
+    - include: comments
+    - include: strings
+    - include: keywords
+    - include: types
+    - include: numbers
+    - include: functions
+
+  comments:
+    - match: '//'
+      scope: punctuation.definition.comment.kotlin
+      push:
+        - meta_scope: comment.line.double-slash.kotlin
+        - match: \n
+          pop: true
+    - match: '/\*'
+      scope: punctuation.definition.comment.kotlin
+      push:
+        - meta_scope: comment.block.kotlin
+        - match: '\*/'
+          pop: true
+
+  strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.kotlin
+      push:
+        - meta_scope: string.quoted.triple.kotlin
+        - match: '"""'
+          scope: punctuation.definition.string.end.kotlin
+          pop: true
+    - match: '"'
+      scope: punctuation.definition.string.begin.kotlin
+      push:
+        - meta_scope: string.quoted.double.kotlin
+        - match: '"'
+          scope: punctuation.definition.string.end.kotlin
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.kotlin
+        - match: '\$([A-Za-z0-9_]+|\{[^}]+\})'
+          scope: variable.interpolation.kotlin
+
+  keywords:
+    - match: '\b(val|var|fun|class|object|interface|package|import|return|if|else|when|for|while|do|try|catch|finally|throw|break|continue|is|in|as|this|super|typealias|companion|data|enum|sealed|annotation|open|final|abstract|override|private|protected|public|internal|lateinit|by|lazy|suspend|inline|crossinline|noinline|reified|operator|infix|tailrec|vararg)\b'
+      scope: keyword.control.kotlin
+
+  types:
+    - match: '\b(Int|Long|Short|Byte|Float|Double|Boolean|Char|String|Array|List|Map|Set|Any|Unit|Nothing)\b'
+      scope: storage.type.kotlin
+
+  numbers:
+    - match: '\b-?[0-9]+(\.[0-9]+)?([fFL]?)\b'
+      scope: constant.numeric.kotlin
+    - match: '\b0[xX][0-9a-fA-F]+\b'
+      scope: constant.numeric.hex.kotlin
+
+  functions:
+    - match: '\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()'
+      scope: entity.name.function.kotlin

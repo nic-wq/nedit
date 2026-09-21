@@ -95,7 +95,7 @@ fn draw_shortcuts(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
                 app.config.get_keybind("open_file").to_uppercase(),
                 Style::default().fg(colors.accent),
             ),
-            Span::raw(format!("  {}", app.i18n.t("open_file"))),
+            Span::raw(format!("  {}", app.i18n.t("file_name_search"))),
         ]),
         Line::from(vec![
             Span::styled(
@@ -109,7 +109,7 @@ fn draw_shortcuts(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
                 app.config.get_keybind("global_search").to_uppercase(),
                 Style::default().fg(colors.accent),
             ),
-            Span::raw(format!("  {}", app.i18n.t("global_search"))),
+            Span::raw(format!("  {}", app.i18n.t("content_search"))),
         ]),
         Line::from(vec![
             Span::styled(

@@ -1,0 +1,67 @@
+%YAML 1.2
+---
+name: Zig
+file_extensions: [zig, zon]
+scope: source.zig
+contexts:
+  main:
+    - include: comments
+    - include: strings
+    - include: keywords
+    - include: types
+    - include: numbers
+    - include: functions
+
+  comments:
+    - match: '///?'
+      scope: punctuation.definition.comment.zig
+      push:
+        - meta_scope: comment.line.double-slash.zig
+        - match: \n
+          pop: true
+
+  strings:
+    - match: '\\\\'
+      scope: punctuation.definition.string.multiline.zig
+      push:
+        - meta_scope: string.quoted.multiline.zig
+        - match: \n
+          pop: true
+    - match: '"'
+      scope: punctuation.definition.string.begin.zig
+      push:
+        - meta_scope: string.quoted.double.zig
+        - match: '"'
+          scope: punctuation.definition.string.end.zig
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.zig
+    - match: "'"
+      scope: punctuation.definition.string.begin.zig
+      push:
+        - meta_scope: string.quoted.single.zig
+        - match: "'"
+          scope: punctuation.definition.string.end.zig
+          pop: true
+
+  keywords:
+    - match: '\b(const|var|fn|pub|export|extern|inline|noinline|comptime|callconv|struct|enum|union|opaque|error|if|else|switch|while|for|break|continue|return|try|catch|orelse|resume|defer|errdefer|unreachable|async|await|suspend|nosuspend|and|or|test|usingnamespace)\b'
+      scope: keyword.control.zig
+
+  types:
+    - match: '\b(bool|void|noreturn|type|anyerror|anyframe|i8|u8|i16|u16|i32|u32|i64|u64|i128|u128|isize|usize|c_short|c_ushort|c_int|c_uint|c_long|c_ulong|c_longlong|c_ulonglong|c_longdouble|f16|f32|f64|f80|f128)\b'
+      scope: storage.type.zig
+
+  numbers:
+    - match: '\b-?[0-9]+(\.[0-9]+)?\b'
+      scope: constant.numeric.zig
+    - match: '\b0[xX][0-9a-fA-F]+\b'
+      scope: constant.numeric.hex.zig
+    - match: '\b0[bB][01]+\b'
+      scope: constant.numeric.binary.zig
+    - match: '\b0[oO][0-7]+\b'
+      scope: constant.numeric.octal.zig
+
+  functions:
+    - match: '\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()'
+      scope: entity.name.function.zig

@@ -176,20 +176,20 @@ Mouse interactions are integrated across every editor component:
 
 | Mode | Shortcut | Description |
 | :--- | :--- | :--- |
-| **Files** | `Ctrl + O` | Subsequence search across project files. Supports folder scoping via `@` prefix (e.g., `@src config`). |
-| **Global Search** | `Ctrl + G` | Full-text search across all files in the project. Returns first match per file. Supports `@` directory prefix. |
+| **File Name Search** | `Ctrl + O` | Subsequence search across project files. Supports folder scoping via `@` prefix (e.g., `@src config`). |
+| **Content Search** | `Ctrl + G` | Full-text search across all files in the project. Returns first match per file. Supports `@` directory prefix. |
 | **Local Search** | `Ctrl + F` | Search within active file with real-time occurrence highlighting. |
-| **Command Palette** | `Ctrl + P` | Fast palette displaying shortcuts right-aligned and filtering actions contextually (e.g. `Close Tab`, `Save`, `Undo`, etc., only appear when a tab is open). Matches by action name or shortcut keys. |
+| **Command Palette** | `Ctrl + P` | Fast palette displaying shortcuts right-aligned and filtering actions contextually (e.g. `Close Tab`, `Save`, `Undo`, etc., only appear when a tab is open). Matches by action name, aliases (`open`, `grep`, `global`), or shortcut keys. |
 | **Themes** | `Ctrl + Alt + T` | Theme selector with live preview updating editor colors as you navigate. |
 | **DocSelect** | `Ctrl + H` | Built-in documentation chooser (General Docs, Expected Behavior, i18n, Keybinds, Lua API). |
 
 ### 6.1 Command Palette Contextuality & Shortcuts
-- **Right-Aligned Shortcuts**: Each command with a configured keybinding renders its shortcut (e.g., `CTRL+S`, `CTRL+W`, `CTRL+P`) aligned on the right edge of the modal item.
+- **Right-Aligned Shortcuts**: Each command with a configured keybinding renders its shortcut (e.g., `CTRL+S`, `CTRL+W`, `CTRL+P`, `CTRL+O`, `CTRL+G`) aligned on the right edge of the modal item.
 - **Context Awareness**:
   - Buffer-specific commands (`Save`, `Close Tab`, `Local Search`, `Undo`, `Redo`, `Copy`, `Paste`, `Cut`, `Select All`) are dynamically hidden when on the welcome screen or when no tabs are open.
   - Script revert (`Undo Last Script`) is only listed if a live script modification was previously performed.
-  - Always available commands (`New File`, `Open File`, `Toggle Explorer`, `Global Search`, `Switch Theme`, `Open Live Script`, `Quit`, `Open Help`) remain accessible in all contexts.
-- **Dual Query Filtering**: Users can filter the palette by searching for the command name (e.g., `"close"`) or directly by its shortcut key (e.g., `"ctrl+w"`).
+  - Always available commands (`New File`, `File Name Search`, `Toggle Explorer`, `Content Search`, `Switch Theme`, `Open Live Script`, `Quit`, `Open Help`) remain accessible in all contexts.
+- **Dual & Alias Query Filtering**: Users can filter the palette by searching for the command name, common aliases (e.g., typing `"open"` matches `File Name Search`, typing `"grep"` or `"global"` matches `Content Search`), or directly by its shortcut key (e.g., `"ctrl+w"`).
 
 ---
 
@@ -236,4 +236,27 @@ All configuration files are stored in `~/.config/nedit/`:
 | `syntax/` | Directory for custom `.sublime-syntax` language definitions. |
 | `icons/` | Custom Nerd Font icon mappings (.toml). |
 | `cache/` | Precompiled syntax highlight dumps for fast application startup. |
+
+---
+
+## 10. Syntax Highlighting & Bundled Grammars
+
+NEdit ships with a comprehensive set of pre-compiled, embedded syntax definitions that require zero external downloads or network access.
+
+### 10.1 Out-of-the-Box Bundled Languages
+In addition to standard languages (Rust, C, C++, Python, JavaScript, HTML, CSS, Bash/Shell, JSON, YAML, Markdown, SQL, Lua, etc.), NEdit directly embeds:
+- **TOML** (`.toml`, `Cargo.lock`)
+- **INI / Config** (`.ini`, `.cfg`, `.conf`, `.inf`, `.gitconfig`, `.editorconfig`, `.env`)
+- **Dockerfile** (`Dockerfile`, `Containerfile`, `containerfile`)
+- **TypeScript** (`.ts`, `.tsx`, `.mts`, `.cts`)
+- **Kotlin** (`.kt`, `.kts`)
+- **Swift** (`.swift`)
+- **Zig** (`.zig`, `.zon`)
+- **SCSS / Sass** (`.scss`, `.sass`)
+- **PowerShell** (`.ps1`, `.psm1`, `.psd1`)
+- **GraphQL** (`.graphql`, `.gql`)
+
+### 10.2 Custom Grammars & Extensions
+- Users can add support for any additional language by placing `.sublime-syntax` files in `~/.config/nedit/syntax/`.
+- Syntax definitions are loaded lazily into memory once and compiled into binary memory cache without startup lag.
 

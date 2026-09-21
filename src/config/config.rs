@@ -147,10 +147,10 @@ impl Config {
         let action = match command {
             "Save" => "save",
             "New File" => "new_file",
-            "Open File" => "open_file",
+            "Open File" | "File Name Search" => "open_file",
             "Close Tab" => "close_tab",
             "Toggle Explorer" => "toggle_explorer",
-            "Global Search" => "global_search",
+            "Global Search" | "Content Search" => "global_search",
             "Local Search" => "local_search",
             "Switch Theme" => "theme_select",
             "Quit" => "quit",
@@ -347,8 +347,10 @@ mod tests {
         assert_eq!(config.get_command_shortcut("Close Tab"), Some("CTRL+W".to_string()));
         assert_eq!(config.get_command_shortcut("New File"), Some("CTRL+N".to_string()));
         assert_eq!(config.get_command_shortcut("Open File"), Some("CTRL+O".to_string()));
+        assert_eq!(config.get_command_shortcut("File Name Search"), Some("CTRL+O".to_string()));
         assert_eq!(config.get_command_shortcut("Toggle Explorer"), Some("CTRL+B".to_string()));
         assert_eq!(config.get_command_shortcut("Global Search"), Some("CTRL+G".to_string()));
+        assert_eq!(config.get_command_shortcut("Content Search"), Some("CTRL+G".to_string()));
         assert_eq!(config.get_command_shortcut("Local Search"), Some("CTRL+F".to_string()));
         assert_eq!(config.get_command_shortcut("Command Palette"), Some("CTRL+P".to_string()));
         assert_eq!(config.get_command_shortcut("Nonexistent Command"), None);

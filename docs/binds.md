@@ -15,10 +15,10 @@ Configure these in the `[keybinds]` section of `~/.config/nedit/config.toml`:
 | :--- | :--- | :--- |
 | `quit` | `ctrl+q` | Quit the editor (prompts to save if buffers are modified) |
 | `toggle_explorer` | `ctrl+b` | Smart toggle for file explorer (open, focus, or close) |
-| `open_file` | `ctrl+o` | Open fuzzy file finder |
-| `command_palette` | `ctrl+p` | Open command palette (18 actions) |
-| `global_search` | `ctrl+g` | Global full-text search across project files |
-| `local_search` | `ctrl+f` | Local substring search within current file |
+| `open_file` | `ctrl+o` | File Name Search (fuzzy finder across project files) |
+| `command_palette` | `ctrl+p` | Open command palette (contextual actions & shortcuts) |
+| `global_search` | `ctrl+g` | Content Search (full-text search across project files) |
+| `local_search` | `ctrl+f` | Local Search (search within current file) |
 | `theme_select` | `ctrl+alt+t` | Open color theme selector with real-time preview |
 | `open_help` | `ctrl+h` | Open documentation chooser |
 | `new_file` | `ctrl+n` | New untitled file (editor) or create item dialog (explorer) |

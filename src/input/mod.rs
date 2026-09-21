@@ -1998,13 +1998,13 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
             return true;
         }
         "New Untitled" => app.new_file(),
-        "Open File" => {
+        "File Name Search" | "Open File" => {
             app.toggle_fuzzy(crate::app::FuzzyMode::Files);
             return true;
         }
         "Close Tab" => app.close_current_buffer(),
         "Toggle Explorer" => app.toggle_explorer(),
-        "Global Search" => {
+        "Content Search" | "Global Search" => {
             app.toggle_fuzzy(crate::app::FuzzyMode::Content);
             return true;
         }

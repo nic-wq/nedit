@@ -1796,8 +1796,9 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     // Shortcuts
     let shortcuts: Vec<(String, &str)> = if app.is_welcome {
         vec![
-            (app.config.get_keybind("open_file").to_uppercase(), "Open File"),
-            (app.config.get_keybind("theme_select").to_uppercase(), "Theme"),
+            (app.config.get_keybind("command_palette").to_uppercase(), "Palette"),
+            (app.config.get_keybind("open_file").to_uppercase(), "File Name Search"),
+            (app.config.get_keybind("global_search").to_uppercase(), "Content Search"),
             (app.config.get_keybind("open_help").to_uppercase(), "Docs"),
         ]
     } else if app.is_fuzzy {
@@ -1824,8 +1825,9 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         if !app.is_welcome && !app.buffers.is_empty() {
             sc.push((app.config.get_keybind("close_tab").to_uppercase(), "Close Tab"));
         }
-        sc.push((app.config.get_keybind("open_file").to_uppercase(), "Open"));
-        sc.push((app.config.get_keybind("global_search").to_uppercase(), "Search"));
+        sc.push((app.config.get_keybind("open_file").to_uppercase(), "File Name Search"));
+        sc.push((app.config.get_keybind("local_search").to_uppercase(), "Local Search"));
+        sc.push((app.config.get_keybind("global_search").to_uppercase(), "Content Search"));
         sc.push((
             app.config.get_keybind("command_palette").to_uppercase(),
             "Palette",
@@ -2303,9 +2305,9 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     f.render_widget(Clear, area);
 
     let title = match app.fuzzy_mode {
-        FuzzyMode::Content => format!("   {} ", app.i18n.t("global_search_content")),
-        FuzzyMode::Local => format!("   {} ", app.i18n.t("local_search_file")),
-        FuzzyMode::Files => format!("   {} ", app.i18n.t("fuzzy_finder_files")),
+        FuzzyMode::Content => format!("   {} ", app.i18n.t("content_search")),
+        FuzzyMode::Local => format!("   {} ", app.i18n.t("local_search")),
+        FuzzyMode::Files => format!("   {} ", app.i18n.t("file_name_search")),
         FuzzyMode::Themes => format!(" 󰏘  {} ", app.i18n.t("select_color_theme")),
         FuzzyMode::FileOptions => format!(" 󰘳  {} ", app.i18n.t("file_options")),
         FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),

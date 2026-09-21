@@ -1,0 +1,60 @@
+%YAML 1.2
+---
+name: PowerShell
+file_extensions: [ps1, psm1, psd1]
+scope: source.powershell
+contexts:
+  main:
+    - include: comments
+    - include: strings
+    - include: variables
+    - include: keywords
+    - include: numbers
+
+  comments:
+    - match: '<#'
+      scope: punctuation.definition.comment.powershell
+      push:
+        - meta_scope: comment.block.powershell
+        - match: '#>'
+          pop: true
+    - match: '#'
+      scope: punctuation.definition.comment.powershell
+      push:
+        - meta_scope: comment.line.powershell
+        - match: \n
+          pop: true
+
+  strings:
+    - match: '"'
+      scope: punctuation.definition.string.begin.powershell
+      push:
+        - meta_scope: string.quoted.double.powershell
+        - match: '"'
+          scope: punctuation.definition.string.end.powershell
+          pop: true
+        - match: '`.'
+          scope: constant.character.escape.powershell
+        - match: '\$[A-Za-z0-9_:]+'
+          scope: variable.other.powershell
+    - match: "'"
+      scope: punctuation.definition.string.begin.powershell
+      push:
+        - meta_scope: string.quoted.single.powershell
+        - match: "'"
+          scope: punctuation.definition.string.end.powershell
+          pop: true
+
+  variables:
+    - match: '\$[A-Za-z0-9_:]+'
+      scope: variable.other.powershell
+
+  keywords:
+    - match: '(?i)\b(function|param|filter|configuration|workflow|class|enum|if|else|elseif|switch|foreach|for|while|do|until|break|continue|return|exit|throw|try|catch|finally|trap|data|dynamicparam|in|parallel|sequence|inlinescript)\b'
+      scope: keyword.control.powershell
+    - match: '(?i)\b(-eq|-ne|-gt|-ge|-lt|-le|-like|-notlike|-match|-notmatch|-contains|-notcontains|-in|-notin|-replace|-split|-join|-is|-isnot|-as|-and|-or|-not|-band|-bor|-bxor|-bnot|-shl|-shr)\b'
+      scope: keyword.operator.comparison.powershell
+
+  numbers:
+    - match: '\b-?[0-9]+(\.[0-9]+)?(KB|MB|GB|TB|PB)?\b'
+      scope: constant.numeric.powershell

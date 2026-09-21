@@ -656,9 +656,9 @@ impl App {
                 commands.push("Close Tab");
             }
             commands.push("New File");
-            commands.push("Open File");
+            commands.push("File Name Search");
             commands.push("Toggle Explorer");
-            commands.push("Global Search");
+            commands.push("Content Search");
             if has_active_buffer {
                 commands.push("Local Search");
             }
@@ -690,7 +690,12 @@ impl App {
                             .get_command_shortcut(c)
                             .map(|sc| sc.to_lowercase().contains(&query))
                             .unwrap_or(false);
-                        matches_name || matches_shortcut
+                        let matches_alias = match *c {
+                            "File Name Search" => "open file fuzzy".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
+                            "Content Search" => "global grep".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
+                            _ => false,
+                        };
+                        matches_name || matches_shortcut || matches_alias
                     }
                 })
                 .map(PathBuf::from)
@@ -1096,9 +1101,9 @@ mod tests {
         assert!(!cmd_names.contains(&"Local Search".to_string()));
         assert!(!cmd_names.contains(&"Undo Last Script".to_string()));
         assert!(cmd_names.contains(&"New File".to_string()));
-        assert!(cmd_names.contains(&"Open File".to_string()));
+        assert!(cmd_names.contains(&"File Name Search".to_string()));
         assert!(cmd_names.contains(&"Toggle Explorer".to_string()));
-        assert!(cmd_names.contains(&"Global Search".to_string()));
+        assert!(cmd_names.contains(&"Content Search".to_string()));
 
         // Open a buffer:
         app.is_welcome = false;
@@ -1140,5 +1145,29 @@ mod tests {
             .map(|p| p.to_string_lossy().to_string())
             .collect();
         assert!(results.contains(&"Save".to_string()));
+    }
+
+    #[test]
+    fn command_palette_matches_aliases() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::CommandPalette);
+
+        app.set_fuzzy_query("open".to_string());
+        app.update_fuzzy(true);
+        let results: Vec<String> = app
+            .fuzzy_results
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        assert!(results.contains(&"File Name Search".to_string()));
+
+        app.set_fuzzy_query("grep".to_string());
+        app.update_fuzzy(true);
+        let results: Vec<String> = app
+            .fuzzy_results
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        assert!(results.contains(&"Content Search".to_string()));
     }
 }

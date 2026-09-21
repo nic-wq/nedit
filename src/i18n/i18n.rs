@@ -25,17 +25,20 @@ impl I18n {
         // Modals & Titles
         defaults.insert("new_file".to_string(), "New File".to_string());
         defaults.insert("open_file".to_string(), "Open File".to_string());
+        defaults.insert("file_name_search".to_string(), "File Name Search".to_string());
+        defaults.insert("content_search".to_string(), "Content Search".to_string());
+        defaults.insert("local_search".to_string(), "Local Search".to_string());
         defaults.insert("close_tab".to_string(), "Close Tab".to_string());
         defaults.insert("new_folder".to_string(), "New Folder".to_string());
         defaults.insert("file_explorer".to_string(), "File Explorer".to_string());
         defaults.insert("toggle_explorer".to_string(), "Toggle File Explorer".to_string());
         defaults.insert("help_documentation".to_string(), "Help & Documentation".to_string());
-        defaults.insert("open_file_fuzzy".to_string(), "Open File (Fuzzy)".to_string());
-        defaults.insert("global_search".to_string(), "Global Search".to_string());
+        defaults.insert("open_file_fuzzy".to_string(), "File Name Search".to_string());
+        defaults.insert("global_search".to_string(), "Content Search".to_string());
         defaults.insert("select_theme".to_string(), "Select Theme".to_string());
-        defaults.insert("global_search_content".to_string(), "Global Search (Content)".to_string());
-        defaults.insert("local_search_file".to_string(), "Local Search (Current File)".to_string());
-        defaults.insert("fuzzy_finder_files".to_string(), "Fuzzy Finder (Files)".to_string());
+        defaults.insert("global_search_content".to_string(), "Content Search".to_string());
+        defaults.insert("local_search_file".to_string(), "Local Search".to_string());
+        defaults.insert("fuzzy_finder_files".to_string(), "File Name Search".to_string());
         defaults.insert("select_color_theme".to_string(), "Select Color Theme".to_string());
         defaults.insert("save_as".to_string(), "Save As".to_string());
         defaults.insert("rename".to_string(), "Rename File".to_string());

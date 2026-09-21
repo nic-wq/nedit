@@ -118,6 +118,12 @@ const EMBEDDED_SYNTAXES: &[(&str, &str)] = &[
     ("INI", include_str!("../../assets/syntax/ini.sublime-syntax")),
     ("Dockerfile", include_str!("../../assets/syntax/dockerfile.sublime-syntax")),
     ("TypeScript", include_str!("../../assets/syntax/typescript.sublime-syntax")),
+    ("Kotlin", include_str!("../../assets/syntax/kotlin.sublime-syntax")),
+    ("Swift", include_str!("../../assets/syntax/swift.sublime-syntax")),
+    ("Zig", include_str!("../../assets/syntax/zig.sublime-syntax")),
+    ("SCSS", include_str!("../../assets/syntax/scss.sublime-syntax")),
+    ("PowerShell", include_str!("../../assets/syntax/powershell.sublime-syntax")),
+    ("GraphQL", include_str!("../../assets/syntax/graphql.sublime-syntax")),
 ];
 
 static DEFAULT_SYNTAX_SET: once_cell::sync::Lazy<SyntaxSet> = once_cell::sync::Lazy::new(|| {
@@ -1091,6 +1097,12 @@ mod tests {
         assert!(ss.find_syntax_by_extension("Dockerfile").is_some());
         assert!(ss.find_syntax_by_extension("ts").is_some());
         assert!(ss.find_syntax_by_extension("tsx").is_some());
+        assert!(ss.find_syntax_by_extension("kt").is_some());
+        assert!(ss.find_syntax_by_extension("swift").is_some());
+        assert!(ss.find_syntax_by_extension("zig").is_some());
+        assert!(ss.find_syntax_by_extension("scss").is_some());
+        assert!(ss.find_syntax_by_extension("ps1").is_some());
+        assert!(ss.find_syntax_by_extension("graphql").is_some());
         // Also verify standard languages remain present
         assert!(ss.find_syntax_by_extension("rs").is_some());
         assert!(ss.find_syntax_by_extension("py").is_some());

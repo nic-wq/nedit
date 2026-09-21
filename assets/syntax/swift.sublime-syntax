@@ -1,0 +1,65 @@
+%YAML 1.2
+---
+name: Swift
+file_extensions: [swift]
+scope: source.swift
+contexts:
+  main:
+    - include: comments
+    - include: strings
+    - include: keywords
+    - include: types
+    - include: numbers
+    - include: functions
+
+  comments:
+    - match: '//'
+      scope: punctuation.definition.comment.swift
+      push:
+        - meta_scope: comment.line.double-slash.swift
+        - match: \n
+          pop: true
+    - match: '/\*'
+      scope: punctuation.definition.comment.swift
+      push:
+        - meta_scope: comment.block.swift
+        - match: '\*/'
+          pop: true
+
+  strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.swift
+      push:
+        - meta_scope: string.quoted.triple.swift
+        - match: '"""'
+          scope: punctuation.definition.string.end.swift
+          pop: true
+    - match: '"'
+      scope: punctuation.definition.string.begin.swift
+      push:
+        - meta_scope: string.quoted.double.swift
+        - match: '"'
+          scope: punctuation.definition.string.end.swift
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.swift
+        - match: '\\\([^\)]+\)'
+          scope: variable.interpolation.swift
+
+  keywords:
+    - match: '\b(let|var|func|class|struct|enum|protocol|extension|import|return|if|else|guard|switch|case|default|for|while|repeat|do|try|catch|throw|throws|rethrows|break|continue|fallthrough|as|is|in|self|Self|super|typealias|associatedtype|init|deinit|subscript|static|class|public|private|fileprivate|internal|open|mutating|nonmutating|override|final|weak|unowned|lazy|required|convenience|dynamic|optional|indirect|precedencegroup|operator|some|any|async|await|actor)\b'
+      scope: keyword.control.swift
+
+  types:
+    - match: '\b(Int|Int8|Int16|Int32|Int64|UInt|UInt8|UInt16|UInt32|UInt64|Float|Double|Bool|Character|String|Array|Dictionary|Set|Optional|Any|Void)\b'
+      scope: storage.type.swift
+
+  numbers:
+    - match: '\b-?[0-9]+(\.[0-9]+)?\b'
+      scope: constant.numeric.swift
+    - match: '\b0[xX][0-9a-fA-F]+\b'
+      scope: constant.numeric.hex.swift
+
+  functions:
+    - match: '\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()'
+      scope: entity.name.function.swift

@@ -1,0 +1,33 @@
+%YAML 1.2
+---
+name: SCSS
+file_extensions: [scss, sass]
+scope: source.scss
+contexts:
+  main:
+    - include: comments
+    - include: variables
+    - include: directives
+    - include: scope:source.css
+
+  comments:
+    - match: '//'
+      scope: punctuation.definition.comment.scss
+      push:
+        - meta_scope: comment.line.double-slash.scss
+        - match: \n
+          pop: true
+    - match: '/\*'
+      scope: punctuation.definition.comment.scss
+      push:
+        - meta_scope: comment.block.scss
+        - match: '\*/'
+          pop: true
+
+  variables:
+    - match: '\$[A-Za-z0-9_-]+'
+      scope: variable.other.scss
+
+  directives:
+    - match: '@(import|use|forward|mixin|include|function|return|extend|at-root|error|warn|debug|if|else|each|for|while)\b'
+      scope: keyword.control.directive.scss
