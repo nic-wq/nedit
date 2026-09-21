@@ -22,6 +22,7 @@ jobs:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -45,18 +46,19 @@ jobs:
       with:
         targets: ${{ matrix.os == 'ubuntu-latest' && 'x86_64-unknown-linux-musl' || '' }}
 
-    - name: Build
+    - name: Build (Linux Musl)
+      if: matrix.os == 'ubuntu-latest'
       env:
         CC_x86_64_unknown_linux_musl: musl-gcc
         CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
       run: |
-        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          cargo build --release --target x86_64-unknown-linux-musl
-          mkdir -p target/release
-          cp target/x86_64-unknown-linux-musl/release/nedit target/release/nedit
-        else
-          cargo build --release
-        fi
+        cargo build --release --target x86_64-unknown-linux-musl
+        mkdir -p target/release
+        cp target/x86_64-unknown-linux-musl/release/nedit target/release/nedit
+
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
+      run: cargo build --release
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
