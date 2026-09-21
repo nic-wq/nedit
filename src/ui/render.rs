@@ -1542,7 +1542,9 @@ fn draw_context_menu(f: &mut Frame, app: &App, colors: &UIColors) {
 
         let icon_span = Span::styled(
             format!("{} ", item.icon),
-            if item.is_danger {
+            if is_selected {
+                Style::default().fg(Color::Rgb(0, 0, 0)).add_modifier(Modifier::BOLD)
+            } else if item.is_danger {
                 Style::default().fg(colors.error)
             } else {
                 Style::default().fg(colors.accent)
