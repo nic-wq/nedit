@@ -1,0 +1,95 @@
+%YAML 1.2
+---
+name: TOML
+file_extensions: [toml, Cargo.lock]
+scope: source.toml
+contexts:
+  main:
+    - include: comments
+    - include: tables
+    - include: keys
+    - include: values
+
+  comments:
+    - match: '#'
+      scope: punctuation.definition.comment.toml
+      push:
+        - meta_scope: comment.line.number-sign.toml
+        - match: \n
+          pop: true
+
+  tables:
+    - match: '\[\['
+      scope: punctuation.definition.table.array.toml
+      push:
+        - meta_scope: entity.name.section.table.array.toml
+        - match: '\]\]'
+          scope: punctuation.definition.table.array.toml
+          pop: true
+        - match: '[^\]]+'
+          scope: entity.name.section.table.array.toml
+    - match: '\['
+      scope: punctuation.definition.table.toml
+      push:
+        - meta_scope: entity.name.section.table.toml
+        - match: '\]'
+          scope: punctuation.definition.table.toml
+          pop: true
+        - match: '[^\]]+'
+          scope: entity.name.section.table.toml
+
+  keys:
+    - match: '([A-Za-z0-9_-]+)\s*(=)'
+      captures:
+        1: variable.key.toml
+        2: keyword.operator.assignment.toml
+
+  values:
+    - include: strings
+    - include: numbers
+    - include: booleans
+    - include: dates
+
+  strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.toml
+      push:
+        - meta_scope: string.quoted.triple.toml
+        - match: '"""'
+          scope: punctuation.definition.string.end.toml
+          pop: true
+    - match: '"'
+      scope: punctuation.definition.string.begin.toml
+      push:
+        - meta_scope: string.quoted.double.toml
+        - match: '"'
+          scope: punctuation.definition.string.end.toml
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.toml
+    - match: "'''"
+      scope: punctuation.definition.string.begin.toml
+      push:
+        - meta_scope: string.quoted.triple.literal.toml
+        - match: "'''"
+          scope: punctuation.definition.string.end.toml
+          pop: true
+    - match: "'"
+      scope: punctuation.definition.string.begin.toml
+      push:
+        - meta_scope: string.quoted.single.literal.toml
+        - match: "'"
+          scope: punctuation.definition.string.end.toml
+          pop: true
+
+  numbers:
+    - match: '\b-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?\b'
+      scope: constant.numeric.toml
+
+  booleans:
+    - match: '\b(true|false)\b'
+      scope: constant.language.boolean.toml
+
+  dates:
+    - match: '\b\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?\b'
+      scope: constant.other.date.toml

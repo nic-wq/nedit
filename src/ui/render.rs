@@ -1805,6 +1805,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     } else if app.live_script_mode && app.focus == Focus::Editor {
         vec![
             (app.config.get_keybind("run_live_script").to_uppercase(), "Run"),
+            (app.config.get_keybind("close_tab").to_uppercase(), "Close Tab"),
             ("Ctrl+Alt+←".to_string(), "Prev Tab"),
             ("Ctrl+Alt+→".to_string(), "Next Tab"),
             (
@@ -1819,15 +1820,17 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             ("Shift+O".to_string(), "Options"),
         ]
     } else {
-        vec![
-            (app.config.get_keybind("save").to_uppercase(), "Save"),
-            (app.config.get_keybind("open_file").to_uppercase(), "Open"),
-            (app.config.get_keybind("global_search").to_uppercase(), "Search"),
-            (
-                app.config.get_keybind("command_palette").to_uppercase(),
-                "Palette",
-            ),
-        ]
+        let mut sc = vec![(app.config.get_keybind("save").to_uppercase(), "Save")];
+        if !app.is_welcome && !app.buffers.is_empty() {
+            sc.push((app.config.get_keybind("close_tab").to_uppercase(), "Close Tab"));
+        }
+        sc.push((app.config.get_keybind("open_file").to_uppercase(), "Open"));
+        sc.push((app.config.get_keybind("global_search").to_uppercase(), "Search"));
+        sc.push((
+            app.config.get_keybind("command_palette").to_uppercase(),
+            "Palette",
+        ));
+        sc
     };
 
     let mut final_shortcut_spans = Vec::new();
@@ -2537,6 +2540,7 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         } else {
             let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
             let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
+            let list_width = chunks[2].width as usize;
             app.fuzzy_results[safe_start..end_idx]
                 .iter()
                 .enumerate()
@@ -2547,7 +2551,8 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                         .unwrap_or_default()
                         .to_string_lossy()
                         .to_string();
-                    let style = if i == app.fuzzy_idx {
+                    let is_selected = i == app.fuzzy_idx;
+                    let style = if is_selected {
                         Style::default()
                             .bg(colors.sel)
                             .fg(colors.accent)
@@ -2562,6 +2567,32 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                         FuzzyMode::DocSelect => app.icon_registry.get_icon(path, false, false),
                         _ => "  ",
                     };
+
+                    if app.fuzzy_mode == FuzzyMode::CommandPalette {
+                        if let Some(sc) = app.config.get_command_shortcut(&name) {
+                            let left_text = format!(" {} {}", icon, name);
+                            let left_len = UnicodeWidthStr::width(left_text.as_str());
+                            let sc_text = format!("{} ", sc);
+                            let sc_len = UnicodeWidthStr::width(sc_text.as_str());
+                            let pad_len = list_width.saturating_sub(left_len + sc_len).max(1);
+                            let pad = " ".repeat(pad_len);
+                            let sc_style = if is_selected {
+                                Style::default()
+                                    .bg(colors.sel)
+                                    .fg(colors.accent)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(colors.text_muted())
+                            };
+                            return ListItem::new(Line::from(vec![
+                                Span::styled(left_text, style),
+                                Span::styled(pad, style),
+                                Span::styled(sc_text, sc_style),
+                            ]))
+                            .style(style);
+                        }
+                    }
+
                     ListItem::new(format!(" {} {}", icon, name)).style(style)
                 })
                 .collect()

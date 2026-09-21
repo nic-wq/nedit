@@ -24,8 +24,12 @@ impl I18n {
 
         // Modals & Titles
         defaults.insert("new_file".to_string(), "New File".to_string());
+        defaults.insert("open_file".to_string(), "Open File".to_string());
+        defaults.insert("close_tab".to_string(), "Close Tab".to_string());
         defaults.insert("new_folder".to_string(), "New Folder".to_string());
         defaults.insert("file_explorer".to_string(), "File Explorer".to_string());
+        defaults.insert("toggle_explorer".to_string(), "Toggle File Explorer".to_string());
+        defaults.insert("help_documentation".to_string(), "Help & Documentation".to_string());
         defaults.insert("open_file_fuzzy".to_string(), "Open File (Fuzzy)".to_string());
         defaults.insert("global_search".to_string(), "Global Search".to_string());
         defaults.insert("select_theme".to_string(), "Select Theme".to_string());
@@ -144,6 +148,10 @@ mod tests {
         assert_eq!(i18n.t("delete_prompt"), "Are you sure you want to delete?");
         assert_eq!(i18n.t("delete_warning"), "This action cannot be undone.");
         assert_eq!(i18n.t("select_documentation"), "Select Documentation");
+        assert_eq!(i18n.t("open_file"), "Open File");
+        assert_eq!(i18n.t("close_tab"), "Close Tab");
+        assert_eq!(i18n.t("toggle_explorer"), "Toggle File Explorer");
+        assert_eq!(i18n.t("help_documentation"), "Help & Documentation");
     }
 
     #[test]

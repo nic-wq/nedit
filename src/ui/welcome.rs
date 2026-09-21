@@ -23,7 +23,7 @@ const LOGO_LINES: [&str; 6] = [
 pub(super) fn draw_welcome_screen(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(9), Constraint::Length(10)])
+        .constraints([Constraint::Length(9), Constraint::Length(12)])
         .split(area);
 
     draw_logo(f, chunks[0], colors);
@@ -78,6 +78,13 @@ fn draw_shortcuts(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     let shortcuts = vec![
         Line::from(vec![
             Span::styled(
+                app.config.get_keybind("command_palette").to_uppercase(),
+                Style::default().fg(colors.accent),
+            ),
+            Span::raw(format!("  {}", app.i18n.t("command_palette"))),
+        ]),
+        Line::from(vec![
+            Span::styled(
                 app.config.get_keybind("new_file").to_uppercase(),
                 Style::default().fg(colors.accent),
             ),
@@ -85,17 +92,17 @@ fn draw_shortcuts(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         ]),
         Line::from(vec![
             Span::styled(
-                app.config.get_keybind("toggle_explorer").to_uppercase(),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw(format!("  {}", app.i18n.t("file_explorer"))),
-        ]),
-        Line::from(vec![
-            Span::styled(
                 app.config.get_keybind("open_file").to_uppercase(),
                 Style::default().fg(colors.accent),
             ),
-            Span::raw(format!("  {}", app.i18n.t("open_file_fuzzy"))),
+            Span::raw(format!("  {}", app.i18n.t("open_file"))),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                app.config.get_keybind("toggle_explorer").to_uppercase(),
+                Style::default().fg(colors.accent),
+            ),
+            Span::raw(format!("  {}", app.i18n.t("toggle_explorer"))),
         ]),
         Line::from(vec![
             Span::styled(
@@ -106,10 +113,10 @@ fn draw_shortcuts(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
         ]),
         Line::from(vec![
             Span::styled(
-                app.config.get_keybind("theme_select").to_uppercase(),
+                app.config.get_keybind("open_help").to_uppercase(),
                 Style::default().fg(colors.accent),
             ),
-            Span::raw(format!("  {}", app.i18n.t("select_theme"))),
+            Span::raw(format!("  {}", app.i18n.t("help_documentation"))),
         ]),
     ];
 

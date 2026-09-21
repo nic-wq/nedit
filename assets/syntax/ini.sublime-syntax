@@ -1,0 +1,62 @@
+%YAML 1.2
+---
+name: INI
+file_extensions: [ini, cfg, conf, inf, gitconfig, editorconfig, env]
+scope: source.ini
+contexts:
+  main:
+    - include: comments
+    - include: sections
+    - include: key_values
+
+  comments:
+    - match: '[;#]'
+      scope: punctuation.definition.comment.ini
+      push:
+        - meta_scope: comment.line.ini
+        - match: \n
+          pop: true
+
+  sections:
+    - match: '\['
+      scope: punctuation.definition.section.ini
+      push:
+        - meta_scope: entity.name.section.ini
+        - match: '\]'
+          scope: punctuation.definition.section.ini
+          pop: true
+        - match: '[^\]]+'
+          scope: entity.name.section.ini
+
+  key_values:
+    - match: '([A-Za-z0-9_.\-]+)\s*(=|:)'
+      captures:
+        1: variable.other.key.ini
+        2: keyword.operator.assignment.ini
+      push:
+        - include: comments
+        - include: values
+        - match: \n
+          pop: true
+
+  values:
+    - match: '"'
+      scope: punctuation.definition.string.begin.ini
+      push:
+        - meta_scope: string.quoted.double.ini
+        - match: '"'
+          scope: punctuation.definition.string.end.ini
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.ini
+    - match: "'"
+      scope: punctuation.definition.string.begin.ini
+      push:
+        - meta_scope: string.quoted.single.ini
+        - match: "'"
+          scope: punctuation.definition.string.end.ini
+          pop: true
+    - match: '\b(true|false|yes|no|on|off|True|False|Yes|No|On|Off)\b'
+      scope: constant.language.boolean.ini
+    - match: '\b-?[0-9]+(\.[0-9]+)?\b'
+      scope: constant.numeric.ini

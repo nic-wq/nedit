@@ -383,6 +383,10 @@ pub(crate) fn execute_fuzzy_enter(app: &mut App) {
                 "lua"
             } else if path_str.contains("binds") {
                 "binds"
+            } else if path_str.contains("expected_behavior") {
+                "expected_behavior"
+            } else if path_str.contains("i18n") {
+                "i18n"
             } else {
                 "general"
             };

@@ -7,6 +7,17 @@ Welcome to **NEdit**, a modern, lightweight, fast, and feature-packed terminal t
 
 ---
 
+## 📚 Documentation Index
+
+| Document | Description |
+| :--- | :--- |
+| [Expected Behavior](expected_behavior.md) | Comprehensive specification of all editor behaviors, keyboard/mouse interactions, and features |
+| [Internationalization (i18n)](i18n.md) | Custom UI translations guide, configuration locations, and complete keys dictionary |
+| [Keybindings Reference](binds.md) | Full keyboard shortcut reference and key customization options |
+| [Lua Live Scripts](lua.md) | Interactive text scripting guide, buffer manipulation API, and automation examples |
+
+---
+
 ## 📋 Requirements
 
 - **Nerd Fonts**: Required for rendering file icons, folder glyphs, status symbols, and command palette icons. Without a Nerd Font installed, icons may display as missing glyphs.
@@ -130,7 +141,7 @@ NEdit provides first-class, intuitive mouse interactions across all interface co
 
 ### 4. Status Bar & Header
 - **Header**: Shows current file dimensions `[Lines: N | Cols: N]` or `[PREVIEW]` status.
-- **Status Bar**: Mode pill (`EDITOR`, `EXPLORER`, `FUZZY`, `SCRIPT`), cleanly truncated file path with ellipsis if long, dirty indicator (`●`), cursor position `Row: N | Col: N`, and context-sensitive shortcut hints.
+- **Status Bar**: Mode pill (`EDITOR`, `EXPLORER`, `FUZZY`, `SCRIPT`), cleanly truncated file path with ellipsis if long, dirty indicator (`●`), cursor position `Row: N | Col: N`, and context-sensitive shortcut hints (including `Save`, `Close Tab` (`CTRL+W`) whenever a buffer is open, `Open`, `Search`, and `Palette`).
 
 ### 5. Floating Toast Notifications
 - Renders rounded, non-blocking floating alerts in the configured corner (`bottom-right`, `top-right`, `bottom-left`, `top-left`).
@@ -189,8 +200,7 @@ Pressing search shortcuts activates specialized modal finders:
 1. **Fuzzy File Finder (`Ctrl+O`)**: Subsequence search matching files in the project tree. Supports scoped directory queries prefixing `@` (e.g. `@src/ utils`).
 2. **Global Full-Text Search (`Ctrl+G`)**: Fast text search across files. Prefix with `@dir` to restrict scope.
 3. **Local Search (`Ctrl+F`)**: Real-time substring search highlighting occurrences within current file.
-4. **Command Palette (`Ctrl+P`)**: Quick searchable palette giving access to 18 commands:
-   - *Save, New File, Open File, Close Tab, Toggle Explorer, Global Search, Local Search, Switch Theme, Open Live Script, Undo Last Script, Quit, Undo, Redo, Copy, Paste, Cut, Select All, Open Help*.
+4. **Command Palette (`Ctrl+P`)**: Quick searchable palette displaying keyboard shortcuts directly aligned on the right of each action. Commands are context-aware (e.g. `Close Tab`, `Save`, `Undo`, `Redo`, `Copy`, `Paste`, `Cut`, `Select All`, and `Local Search` are only displayed when an active buffer is open; `Undo Last Script` only appears after running a live script). Both command names and shortcut keys can be typed into the query to filter matches.
 5. **Theme Selector (`Ctrl+Alt+T`)**: Live preview of installed Sublime `.tmTheme` color themes.
 6. **File Operations (`Alt+O` in Explorer)**: Rename, Delete, Move, Create, and Set as Root.
 
@@ -220,6 +230,7 @@ See [docs/lua.md](lua.md) for full documentation, examples, and script guideline
 ## 🌐 Customization & Themes
 
 - **Themes**: Drop `.tmTheme` files into `~/.config/nedit/themes/`. Subdirectories are supported and automatically indexed.
-- **Syntax**: Place custom `.sublime-syntax` files in `~/.config/nedit/syntax/`. NEdit compiles and caches them automatically.
+- **Syntax Highlighting**: Built-in support is bundled directly into the binary for Rust, Python, C, C++, JavaScript, TypeScript (`.ts`, `.tsx`), HTML, CSS, Bash/Shell, JSON, YAML, TOML, INI/conf/cfg/env, Dockerfile, SQL, Lua, and more. Users can drop custom `.sublime-syntax` files into `~/.config/nedit/syntax/` to add or override syntax grammars.
 - **Icons**: Customize file, folder, and command icons via `~/.config/nedit/icons/*.toml`.
-- **Translations (i18n)**: Provide translations or customize label wording via `~/.config/nedit/language.toml`. See [docs/i18n.md](i18n.md) for full documentation.
+- **Internationalization (i18n)**: All UI titles, buttons, prompts, and context menu labels can be localized or customized via `~/.config/nedit/language.toml`. See [docs/i18n.md](i18n.md) for the complete reference.
+- **Expected Behavior Reference**: See [docs/expected_behavior.md](expected_behavior.md) for the full behavioral and UX specification of NEdit.

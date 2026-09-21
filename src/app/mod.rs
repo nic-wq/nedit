@@ -14,6 +14,8 @@ pub mod types;
 pub(crate) const DOC_LUA: &str = include_str!("../../docs/lua.md");
 pub(crate) const DOC_BINDS: &str = include_str!("../../docs/binds.md");
 pub(crate) const DOC_MAIN: &str = include_str!("../../docs/docs.md");
+pub(crate) const DOC_EXPECTED_BEHAVIOR: &str = include_str!("../../docs/expected_behavior.md");
+pub(crate) const DOC_I18N: &str = include_str!("../../docs/i18n.md");
 
 pub use app::{App, LargeFileLoadResult};
 pub use file_ops::trim_memory;

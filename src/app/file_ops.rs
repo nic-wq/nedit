@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 
 use notify::{RecursiveMode, Watcher};
 
-use crate::app::{Focus, FuzzyMode, NotificationType, DOC_BINDS, DOC_LUA, DOC_MAIN};
+use crate::app::{
+    Focus, FuzzyMode, NotificationType, DOC_BINDS, DOC_EXPECTED_BEHAVIOR, DOC_I18N, DOC_LUA,
+    DOC_MAIN,
+};
 use crate::buffer::{EditorBuffer, LARGE_FILE_THRESHOLD};
 
 use super::app::LargeFileLoadResult;
@@ -462,12 +465,16 @@ impl App {
     }
 
     pub fn open_doc(&mut self, doc_type: &str) {
-        let filename = if doc_type == "lua" {
-            "docs/lua.md"
-        } else if doc_type == "binds" {
-            "docs/binds.md"
+        let (filename, content) = if doc_type == "lua" || doc_type.contains("lua") {
+            ("docs/lua.md", DOC_LUA)
+        } else if doc_type == "binds" || doc_type.contains("binds") {
+            ("docs/binds.md", DOC_BINDS)
+        } else if doc_type == "expected_behavior" || doc_type.contains("expected_behavior") {
+            ("docs/expected_behavior.md", DOC_EXPECTED_BEHAVIOR)
+        } else if doc_type == "i18n" || doc_type.contains("i18n") {
+            ("docs/i18n.md", DOC_I18N)
         } else {
-            "docs/docs.md"
+            ("docs/docs.md", DOC_MAIN)
         };
 
         for (i, buf) in self.buffers.iter().enumerate() {
@@ -483,16 +490,8 @@ impl App {
             }
         }
 
-        let content = if doc_type == "lua" {
-            DOC_LUA.to_string()
-        } else if doc_type == "binds" {
-            DOC_BINDS.to_string()
-        } else {
-            DOC_MAIN.to_string()
-        };
-
         let mut buffer = EditorBuffer::new();
-        buffer.set_content_and_mark_clean(ropey::Rope::from_str(&content));
+        buffer.set_content_and_mark_clean(ropey::Rope::from_str(content));
         buffer.is_read_only = true;
         buffer.path = Some(PathBuf::from(filename));
 

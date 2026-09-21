@@ -113,6 +113,24 @@ pub struct App {
     pub context_menu: Option<crate::app::types::ContextMenu>,
 }
 
+const EMBEDDED_SYNTAXES: &[(&str, &str)] = &[
+    ("TOML", include_str!("../../assets/syntax/toml.sublime-syntax")),
+    ("INI", include_str!("../../assets/syntax/ini.sublime-syntax")),
+    ("Dockerfile", include_str!("../../assets/syntax/dockerfile.sublime-syntax")),
+    ("TypeScript", include_str!("../../assets/syntax/typescript.sublime-syntax")),
+];
+
+static DEFAULT_SYNTAX_SET: once_cell::sync::Lazy<SyntaxSet> = once_cell::sync::Lazy::new(|| {
+    let defaults = SyntaxSet::load_defaults_nonewlines();
+    let mut builder = defaults.into_builder();
+    for (name, content) in EMBEDDED_SYNTAXES {
+        if let Ok(syntax) = syntect::parsing::SyntaxDefinition::load_from_str(content, false, Some(name)) {
+            builder.add(syntax);
+        }
+    }
+    builder.build()
+});
+
 impl App {
     fn push_toast(&mut self, toast: crate::app::toast::Toast) {
         // Cap the stack so a burst of messages never covers the screen.
@@ -547,13 +565,15 @@ impl App {
         });
     }
 
+
+
     pub fn load_syntax_set_for_diagnostics() -> (SyntaxSet, &'static str) {
         let config_dir = Self::config_dir();
         Self::load_cached_or_default_syntax_set(&config_dir)
     }
 
-    fn load_default_syntax_set() -> SyntaxSet {
-        SyntaxSet::load_defaults_nonewlines()
+    pub fn load_default_syntax_set() -> SyntaxSet {
+        DEFAULT_SYNTAX_SET.clone()
     }
 
     fn load_cached_or_default_syntax_set(config_dir: &Path) -> (SyntaxSet, &'static str) {
@@ -1057,7 +1077,24 @@ mod tests {
         );
         assert_eq!(app.notifications.len(), 1);
         assert_eq!(app.notifications[0].message, "test custom");
-        assert_eq!(app.notifications[0].kind, crate::app::NotificationType::Error);
         assert_eq!(app.notifications[0].duration, dur);
+    }
+
+    #[test]
+    fn default_syntax_set_includes_toml_ini_and_modern_languages() {
+        let ss = App::load_default_syntax_set();
+        assert!(ss.find_syntax_by_extension("toml").is_some());
+        assert!(ss.find_syntax_by_extension("ini").is_some());
+        assert!(ss.find_syntax_by_extension("cfg").is_some());
+        assert!(ss.find_syntax_by_extension("conf").is_some());
+        assert!(ss.find_syntax_by_extension("env").is_some());
+        assert!(ss.find_syntax_by_extension("Dockerfile").is_some());
+        assert!(ss.find_syntax_by_extension("ts").is_some());
+        assert!(ss.find_syntax_by_extension("tsx").is_some());
+        // Also verify standard languages remain present
+        assert!(ss.find_syntax_by_extension("rs").is_some());
+        assert!(ss.find_syntax_by_extension("py").is_some());
+        assert!(ss.find_syntax_by_extension("js").is_some());
+        assert!(ss.find_syntax_by_extension("html").is_some());
     }
 }

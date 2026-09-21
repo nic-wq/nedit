@@ -149,6 +149,8 @@ fn doc_options() -> Vec<(&'static str, &'static str)> {
         ("docs.md", "docs general help"),
         ("docs/lua.md", "lua scripts api"),
         ("docs/binds.md", "binds keybindings shortcuts keys"),
+        ("docs/expected_behavior.md", "expected behavior specification specs features"),
+        ("docs/i18n.md", "i18n internationalization translations language"),
     ]
 }
 
@@ -646,33 +648,57 @@ impl App {
         }
 
         if self.fuzzy_mode == FuzzyMode::CommandPalette {
-            let commands = vec![
-                "Save",
-                "New File",
-                "Open File",
-                "Close Tab",
-                "Toggle Explorer",
-                "Global Search",
-                "Local Search",
-                "Switch Theme",
-                "Open Live Script",
-                "Undo Last Script",
-                "Quit",
-                "Undo",
-                "Redo",
-                "Copy",
-                "Paste",
-                "Cut",
-                "Select All",
-                "Open Help",
-            ];
+            let has_active_buffer = !self.buffers.is_empty() && !self.is_welcome;
+            let mut commands = Vec::new();
+
+            if has_active_buffer {
+                commands.push("Save");
+                commands.push("Close Tab");
+            }
+            commands.push("New File");
+            commands.push("Open File");
+            commands.push("Toggle Explorer");
+            commands.push("Global Search");
+            if has_active_buffer {
+                commands.push("Local Search");
+            }
+            commands.push("Switch Theme");
+            commands.push("Open Live Script");
+            if self.last_script_undo.is_some() {
+                commands.push("Undo Last Script");
+            }
+            commands.push("Quit");
+            if has_active_buffer {
+                commands.push("Undo");
+                commands.push("Redo");
+                commands.push("Copy");
+                commands.push("Paste");
+                commands.push("Cut");
+                commands.push("Select All");
+            }
+            commands.push("Open Help");
+
             self.fuzzy_results = commands
                 .into_iter()
-                .filter(|c| query.is_empty() || c.to_lowercase().contains(&query))
+                .filter(|c| {
+                    if query.is_empty() {
+                        true
+                    } else {
+                        let matches_name = c.to_lowercase().contains(&query);
+                        let matches_shortcut = self
+                            .config
+                            .get_command_shortcut(c)
+                            .map(|sc| sc.to_lowercase().contains(&query))
+                            .unwrap_or(false);
+                        matches_name || matches_shortcut
+                    }
+                })
                 .map(PathBuf::from)
                 .collect();
             if reset_idx {
                 self.fuzzy_idx = 0;
+            } else {
+                self.fuzzy_idx = self.fuzzy_idx.min(self.fuzzy_results.len().saturating_sub(1));
             }
             return;
         }
@@ -1005,7 +1031,7 @@ mod tests {
 
     #[test]
     fn doc_select_lists_everything_on_empty_query() {
-        assert_eq!(filter_doc_options("").len(), 3);
+        assert_eq!(filter_doc_options("").len(), 5);
     }
 
     #[test]
@@ -1027,6 +1053,18 @@ mod tests {
             filter_doc_options("LUA"),
             vec![PathBuf::from("docs/lua.md")]
         );
+        assert_eq!(
+            filter_doc_options("expected"),
+            vec![PathBuf::from("docs/expected_behavior.md")]
+        );
+        assert_eq!(
+            filter_doc_options("i18n"),
+            vec![PathBuf::from("docs/i18n.md")]
+        );
+        assert_eq!(
+            filter_doc_options("translations"),
+            vec![PathBuf::from("docs/i18n.md")]
+        );
         assert!(filter_doc_options("no-such-doc").is_empty());
     }
 
@@ -1034,12 +1072,73 @@ mod tests {
     fn doc_select_modal_filters_as_you_type() {
         let mut app = App::new(&[]);
         app.toggle_fuzzy(FuzzyMode::DocSelect);
-        assert_eq!(app.fuzzy_results.len(), 3);
+        assert_eq!(app.fuzzy_results.len(), 5);
         app.set_fuzzy_query("lua".to_string());
         app.update_fuzzy(true);
         assert_eq!(app.fuzzy_results, vec![PathBuf::from("docs/lua.md")]);
         app.set_fuzzy_query("xyz-no-match".to_string());
         app.update_fuzzy(true);
         assert!(app.fuzzy_results.is_empty());
+    }
+
+    #[test]
+    fn command_palette_is_context_aware() {
+        let mut app = App::new(&[]);
+        // On welcome screen with no buffers:
+        app.toggle_fuzzy(FuzzyMode::CommandPalette);
+        let cmd_names: Vec<String> = app
+            .fuzzy_results
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        assert!(!cmd_names.contains(&"Close Tab".to_string()));
+        assert!(!cmd_names.contains(&"Save".to_string()));
+        assert!(!cmd_names.contains(&"Local Search".to_string()));
+        assert!(!cmd_names.contains(&"Undo Last Script".to_string()));
+        assert!(cmd_names.contains(&"New File".to_string()));
+        assert!(cmd_names.contains(&"Open File".to_string()));
+        assert!(cmd_names.contains(&"Toggle Explorer".to_string()));
+        assert!(cmd_names.contains(&"Global Search".to_string()));
+
+        // Open a buffer:
+        app.is_welcome = false;
+        app.buffers.push(crate::buffer::EditorBuffer::new());
+        app.update_fuzzy(true);
+        let cmd_names_with_buffer: Vec<String> = app
+            .fuzzy_results
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        assert!(cmd_names_with_buffer.contains(&"Close Tab".to_string()));
+        assert!(cmd_names_with_buffer.contains(&"Save".to_string()));
+        assert!(cmd_names_with_buffer.contains(&"Local Search".to_string()));
+        assert!(cmd_names_with_buffer.contains(&"Undo".to_string()));
+        assert!(cmd_names_with_buffer.contains(&"Redo".to_string()));
+    }
+
+    #[test]
+    fn command_palette_matches_shortcut_query() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        app.buffers.push(crate::buffer::EditorBuffer::new());
+        app.toggle_fuzzy(FuzzyMode::CommandPalette);
+
+        app.set_fuzzy_query("ctrl+w".to_string());
+        app.update_fuzzy(true);
+        let results: Vec<String> = app
+            .fuzzy_results
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        assert!(results.contains(&"Close Tab".to_string()));
+
+        app.set_fuzzy_query("ctrl+s".to_string());
+        app.update_fuzzy(true);
+        let results: Vec<String> = app
+            .fuzzy_results
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        assert!(results.contains(&"Save".to_string()));
     }
 }

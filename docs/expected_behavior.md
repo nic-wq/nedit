@@ -97,6 +97,7 @@ Mouse interactions are integrated across every editor component:
    - Hovering over a tab reveals the `󰅖` close icon on that tab.
    - Left-clicking `󰅖` closes the tab (triggering unsaved changes confirmation if modified).
    - Clicking below the tab bar inside the editor never switches tabs.
+3. **Status Bar Quick Hint**: When an editor tab is open, the status bar displays the `Close Tab` shortcut hint (`󰅖 CTRL+W Close Tab`).
 
 ### 3.3 File Explorer
 1. **Single Click**: Selects the file or folder and instantly loads its preview in the editor.
@@ -178,9 +179,17 @@ Mouse interactions are integrated across every editor component:
 | **Files** | `Ctrl + O` | Subsequence search across project files. Supports folder scoping via `@` prefix (e.g., `@src config`). |
 | **Global Search** | `Ctrl + G` | Full-text search across all files in the project. Returns first match per file. Supports `@` directory prefix. |
 | **Local Search** | `Ctrl + F` | Search within active file with real-time occurrence highlighting. |
-| **Command Palette** | `Ctrl + P` | Fast palette offering 18 core editor actions. |
+| **Command Palette** | `Ctrl + P` | Fast palette displaying shortcuts right-aligned and filtering actions contextually (e.g. `Close Tab`, `Save`, `Undo`, etc., only appear when a tab is open). Matches by action name or shortcut keys. |
 | **Themes** | `Ctrl + Alt + T` | Theme selector with live preview updating editor colors as you navigate. |
-| **DocSelect** | `Ctrl + H` | Built-in documentation chooser (General, Keybinds, Lua API). |
+| **DocSelect** | `Ctrl + H` | Built-in documentation chooser (General Docs, Expected Behavior, i18n, Keybinds, Lua API). |
+
+### 6.1 Command Palette Contextuality & Shortcuts
+- **Right-Aligned Shortcuts**: Each command with a configured keybinding renders its shortcut (e.g., `CTRL+S`, `CTRL+W`, `CTRL+P`) aligned on the right edge of the modal item.
+- **Context Awareness**:
+  - Buffer-specific commands (`Save`, `Close Tab`, `Local Search`, `Undo`, `Redo`, `Copy`, `Paste`, `Cut`, `Select All`) are dynamically hidden when on the welcome screen or when no tabs are open.
+  - Script revert (`Undo Last Script`) is only listed if a live script modification was previously performed.
+  - Always available commands (`New File`, `Open File`, `Toggle Explorer`, `Global Search`, `Switch Theme`, `Open Live Script`, `Quit`, `Open Help`) remain accessible in all contexts.
+- **Dual Query Filtering**: Users can filter the palette by searching for the command name (e.g., `"close"`) or directly by its shortcut key (e.g., `"ctrl+w"`).
 
 ---
 

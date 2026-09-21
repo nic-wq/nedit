@@ -1,0 +1,8 @@
+%YAML 1.2
+---
+name: TypeScript
+file_extensions: [ts, tsx, mts, cts]
+scope: source.ts
+contexts:
+  main:
+    - include: scope:source.js

@@ -143,6 +143,35 @@ impl Config {
         })
     }
 
+    pub fn get_command_shortcut(&self, command: &str) -> Option<String> {
+        let action = match command {
+            "Save" => "save",
+            "New File" => "new_file",
+            "Open File" => "open_file",
+            "Close Tab" => "close_tab",
+            "Toggle Explorer" => "toggle_explorer",
+            "Global Search" => "global_search",
+            "Local Search" => "local_search",
+            "Switch Theme" => "theme_select",
+            "Quit" => "quit",
+            "Undo" => "undo",
+            "Redo" => "redo",
+            "Copy" => "copy",
+            "Paste" => "paste",
+            "Cut" => "cut",
+            "Select All" => "select_all",
+            "Open Help" => "open_help",
+            "Command Palette" => "command_palette",
+            _ => return None,
+        };
+        let kb = self.get_keybind(action);
+        if kb.is_empty() {
+            None
+        } else {
+            Some(kb.to_uppercase())
+        }
+    }
+
     fn from_toml_with_defaults(content: &str) -> Result<Self, toml::de::Error> {
         let mut config = Self::new();
         let value = toml::from_str::<toml::Value>(content)?;
@@ -309,5 +338,19 @@ mod tests {
             config.notification_position,
             NotificationPosition::BottomRight
         );
+    }
+
+    #[test]
+    fn test_get_command_shortcut() {
+        let config = super::Config::new();
+        assert_eq!(config.get_command_shortcut("Save"), Some("CTRL+S".to_string()));
+        assert_eq!(config.get_command_shortcut("Close Tab"), Some("CTRL+W".to_string()));
+        assert_eq!(config.get_command_shortcut("New File"), Some("CTRL+N".to_string()));
+        assert_eq!(config.get_command_shortcut("Open File"), Some("CTRL+O".to_string()));
+        assert_eq!(config.get_command_shortcut("Toggle Explorer"), Some("CTRL+B".to_string()));
+        assert_eq!(config.get_command_shortcut("Global Search"), Some("CTRL+G".to_string()));
+        assert_eq!(config.get_command_shortcut("Local Search"), Some("CTRL+F".to_string()));
+        assert_eq!(config.get_command_shortcut("Command Palette"), Some("CTRL+P".to_string()));
+        assert_eq!(config.get_command_shortcut("Nonexistent Command"), None);
     }
 }
