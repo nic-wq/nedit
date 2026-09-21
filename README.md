@@ -92,6 +92,7 @@ Detailed guides and references are available in the [docs/](docs/) directory:
 - ⌨️ [Keyboard & Mouse Shortcuts](docs/binds.md) — Complete keybinding and gesture reference.
 - 📜 [Lua Live Scripts API](docs/lua.md) — Guide and API reference for Lua scripting.
 - 📋 [Expected Behavior & Specification](docs/expected_behavior.md) — Comprehensive guide detailing all capabilities and expected behaviors of NEdit.
+- 🌍 [Internationalization Guide](docs/i18n.md) — Translation and UI localization guide via `language.toml`.
 
 ---
 
@@ -111,4 +112,4 @@ Contributions and feedback are always welcome! Check our [Contributing Guide](CO
 
 ## 📄 License
 
-Open source project. Distributed under the MIT license.
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0) — see the [license.md](license.md) file for details.

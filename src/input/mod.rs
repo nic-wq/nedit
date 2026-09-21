@@ -3039,7 +3039,7 @@ mod tests {
 
         let menu = app.context_menu.as_ref().expect("Context menu should be open");
         assert_eq!(menu.target, ContextMenuTarget::Editor);
-        // With selection: Copiar, Cortar, Colar (Substituir), Excluir Seleção, Selecionar Tudo
+        // With selection: Copy, Cut, Paste (Replace), Delete Selection, Select All
         assert_eq!(menu.items.len(), 5);
         assert_eq!(menu.items[0].action, ContextMenuAction::Copy);
         assert_eq!(menu.items[1].action, ContextMenuAction::Cut);

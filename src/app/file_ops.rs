@@ -103,7 +103,7 @@ impl App {
             return;
         }
 
-        // Limpar preview se existir antes de abrir um arquivo real
+        // Clear preview if it exists before opening a real file
         if let Some(preview_idx) = self.preview_buffer_idx.take() {
             self.clear_preview(preview_idx);
         }
@@ -835,15 +835,15 @@ impl App {
         self.refresh_explorer();
     }
 
-    /// Atualiza o preview baseado na seleção atual do explorer.
-    /// Chamado quando o usuário navega (Up/Down) no explorer sobre arquivos.
+    /// Updates the preview based on current explorer selection.
+    /// Called when the user navigates (Up/Down) over files in the explorer.
     pub fn update_preview_from_explorer_selection(&mut self) {
-        // Só preview se explorer está visível e focado
+        // Only preview if explorer is visible and focused
         if !self.show_explorer || self.focus != Focus::Explorer {
             return;
         }
 
-        // Se preview está desabilitado na config, não faz nada
+        // If preview is disabled in config, do nothing
         if !self.config.preview_enabled {
             if let Some(idx) = self.preview_buffer_idx {
                 self.clear_preview(idx);
@@ -853,7 +853,7 @@ impl App {
 
         let Some(item) = self.explorer.get_selected() else { return };
 
-        // Só preview em arquivos (não diretórios)
+        // Only preview files (not directories)
         if item.is_dir {
             if let Some(idx) = self.preview_buffer_idx {
                 self.clear_preview(idx);
@@ -861,19 +861,19 @@ impl App {
             return;
         }
 
-        // Verificar se já está fazendo preview DESTE arquivo
+        // Check if already previewing THIS file
         if let Some(idx) = self.preview_buffer_idx {
             if let Some(buf) = self.buffers.get(idx) {
                 if buf.path.as_ref() == Some(&item.path) {
-                    return; // já é o preview atual
+                    return; // already the current preview
                 }
             }
         }
 
-        // Verificar se o arquivo já está aberto como aba REAL
+        // Check if the file is already open as a REAL tab
         for (i, buf) in self.buffers.iter().enumerate() {
             if !buf.is_preview && buf.path.as_ref() == Some(&item.path) {
-                // Arquivo já está aberto — apenas exibir na aba existente
+                // File is already open — switch to existing tab
                 if let Some(preview_idx) = self.preview_buffer_idx {
                     self.clear_preview(preview_idx);
                 }
@@ -885,7 +885,7 @@ impl App {
             }
         }
 
-        // Verificar limite de tamanho para preview
+        // Check preview size limit
         if let Ok(metadata) = std::fs::metadata(&item.path) {
             if metadata.len() > self.config.preview_max_size as u64 {
                 if let Some(idx) = self.preview_buffer_idx {
@@ -895,20 +895,20 @@ impl App {
             }
         }
 
-        // Carregar preview
+        // Load preview
         match EditorBuffer::from_path(item.path.clone()) {
             Ok(mut buf) => {
                 buf.is_preview = true;
                 buf.is_read_only = true;
 
                 if let Some(preview_idx) = self.preview_buffer_idx {
-                    // Substituir preview existente no lugar
+                    // Replace existing preview in place
                     self.buffers[preview_idx] = buf;
                     self.current_buffer_idx = preview_idx;
                 } else {
-                    // Salvar buffer atual para restaurar depois
+                    // Save current buffer to restore later
                     self.saved_buffer_idx = self.current_buffer_idx;
-                    // Criar novo buffer preview (antes do script em live mode)
+                    // Create new preview buffer (before script in live mode)
                     let preview_idx = self.push_buffer(buf);
                     self.preview_buffer_idx = Some(preview_idx);
                     self.current_buffer_idx = preview_idx;
@@ -919,7 +919,7 @@ impl App {
                 self.track_live_target(self.current_buffer_idx);
             }
             Err(_) => {
-                // Se não conseguir carregar, limpar preview
+                // If loading fails, clear preview
                 if let Some(idx) = self.preview_buffer_idx {
                     self.clear_preview(idx);
                 }
@@ -927,23 +927,23 @@ impl App {
         }
     }
 
-    /// Limpa o preview atual e restaura o buffer anterior.
+    /// Clears current preview and restores previous buffer.
     pub fn clear_preview(&mut self, preview_idx: usize) {
         if preview_idx >= self.buffers.len() || !self.buffers[preview_idx].is_preview {
             self.preview_buffer_idx = None;
             return;
         }
 
-        // Remover o preview buffer
+        // Remove the preview buffer
         self.buffers.remove(preview_idx);
         self.preview_buffer_idx = None;
 
-        // Ajustar saved_buffer_idx se necessário
+        // Adjust saved_buffer_idx if needed
         if self.saved_buffer_idx > preview_idx && self.saved_buffer_idx > 0 {
             self.saved_buffer_idx -= 1;
         }
 
-        // Restaurar buffer anterior
+        // Restore previous buffer
         if self.buffers.is_empty() {
             self.is_welcome = true;
             self.current_buffer_idx = 0;

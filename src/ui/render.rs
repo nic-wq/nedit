@@ -1549,8 +1549,9 @@ fn draw_context_menu(f: &mut Frame, app: &App, colors: &UIColors) {
             },
         );
 
+        let label_text = app.i18n.t(item.i18n_key);
         let label_span = Span::styled(
-            item.label,
+            label_text,
             if is_selected {
                 Style::default().fg(Color::Rgb(0, 0, 0)).add_modifier(Modifier::BOLD)
             } else if item.is_danger {
@@ -1562,7 +1563,7 @@ fn draw_context_menu(f: &mut Frame, app: &App, colors: &UIColors) {
 
         let shortcut_str = item.shortcut.unwrap_or("");
         let shortcut_len = UnicodeWidthStr::width(shortcut_str) as u16;
-        let prefix_len = 2 + UnicodeWidthStr::width(item.label) as u16;
+        let prefix_len = 2 + UnicodeWidthStr::width(label_text) as u16;
         let spaces_needed = (inner_w as usize).saturating_sub(prefix_len as usize + shortcut_len as usize + 2);
         let padding_span = Span::raw(" ".repeat(spaces_needed));
 
@@ -1973,10 +1974,12 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
             let trunc_path = truncate_with_ellipsis(&path_str, inner_w.saturating_sub(6) as usize);
+            let prompt = format!(" {}", app.i18n.t("delete_prompt"));
+            let warning = format!("  {}", app.i18n.t("delete_warning"));
             (
                 Line::from(vec![
                     Span::styled(
-                        " Are you sure you want to delete?",
+                        prompt,
                         Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
                     ),
                 ]),
@@ -1989,7 +1992,7 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 ]),
                 Line::from(vec![
                     Span::styled(
-                        "  This action cannot be undone.",
+                        warning,
                         Style::default().fg(colors.text_muted()),
                     ),
                 ]),
@@ -2017,25 +2020,24 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             };
             let trunc_name = truncate_with_ellipsis(&filename, inner_w.saturating_sub(6) as usize);
 
-            let (prompt, sub, hints) = if is_script {
+            let (prompt_key, hints) = if is_script {
                 (
-                    " Close Live Script? Modifications will be lost.",
-                    " Unsaved script content will not be recoverable.",
+                    "unsaved_script_prompt",
                     " [←/→] Select   [Enter] Confirm   [Esc] Cancel",
                 )
             } else if is_quit {
                 (
-                    " Quit application? Save changes before exit?",
-                    " Unsaved modifications will be permanently lost.",
+                    "unsaved_quit_prompt",
                     " [←/→] Select   [Enter] Confirm   [S] Save   [D] Discard   [Esc] Cancel",
                 )
             } else {
                 (
-                    " Save changes to file before closing?",
-                    " Unsaved modifications will be permanently lost.",
+                    "unsaved_prompt",
                     " [←/→] Select   [Enter] Confirm   [S] Save   [D] Discard   [Esc] Cancel",
                 )
             };
+            let prompt = format!(" {}", app.i18n.t(prompt_key));
+            let sub = format!("  {}", app.i18n.t("unsaved_warning"));
 
             (
                 Line::from(vec![
@@ -2052,7 +2054,7 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                     ),
                 ]),
                 Line::from(vec![
-                    Span::styled(format!("  {sub}"), Style::default().fg(colors.text_muted())),
+                    Span::styled(sub, Style::default().fg(colors.text_muted())),
                 ]),
                 Line::from(vec![
                     Span::styled(format!(" {hints}"), Style::default().fg(colors.text_muted())),
@@ -2068,10 +2070,12 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 .unwrap_or_else(|| app.i18n.t("no_name").to_string());
             let trunc_name = truncate_with_ellipsis(&filename, inner_w.saturating_sub(6) as usize);
 
+            let prompt = format!(" {}", app.i18n.t("external_change_prompt"));
+            let warning = format!("  {}", app.i18n.t("external_change_warning"));
             (
                 Line::from(vec![
                     Span::styled(
-                        " File changed on disk by another application:",
+                        prompt,
                         Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
                     ),
                 ]),
@@ -2084,7 +2088,7 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 ]),
                 Line::from(vec![
                     Span::styled(
-                        "  Choose whether to reload from disk or keep editor version.",
+                        warning,
                         Style::default().fg(colors.text_muted()),
                     ),
                 ]),
@@ -2170,12 +2174,20 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
 
     let (title, prompt, icon) = match app.fuzzy_mode {
         FuzzyMode::Create => (
-            " 󰉋  New File / Folder ",
-            " Enter path (trailing / creates a folder):",
+            format!(" 󰉋  {} ", app.i18n.t("new_file_folder_title")),
+            format!(" {}", app.i18n.t("new_file_folder_prompt")),
             "󰉋 ",
         ),
-        FuzzyMode::Rename => (" 󰏫  Rename Item ", " Enter new name:", "󰏫 "),
-        FuzzyMode::SaveAs => (" 󰆓  Save Buffer As ", " Enter destination file path:", "󰆓 "),
+        FuzzyMode::Rename => (
+            format!(" 󰏫  {} ", app.i18n.t("rename_item_title")),
+            format!(" {}", app.i18n.t("rename_item_prompt")),
+            "󰏫 ",
+        ),
+        FuzzyMode::SaveAs => (
+            format!(" 󰆓  {} ", app.i18n.t("save_buffer_as_title")),
+            format!(" {}", app.i18n.t("save_buffer_as_prompt")),
+            "󰆓 ",
+        ),
         _ => return,
     };
 
@@ -2293,7 +2305,7 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         FuzzyMode::FileOptions => format!(" 󰘳  {} ", app.i18n.t("file_options")),
         FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
-        FuzzyMode::DocSelect => " 󰈔  Select Documentation ".to_string(),
+        FuzzyMode::DocSelect => format!(" 󰈔  {} ", app.i18n.t("select_documentation")),
         _ => " Search ".to_string(),
     };
 

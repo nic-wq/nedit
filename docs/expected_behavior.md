@@ -228,19 +228,3 @@ All configuration files are stored in `~/.config/nedit/`:
 | `icons/` | Custom Nerd Font icon mappings (.toml). |
 | `cache/` | Precompiled syntax highlight dumps for fast application startup. |
 
----
-
-## 10. Verification & Quality Checklist
-
-- [x] Fast startup with automatic theme persistence from `theme.txt`.
-- [x] Left-clicking within the editor never triggers unintended tab changes.
-- [x] Hovering over tabs reveals `󰅖`, and clicking `󰅖` closes the tab safely.
-- [x] Double-clicking folders in explorer expands/collapses; double-clicking files opens them.
-- [x] Long file and folder names in explorer smoothly scroll in a continuous marquee loop when selected.
-- [x] Explorer sidebar maintains a standard fixed width without layout distortion.
-- [x] Right-clicking in editor opens context menu (Copy, Cut, Paste/Replace, Delete Selection, Select All).
-- [x] Pasting over active selection cleanly replaces text in a single atomic undo step.
-- [x] Right-clicking in explorer opens context menu reusing native file modals.
-- [x] Arrow keys and `Tab` cycle through modal confirmation buttons cleanly.
-- [x] Toasts display in the configured corner and dismiss via `󰅖` button.
-- [x] Lua Live Scripts execute with `F9` and can be reverted with "Undo Last Script".

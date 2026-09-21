@@ -222,4 +222,4 @@ See [docs/lua.md](lua.md) for full documentation, examples, and script guideline
 - **Themes**: Drop `.tmTheme` files into `~/.config/nedit/themes/`. Subdirectories are supported and automatically indexed.
 - **Syntax**: Place custom `.sublime-syntax` files in `~/.config/nedit/syntax/`. NEdit compiles and caches them automatically.
 - **Icons**: Customize file, folder, and command icons via `~/.config/nedit/icons/*.toml`.
-- **Translations (i18n)**: Provide translations or customize label wording via `~/.config/nedit/language.toml`.
+- **Translations (i18n)**: Provide translations or customize label wording via `~/.config/nedit/language.toml`. See [docs/i18n.md](i18n.md) for full documentation.

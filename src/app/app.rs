@@ -793,37 +793,37 @@ impl App {
         }
     }
 
-    pub fn modal_buttons(&self) -> Vec<(&'static str, crate::app::types::ModalAction, bool)> {
+    pub fn modal_buttons(&self) -> Vec<(String, crate::app::types::ModalAction, bool)> {
         use crate::app::types::{FuzzyMode, ModalAction};
         match self.fuzzy_mode {
             FuzzyMode::DeleteConfirm => vec![
-                ("󰆴 Delete", ModalAction::ConfirmDelete, true),
-                ("󰅖 Cancel", ModalAction::Cancel, false),
+                (format!("󰆴 {}", self.i18n.t("delete")), ModalAction::ConfirmDelete, true),
+                (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],
             FuzzyMode::UnsavedChanges => {
                 let is_script = self.live_script_mode
                     && self.pending_buffer_idx == self.live_script_buffer_idx;
                 if is_script {
                     vec![
-                        ("󰆴 Discard", ModalAction::DiscardUnsaved, true),
-                        ("󰅖 Cancel", ModalAction::Cancel, false),
+                        (format!("󰆴 {}", self.i18n.t("discard")), ModalAction::DiscardUnsaved, true),
+                        (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
                     ]
                 } else {
                     vec![
-                        ("󰆓 Save", ModalAction::SaveUnsaved, false),
-                        ("󰆴 Discard", ModalAction::DiscardUnsaved, true),
-                        ("󰅖 Cancel", ModalAction::Cancel, false),
+                        (format!("󰆓 {}", self.i18n.t("save")), ModalAction::SaveUnsaved, false),
+                        (format!("󰆴 {}", self.i18n.t("discard")), ModalAction::DiscardUnsaved, true),
+                        (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
                     ]
                 }
             }
             FuzzyMode::ExternalChange => vec![
-                ("󰑐 Reload", ModalAction::ReloadExternal, false),
-                ("󰄬 Keep", ModalAction::KeepExternal, false),
-                ("󰅖 Cancel", ModalAction::Cancel, false),
+                (format!("󰑐 {}", self.i18n.t("reload")), ModalAction::ReloadExternal, false),
+                (format!("󰄬 {}", self.i18n.t("keep")), ModalAction::KeepExternal, false),
+                (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],
             FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs => vec![
-                ("󰄬 Confirm", ModalAction::ConfirmInput, false),
-                ("󰅖 Cancel", ModalAction::Cancel, false),
+                (format!("󰄬 {}", self.i18n.t("confirm")), ModalAction::ConfirmInput, false),
+                (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],
             _ => Vec::new(),
         }
@@ -840,17 +840,17 @@ impl App {
 
         let items = if has_selection {
             vec![
-                ContextMenuItem { label: "Copy", icon: "󰆏", shortcut: Some("Ctrl+C"), action: ContextMenuAction::Copy, is_danger: false },
-                ContextMenuItem { label: "Cut", icon: "󰆐", shortcut: Some("Ctrl+X"), action: ContextMenuAction::Cut, is_danger: false },
-                ContextMenuItem { label: "Paste (Replace)", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
-                ContextMenuItem { label: "Delete Selection", icon: "󰆴", shortcut: Some("Del"), action: ContextMenuAction::DeleteSelection, is_danger: true },
-                ContextMenuItem { label: "Select All", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
+                ContextMenuItem { label: "Copy", i18n_key: "copy", icon: "󰆏", shortcut: Some("Ctrl+C"), action: ContextMenuAction::Copy, is_danger: false },
+                ContextMenuItem { label: "Cut", i18n_key: "cut", icon: "󰆐", shortcut: Some("Ctrl+X"), action: ContextMenuAction::Cut, is_danger: false },
+                ContextMenuItem { label: "Paste (Replace)", i18n_key: "paste_replace", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
+                ContextMenuItem { label: "Delete Selection", i18n_key: "delete_selection", icon: "󰆴", shortcut: Some("Del"), action: ContextMenuAction::DeleteSelection, is_danger: true },
+                ContextMenuItem { label: "Select All", i18n_key: "select_all", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
             ]
         } else {
             vec![
-                ContextMenuItem { label: "Paste", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
-                ContextMenuItem { label: "Select Word", icon: "󰈔", shortcut: None, action: ContextMenuAction::SelectWord, is_danger: false },
-                ContextMenuItem { label: "Select All", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
+                ContextMenuItem { label: "Paste", i18n_key: "paste", icon: "󰆒", shortcut: Some("Ctrl+V"), action: ContextMenuAction::Paste, is_danger: false },
+                ContextMenuItem { label: "Select Word", i18n_key: "select_word", icon: "󰈔", shortcut: None, action: ContextMenuAction::SelectWord, is_danger: false },
+                ContextMenuItem { label: "Select All", i18n_key: "select_all", icon: "󰘳", shortcut: Some("Ctrl+A"), action: ContextMenuAction::SelectAll, is_danger: false },
             ]
         };
 
@@ -902,23 +902,23 @@ impl App {
 
         let items = if is_dir {
             vec![
-                ContextMenuItem { label: "New File", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
-                ContextMenuItem { label: "New Folder", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
-                ContextMenuItem { label: "Rename", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
-                ContextMenuItem { label: "Delete", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
-                ContextMenuItem { label: "Move", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
-                ContextMenuItem { label: "Copy Path", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
-                ContextMenuItem { label: "Set as Root", icon: "󰆓", shortcut: None, action: ContextMenuAction::SetRoot, is_danger: false },
+                ContextMenuItem { label: "New File", i18n_key: "new_file", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
+                ContextMenuItem { label: "New Folder", i18n_key: "new_folder", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
+                ContextMenuItem { label: "Rename", i18n_key: "rename", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
+                ContextMenuItem { label: "Delete", i18n_key: "delete", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
+                ContextMenuItem { label: "Move", i18n_key: "move_file", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
+                ContextMenuItem { label: "Copy Path", i18n_key: "copy_path", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
+                ContextMenuItem { label: "Set as Root", i18n_key: "set_as_root", icon: "󰆓", shortcut: None, action: ContextMenuAction::SetRoot, is_danger: false },
             ]
         } else {
             vec![
-                ContextMenuItem { label: "Open", icon: "󰈔", shortcut: Some("Enter"), action: ContextMenuAction::OpenFile, is_danger: false },
-                ContextMenuItem { label: "Rename", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
-                ContextMenuItem { label: "Delete", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
-                ContextMenuItem { label: "New File", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
-                ContextMenuItem { label: "New Folder", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
-                ContextMenuItem { label: "Move", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
-                ContextMenuItem { label: "Copy Path", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
+                ContextMenuItem { label: "Open", i18n_key: "open", icon: "󰈔", shortcut: Some("Enter"), action: ContextMenuAction::OpenFile, is_danger: false },
+                ContextMenuItem { label: "Rename", i18n_key: "rename", icon: "󰏫", shortcut: None, action: ContextMenuAction::Rename, is_danger: false },
+                ContextMenuItem { label: "Delete", i18n_key: "delete", icon: "󰆴", shortcut: None, action: ContextMenuAction::Delete, is_danger: true },
+                ContextMenuItem { label: "New File", i18n_key: "new_file", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFile, is_danger: false },
+                ContextMenuItem { label: "New Folder", i18n_key: "new_folder", icon: "󰉋", shortcut: None, action: ContextMenuAction::NewFolder, is_danger: false },
+                ContextMenuItem { label: "Move", i18n_key: "move_file", icon: "󰏫", shortcut: None, action: ContextMenuAction::Move, is_danger: false },
+                ContextMenuItem { label: "Copy Path", i18n_key: "copy_path", icon: "󰆏", shortcut: None, action: ContextMenuAction::CopyPath, is_danger: false },
             ]
         };
 
@@ -1013,9 +1013,9 @@ mod tests {
     #[test]
     fn adopts_parent_dir_as_explorer_root_when_opening_file() {
         let temp = tempdir().unwrap();
-        let sub_dir = temp.path().join("teste");
+        let sub_dir = temp.path().join("test_dir");
         fs::create_dir_all(&sub_dir).unwrap();
-        let file_path = sub_dir.join("arquivo.txt");
+        let file_path = sub_dir.join("test_file.txt");
         fs::write(&file_path, "hello").unwrap();
 
         let app = App::new(&[file_path.to_str().unwrap().to_string()]);

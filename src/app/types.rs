@@ -91,6 +91,7 @@ pub enum ContextMenuAction {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContextMenuItem {
     pub label: &'static str,
+    pub i18n_key: &'static str,
     pub icon: &'static str,
     pub shortcut: Option<&'static str>,
     pub action: ContextMenuAction,
