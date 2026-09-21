@@ -428,8 +428,8 @@ impl App {
             }
 
             if mode == FuzzyMode::Themes {
-                self.original_theme = self.current_theme.clone();
                 self.ensure_all_themes_loaded();
+                self.original_theme = self.current_theme.clone();
             }
 
             if matches!(mode, FuzzyMode::Files | FuzzyMode::Content) {
@@ -1011,19 +1011,32 @@ impl App {
             }
             self.fuzzy_themes = canonical_order
                 .into_iter()
-                .filter(|t| query.is_empty() || t.to_lowercase().contains(&query))
+                .filter(|t| {
+                    query.is_empty()
+                        || t.to_lowercase().contains(&query)
+                        || (self.is_theme_active(t) && "active".contains(&query))
+                })
                 .collect();
         }
 
         if reset_idx {
-            self.fuzzy_idx = 0;
+            if self.fuzzy_mode == FuzzyMode::Themes && query.is_empty() {
+                self.fuzzy_idx = self
+                    .fuzzy_themes
+                    .iter()
+                    .position(|t| self.is_theme_active(t))
+                    .unwrap_or(0);
+            } else {
+                self.fuzzy_idx = 0;
+            }
         } else if self.fuzzy_idx >= self.fuzzy_themes.len() {
             self.fuzzy_idx = self.fuzzy_themes.len().saturating_sub(1);
         }
 
         if self.fuzzy_mode == FuzzyMode::Themes && !self.fuzzy_themes.is_empty()
             && self.fuzzy_idx < self.fuzzy_themes.len() {
-                self.current_theme = self.fuzzy_themes[self.fuzzy_idx].clone();
+                let theme_to_preview = self.fuzzy_themes[self.fuzzy_idx].clone();
+                self.apply_theme(theme_to_preview);
             }
     }
 }

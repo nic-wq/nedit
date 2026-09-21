@@ -2516,7 +2516,9 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 .enumerate()
                 .map(|(idx, theme_name)| {
                     let i = safe_start + idx;
-                    let style = if i == app.fuzzy_idx {
+                    let is_selected = i == app.fuzzy_idx;
+                    let is_active = app.is_theme_active(theme_name);
+                    let style = if is_selected {
                         Style::default()
                             .bg(colors.sel)
                             .fg(colors.accent)
@@ -2524,12 +2526,34 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                     } else {
                         Style::default().fg(colors.fg)
                     };
-                    let indicator = if theme_name == &app.current_theme {
+                    let indicator = if is_active {
                         "󰄬 "
                     } else {
                         "  "
                     };
-                    ListItem::new(format!(" {} {}", indicator, theme_name)).style(style)
+                    let mut spans = vec![
+                        Span::styled(format!(" {} {}", indicator, theme_name), style),
+                    ];
+                    if is_active {
+                        spans.push(Span::styled(
+                            " [Active]",
+                            if is_selected {
+                                Style::default()
+                                    .bg(colors.sel)
+                                    .fg(colors.accent)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default()
+                                    .fg(colors.accent)
+                                    .add_modifier(Modifier::BOLD)
+                            },
+                        ));
+                    }
+                    ListItem::new(Line::from(spans)).style(if is_selected {
+                        Style::default().bg(colors.sel)
+                    } else {
+                        Style::default()
+                    })
                 })
                 .collect()
         }
@@ -3395,5 +3419,64 @@ mod explorer_marquee_and_truncation_tests {
         assert_eq!(app.modal_button_hitboxes.len(), 2);
         assert_eq!(app.modal_button_hitboxes[0].action, ModalAction::ConfirmInput);
         assert_eq!(app.modal_button_hitboxes[1].action, ModalAction::Cancel);
+    }
+
+    #[test]
+    fn test_theme_modal_renders_active_tag() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::Themes);
+
+        let width = 100;
+        let height = 30;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_fuzzy_finder(f, &mut app, &colors);
+            })
+            .unwrap();
+
+        let rendered = terminal.backend().buffer().clone();
+        let all_text: String = (0..height)
+            .flat_map(|y| (0..width).map(move |x| (x, y)))
+            .map(|(x, y)| rendered[(x, y)].symbol().to_string())
+            .collect();
+
+        assert!(all_text.contains("[Active]"));
+    }
+
+    #[test]
+    fn test_theme_modal_active_tag_persists_during_live_preview() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::Themes);
+
+        if app.fuzzy_themes.len() > 1 {
+            let other_idx = if app.fuzzy_idx == 0 { 1 } else { 0 };
+            app.fuzzy_idx = other_idx;
+            let theme_name = app.fuzzy_themes[other_idx].clone();
+            app.apply_theme(theme_name);
+
+            let width = 100;
+            let height = 30;
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+
+            terminal
+                .draw(|f| {
+                    let colors = get_colors(&app);
+                    draw_fuzzy_finder(f, &mut app, &colors);
+                })
+                .unwrap();
+
+            let rendered = terminal.backend().buffer().clone();
+            let all_text: String = (0..height)
+                .flat_map(|y| (0..width).map(move |x| (x, y)))
+                .map(|(x, y)| rendered[(x, y)].symbol().to_string())
+                .collect();
+
+            assert!(all_text.contains("[Active]"));
+        }
     }
 }

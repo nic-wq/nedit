@@ -111,7 +111,7 @@ pub(crate) fn cancel_modal(app: &mut App) {
             }
         }
     } else if app.fuzzy_mode == crate::app::FuzzyMode::Themes {
-        app.current_theme = app.original_theme.clone();
+        app.apply_theme(app.original_theme.clone());
     }
     app.is_fuzzy = false;
     app.modal_button_idx = None;
