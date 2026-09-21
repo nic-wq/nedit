@@ -1,6 +1,6 @@
 # 📘 NEdit: Expected Behavior & Feature Specification
 
-This document provides a comprehensive specification of all features, behaviors, user interactions (UI/UX), and technical expectations implemented in **NEdit** up to the current version (in preparation for **v0.7.0**). It serves as the definitive reference guide for users, contributors, and maintainers.
+This document provides a comprehensive specification of all features, behaviors, user interactions (UI/UX), and technical expectations implemented in **NEdit v0.7.0** (current version). It serves as the definitive reference guide for users, contributors, and maintainers.
 
 ---
 
