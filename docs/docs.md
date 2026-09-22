@@ -99,6 +99,8 @@ NEdit provides first-class, intuitive mouse interactions across all interface co
 | **Editor** | **Double Click** | Selects the full word under cursor |
 | **Editor** | **Left Click & Drag** | Dynamically expands text selection |
 | **Editor** | **Scroll Wheel** | Smoothly scrolls editor content by 3 rows up/down |
+| **Editor** | **Shift + Scroll Wheel** | Scrolls editor horizontally 4 columns left/right |
+| **Editor** | **Horizontal Wheel / Touchpad** | Scrolls editor horizontally 4 columns left/right |
 | **Editor** | **Right Click (with selection)** | Opens context menu: `Copy`, `Cut`, `Paste (Replace)`, `Delete Selection`, `Select All` |
 | **Editor** | **Right Click (no selection)** | Moves cursor to click position and opens context menu: `Paste`, `Select Word`, `Select All` |
 | **Tab Bar** | **Left Click (tab body)** | Switches active buffer to that tab |

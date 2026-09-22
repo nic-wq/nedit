@@ -141,6 +141,8 @@ These shortcuts are built into NEdit's core engine and cannot be rebound:
 | **Editor** | **Double Click** | Select word under cursor |
 | **Editor** | **Left Drag** | Dynamically expand text selection |
 | **Editor** | **Scroll Wheel** | Scroll editor 3 rows up / down |
+| **Editor** | **Shift + Scroll Wheel** | Scroll editor horizontally 4 columns left / right |
+| **Editor** | **Horizontal Wheel / Touchpad** | Scroll editor horizontally 4 columns left / right |
 | **Editor** | **Right Click (selection)** | Open context menu (`Copy`, `Cut`, `Paste (Replace)`, `Delete Selection`, `Select All`) |
 | **Editor** | **Right Click (no selection)** | Move cursor to click and open context menu (`Paste`, `Select Word`, `Select All`) |
 | **Tab Bar** | **Left Click** | Switch to clicked tab |

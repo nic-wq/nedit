@@ -78,7 +78,9 @@ Mouse interactions are integrated across every editor component:
 1. **Click to Position**: Left-clicking sets focus to the editor and positions the cursor at the clicked cell.
 2. **Double-Click Word Select**: Double-clicking within 500ms selects the word under the cursor.
 3. **Click & Drag Selection**: Left-clicking and dragging expands the text selection dynamically.
-4. **Independent Scrolling**: Mouse wheel scrolls the editor content up/down by 3 lines per notch.
+4. **Vertical & Horizontal Scrolling**:
+   - **Vertical Scroll**: Standard mouse wheel scrolls the editor content up/down by 3 lines per notch.
+   - **Horizontal Scroll**: Holding `Shift` while scrolling the mouse wheel, or using horizontal tilt / touchpad gestures (`ScrollLeft` / `ScrollRight`), scrolls editor content horizontally by 4 columns per notch, clamped cleanly to the visible text bounds.
 5. **Right-Click Context Menu**:
    - **With Text Selected (click inside selection)**: Preserves selection and opens context menu:
      - `󰆏 Copy` (`Ctrl+C`)

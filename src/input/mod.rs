@@ -651,6 +651,83 @@ fn handle_context_menu_input(app: &mut App, key: KeyEvent) {
     }
 }
 
+fn get_scroll_target_buffer_idx(app: &App, col: u16, row: u16) -> Option<usize> {
+    if app.is_welcome || app.buffers.is_empty() {
+        return None;
+    }
+    if !app.editor_area.contains(ratatui::layout::Position::new(col, row)) {
+        return None;
+    }
+    if app.live_script_mode {
+        let mid_x = app.editor_area.x + app.editor_area.width / 2;
+        if col < mid_x {
+            app.target_buffer_idx.or(Some(app.current_buffer_idx))
+        } else {
+            app.live_script_buffer_idx.or(Some(app.current_buffer_idx))
+        }
+    } else {
+        Some(app.current_buffer_idx)
+    }
+}
+
+fn scroll_editor_horizontal(app: &mut App, col: u16, row: u16, scroll_right: bool) {
+    let Some(buf_idx) = get_scroll_target_buffer_idx(app, col, row) else {
+        return;
+    };
+    if let Some(buffer) = app.buffers.get_mut(buf_idx) {
+        if buffer.is_loading {
+            return;
+        }
+        if scroll_right {
+            let height = (app.editor_area.height as usize).max(1);
+            let start = buffer.scroll_row;
+            let end = (start + height).min(buffer.content.len_lines());
+            let max_visual_len = (start..end)
+                .map(|r| {
+                    let line = buffer.content.line(r);
+                    line.chars()
+                        .filter(|c| *c != '\n' && *c != '\r')
+                        .map(|c| {
+                            if c == '\t' {
+                                4
+                            } else {
+                                unicode_width::UnicodeWidthChar::width(c).unwrap_or(1)
+                            }
+                        })
+                        .sum::<usize>()
+                })
+                .max()
+                .unwrap_or(0)
+                .max(buffer.cursor_col);
+
+            let pane_width = if app.live_script_mode {
+                app.editor_area.width / 2
+            } else {
+                app.editor_area.width
+            };
+            let edit_width = pane_width.saturating_sub(5) as usize;
+            let max_scroll = if edit_width > 0 && max_visual_len > edit_width {
+                max_visual_len.saturating_sub(edit_width).saturating_add(15)
+            } else if edit_width == 0 {
+                max_visual_len
+            } else {
+                0
+            };
+
+            if max_scroll > 0 {
+                let new_scroll = (buffer.scroll_col.saturating_add(4)).min(max_scroll);
+                if new_scroll != buffer.scroll_col {
+                    buffer.scroll_col = new_scroll;
+                    app.needs_redraw = true;
+                }
+            }
+        } else if buffer.scroll_col > 0 {
+            buffer.scroll_col = buffer.scroll_col.saturating_sub(4);
+            app.needs_redraw = true;
+        }
+    }
+}
+
 fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
     match mouse.kind {
         MouseEventKind::Moved => {
@@ -675,7 +752,11 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             app.needs_redraw = true;
         }
         MouseEventKind::ScrollUp => {
-            if app.is_fuzzy {
+            if mouse.modifiers.contains(KeyModifiers::SHIFT)
+                && app.editor_area.contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                scroll_editor_horizontal(app, mouse.column, mouse.row, false);
+            } else if app.is_fuzzy {
                 app.fuzzy_idx = app.fuzzy_idx.saturating_sub(1);
                 app.needs_redraw = true;
             } else if app
@@ -684,11 +765,8 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             {
                 app.explorer.scroll_offset = app.explorer.scroll_offset.saturating_sub(1);
                 app.needs_redraw = true;
-            } else if app
-                .editor_area
-                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
-            {
-                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+            } else if let Some(buf_idx) = get_scroll_target_buffer_idx(app, mouse.column, mouse.row) {
+                if let Some(buffer) = app.buffers.get_mut(buf_idx) {
                     if !buffer.is_loading {
                         buffer.scroll_row = buffer.scroll_row.saturating_sub(3);
                         app.needs_redraw = true;
@@ -697,7 +775,11 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             }
         }
         MouseEventKind::ScrollDown => {
-            if app.is_fuzzy {
+            if mouse.modifiers.contains(KeyModifiers::SHIFT)
+                && app.editor_area.contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                scroll_editor_horizontal(app, mouse.column, mouse.row, true);
+            } else if app.is_fuzzy {
                 let max = match app.fuzzy_mode {
                     crate::app::FuzzyMode::Local => app.fuzzy_lines.len(),
                     crate::app::FuzzyMode::Content => {
@@ -732,17 +814,20 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                     app.explorer.scroll_offset += 1;
                     app.needs_redraw = true;
                 }
-            } else if app
-                .editor_area
-                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
-            {
-                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+            } else if let Some(buf_idx) = get_scroll_target_buffer_idx(app, mouse.column, mouse.row) {
+                if let Some(buffer) = app.buffers.get_mut(buf_idx) {
                     if !buffer.is_loading {
                         buffer.scroll_row = buffer.scroll_row.saturating_add(3);
                         app.needs_redraw = true;
                     }
                 }
             }
+        }
+        MouseEventKind::ScrollLeft => {
+            scroll_editor_horizontal(app, mouse.column, mouse.row, false);
+        }
+        MouseEventKind::ScrollRight => {
+            scroll_editor_horizontal(app, mouse.column, mouse.row, true);
         }
         MouseEventKind::Down(event::MouseButton::Left) => {
             // 0. Context menu intercepts click
@@ -3210,4 +3295,97 @@ mod tests {
         assert_eq!(app.fuzzy_query, "test_file.rs");
         assert_eq!(app.pending_path, Some(std::path::PathBuf::from("/tmp/test_file.rs")));
     }
+
+    #[test]
+    fn test_mouse_shift_scroll_horizontal_and_wheel_events() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        app.editor_area = ratatui::layout::Rect::new(0, 1, 40, 20);
+        let mut buf = crate::buffer::EditorBuffer::new();
+        let long_line = "a".repeat(120);
+        buf.content = ropey::Rope::from(long_line.as_str());
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+
+        assert_eq!(app.buffers[0].scroll_col, 0);
+
+        // 1. Shift + ScrollDown should scroll right
+        let shift_scroll_down = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::SHIFT,
+        };
+        super::handle_mouse_event(&mut app, shift_scroll_down);
+        assert_eq!(app.buffers[0].scroll_col, 4);
+
+        // 2. ScrollRight event directly (e.g. Kitty/Alacritty/touchpad horizontal scroll)
+        let scroll_right = MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, scroll_right);
+        assert_eq!(app.buffers[0].scroll_col, 8);
+
+        // 3. Shift + ScrollUp should scroll left
+        let shift_scroll_up = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::SHIFT,
+        };
+        super::handle_mouse_event(&mut app, shift_scroll_up);
+        assert_eq!(app.buffers[0].scroll_col, 4);
+
+        // 4. ScrollLeft event directly
+        let scroll_left = MouseEvent {
+            kind: MouseEventKind::ScrollLeft,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, scroll_left);
+        assert_eq!(app.buffers[0].scroll_col, 0);
+
+        // 5. ScrollLeft at 0 doesn't underflow
+        super::handle_mouse_event(&mut app, scroll_left);
+        assert_eq!(app.buffers[0].scroll_col, 0);
+    }
+
+    #[test]
+    fn test_mouse_scroll_vertical_without_shift() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        app.editor_area = ratatui::layout::Rect::new(0, 1, 40, 20);
+        let mut buf = crate::buffer::EditorBuffer::new();
+        let multiline = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        buf.content = ropey::Rope::from(multiline.as_str());
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+
+        assert_eq!(app.buffers[0].scroll_row, 0);
+
+        // Normal scroll down (without shift) scrolls vertically
+        let scroll_down = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, scroll_down);
+        assert_eq!(app.buffers[0].scroll_row, 3);
+
+        // Normal scroll up scrolls vertically
+        let scroll_up = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, scroll_up);
+        assert_eq!(app.buffers[0].scroll_row, 0);
+    }
 }
+
