@@ -59,6 +59,11 @@ curl -fsSL https://raw.githubusercontent.com/nic-wq/nedit/main/install.sh | bash
 curl -fsSL https://raw.githubusercontent.com/nic-wq/nedit/main/install.sh | bash -s -- --real-time
 ```
 
+**Local Install (without sudo):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/nic-wq/nedit/main/install.sh | bash -s -- --user
+```
+
 ### Quick Install (Windows)
 
 Open PowerShell and run:

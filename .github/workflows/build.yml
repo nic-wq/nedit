@@ -75,6 +75,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download Linux Artifact
         uses: actions/download-artifact@v4
         with:
@@ -104,6 +106,8 @@ jobs:
           files: |
             nedit_linux
             nedit_windows.exe
+            nedit.desktop
+            assets/nedit.png
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -116,5 +120,7 @@ jobs:
           files: |
             nedit_linux
             nedit_windows.exe
+            nedit.desktop
+            assets/nedit.png
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
