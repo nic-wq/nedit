@@ -64,6 +64,7 @@ preview_enabled = true              # Show file previews when navigating explore
 preview_max_size = 3145728          # Maximum preview size in bytes (default: 3 MB)
 highlight_matching_bracket = true   # Highlight matching pair when cursor is on bracket (default: true)
 notification_position = "bottom-right" # Toast corner: "top-left", "top-right", "bottom-left", "bottom-right"
+scale = 1.0                         # Interface scale factor: 0.5 to 3.0 (default: 1.0)
 
 [keybinds]
 # Remap any configurable action (see docs/binds.md)
@@ -129,6 +130,7 @@ NEdit provides first-class, intuitive mouse interactions across all interface co
 
 ### 2. File Explorer (`Ctrl+B`)
 - **Fixed Standard Sidebar Width**: Maintains consistent layout width regardless of deep directories or long filenames.
+- **Hierarchical Tree Guide Lines**: Nested files and folders are marked with visual tree branch lines (`├─`, `└─`, `│  `), making folder structure intuitive.
 - **Marquee Text Scrolling**: When a file or folder with a long name is selected via keyboard or mouse, its name smoothly scrolls horizontally and continuously restarts from the beginning when it reaches the end.
 - **Integrated Real-time Search**: The top bar of the explorer filters files and directories on the fly.
 - **Auto-Preview**: Selecting a file instantly previews its content in the editor (up to 3 MB, read-only `[PREVIEW]`).

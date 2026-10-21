@@ -694,6 +694,57 @@ fn draw_explorer_search_bar(f: &mut Frame, app: &App, area: Rect, colors: &UICol
     }
 }
 
+pub fn build_explorer_tree_prefix(items: &[crate::explorer::FileItem], idx: usize) -> String {
+    let item = match items.get(idx) {
+        Some(i) => i,
+        None => return " ".to_string(),
+    };
+    if item.depth == 0 {
+        return " ".to_string();
+    }
+
+    let mut prefix = String::from(" ");
+    for d in 0..item.depth {
+        let is_current = d == item.depth - 1;
+        if is_current {
+            // Check if there is another item at depth `item.depth` before an item with depth < item.depth
+            let mut has_sibling_below = false;
+            for next in items.iter().skip(idx + 1) {
+                if next.depth < item.depth {
+                    break;
+                }
+                if next.depth == item.depth {
+                    has_sibling_below = true;
+                    break;
+                }
+            }
+            if has_sibling_below {
+                prefix.push_str("├─ ");
+            } else {
+                prefix.push_str("└─ ");
+            }
+        } else {
+            // Check if ancestor at depth `d` still has items below
+            let mut ancestor_continues = false;
+            for next in items.iter().skip(idx + 1) {
+                if next.depth <= d {
+                    break;
+                }
+                if next.depth == d + 1 {
+                    ancestor_continues = true;
+                    break;
+                }
+            }
+            if ancestor_continues {
+                prefix.push_str("│  ");
+            } else {
+                prefix.push_str("   ");
+            }
+        }
+    }
+    prefix
+}
+
 fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
     if area.height == 0 || area.width == 0 {
         return;
@@ -862,7 +913,7 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             }
             items.push(ListItem::new(Line::from(spans)).style(style));
         } else {
-            let indent = "  ".repeat(item.depth);
+            let tree_prefix = build_explorer_tree_prefix(&app.explorer.items, actual_idx);
             let icon = app
                 .icon_registry
                 .get_icon(&item.path, item.is_dir, item.expanded);
@@ -873,13 +924,12 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             } else {
                 ""
             };
-            let prefix = format!(" {indent}{icon}");
             let arrow_suffix = if arrow.is_empty() {
                 String::new()
             } else {
                 format!(" {arrow}")
             };
-            let prefix_w = UnicodeWidthStr::width(prefix.as_str());
+            let prefix_w = UnicodeWidthStr::width(tree_prefix.as_str()) + UnicodeWidthStr::width(icon);
             let arrow_w = UnicodeWidthStr::width(arrow_suffix.as_str());
             let avail_w = (inner.width as usize).saturating_sub(prefix_w + arrow_w);
 
@@ -893,9 +943,24 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
                 marquee_animating = true;
             }
 
-            items.push(
-                ListItem::new(format!("{prefix}{name_display}{arrow_suffix}")).style(style),
-            );
+            let guide_style = if is_selected {
+                Style::default().bg(colors.sel).fg(colors.accent)
+            } else {
+                let guide_color = if colors.indent_guide != colors.bg {
+                    colors.indent_guide
+                } else {
+                    colors.text_muted()
+                };
+                Style::default().fg(guide_color)
+            };
+
+            let line_spans = vec![
+                Span::styled(tree_prefix, guide_style),
+                Span::styled(format!("{}{}", icon, name_display), style),
+                Span::styled(arrow_suffix, style),
+            ];
+
+            items.push(ListItem::new(Line::from(line_spans)).style(style));
         }
     }
 
@@ -2254,11 +2319,22 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             format!(" {}", app.i18n.t("save_buffer_as_prompt")),
             "󰆓 ",
         ),
-        FuzzyMode::SettingInput => (
-            format!(" 󰒓  {} ", app.i18n.t("setting_input_title")),
-            format!(" {}", app.i18n.t("setting_input_prompt")),
-            "󰒓 ",
-        ),
+        FuzzyMode::SettingInput => {
+            let prompt = match app.setting_input_target {
+                Some(crate::app::types::SettingId::Scale) => {
+                    format!(" {}", app.i18n.t("setting_input_scale_prompt"))
+                }
+                Some(crate::app::types::SettingId::PreviewMaxSize) => {
+                    format!(" {}", app.i18n.t("setting_input_preview_max_size_prompt"))
+                }
+                _ => format!(" {}", app.i18n.t("setting_input_prompt")),
+            };
+            (
+                format!(" 󰒓  {} ", app.i18n.t("setting_input_title")),
+                prompt,
+                "󰒓 ",
+            )
+        }
         _ => return,
     };
 
@@ -2585,6 +2661,10 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             }
         }
     } else if app.fuzzy_mode == FuzzyMode::Themes {
+        if app.fuzzy_themes.is_empty() {
+            app.ensure_all_themes_loaded();
+            app.update_fuzzy(false);
+        }
         let safe_start = start_idx.min(app.fuzzy_themes.len().saturating_sub(1));
         let end_idx = (safe_start + list_height).min(app.fuzzy_themes.len());
         if app.fuzzy_themes.is_empty() {
@@ -3748,5 +3828,53 @@ mod explorer_marquee_and_truncation_tests {
         assert!(all_text.contains("UI Scale"));
         assert!(all_text.contains("[ 1.00x ]"));
         assert!(all_text.contains("[ Enabled ]"));
+    }
+
+    #[test]
+    fn test_explorer_tree_prefix_marks_nested_items() {
+        use crate::explorer::FileItem;
+        use std::path::PathBuf;
+
+        let items = vec![
+            FileItem { path: PathBuf::from("root"), is_dir: true, name: "root".to_string(), depth: 0, expanded: true },
+            FileItem { path: PathBuf::from("root/folder1"), is_dir: true, name: "folder1".to_string(), depth: 1, expanded: true },
+            FileItem { path: PathBuf::from("root/folder1/file1"), is_dir: false, name: "file1".to_string(), depth: 2, expanded: false },
+            FileItem { path: PathBuf::from("root/folder1/file2"), is_dir: false, name: "file2".to_string(), depth: 2, expanded: false },
+            FileItem { path: PathBuf::from("root/file_root"), is_dir: false, name: "file_root".to_string(), depth: 1, expanded: false },
+        ];
+
+        assert_eq!(build_explorer_tree_prefix(&items, 0), " ");
+        assert_eq!(build_explorer_tree_prefix(&items, 1), " ├─ ");
+        assert_eq!(build_explorer_tree_prefix(&items, 2), " │  ├─ ");
+        assert_eq!(build_explorer_tree_prefix(&items, 3), " │  └─ ");
+        assert_eq!(build_explorer_tree_prefix(&items, 4), " └─ ");
+    }
+
+    #[test]
+    fn test_scale_setting_input_modal_shows_scale_prompt() {
+        let mut app = App::new(&[]);
+        app.toggle_or_edit_setting(crate::app::types::SettingId::Scale);
+        assert_eq!(app.fuzzy_mode, FuzzyMode::SettingInput);
+
+        let width = 100;
+        let height = 30;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_fuzzy_finder(f, &mut app, &colors);
+            })
+            .unwrap();
+
+        let rendered = terminal.backend().buffer().clone();
+        let all_text: String = (0..height)
+            .flat_map(|y| (0..width).map(move |x| (x, y)))
+            .map(|(x, y)| rendered[(x, y)].symbol().to_string())
+            .collect();
+
+        assert!(all_text.contains("Enter scale factor"), "Prompt must ask for scale factor, not MB. Got: {}", all_text);
+        assert!(!all_text.contains("in MB"));
     }
 }
