@@ -60,6 +60,7 @@ Create or edit `~/.config/nedit/config.toml` to customize editor behavior:
 autocomplete_enabled = true         # Enable/disable word autocomplete (default: true)
 theme = "NEdit Dark Complete"       # Default color theme (default: "NEdit Dark Complete")
 show_indent_guides = true           # Show vertical indentation guide lines (default: true)
+explorer_tree_lines = true          # Show hierarchical tree lines in file explorer (default: true)
 preview_enabled = true              # Show file previews when navigating explorer (default: true)
 preview_max_size = 3145728          # Maximum preview size in bytes (default: 3 MB)
 highlight_matching_bracket = true   # Highlight matching pair when cursor is on bracket (default: true)

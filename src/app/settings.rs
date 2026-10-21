@@ -22,6 +22,13 @@ impl App {
                     format!("[ {} ]", self.i18n.t("disabled"))
                 }
             }
+            SettingId::ExplorerTreeLines => {
+                if self.config.explorer_tree_lines {
+                    format!("[ {} ]", self.i18n.t("enabled"))
+                } else {
+                    format!("[ {} ]", self.i18n.t("disabled"))
+                }
+            }
             SettingId::FilePreview => {
                 if self.config.preview_enabled {
                     format!("[ {} ]", self.i18n.t("enabled"))
@@ -111,6 +118,18 @@ impl App {
                 };
                 self.show_notification(
                     format!("{}: Indent Guides = {}", self.i18n.t("setting_updated"), status),
+                    NotificationType::Info,
+                );
+            }
+            SettingId::ExplorerTreeLines => {
+                self.config.explorer_tree_lines = !self.config.explorer_tree_lines;
+                let status = if self.config.explorer_tree_lines {
+                    self.i18n.t("enabled")
+                } else {
+                    self.i18n.t("disabled")
+                };
+                self.show_notification(
+                    format!("{}: Explorer Tree Lines = {}", self.i18n.t("setting_updated"), status),
                     NotificationType::Info,
                 );
             }
@@ -328,5 +347,17 @@ mod tests {
         app.apply_setting_input();
         assert_eq!(app.fuzzy_mode, FuzzyMode::Settings);
         assert!((app.config.scale - 1.35).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_toggle_explorer_tree_lines_setting() {
+        let mut app = App::new(&[]);
+        assert!(app.config.explorer_tree_lines);
+
+        app.toggle_or_edit_setting(SettingId::ExplorerTreeLines);
+        assert!(!app.config.explorer_tree_lines);
+
+        app.toggle_or_edit_setting(SettingId::ExplorerTreeLines);
+        assert!(app.config.explorer_tree_lines);
     }
 }

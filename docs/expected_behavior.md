@@ -160,6 +160,7 @@ Mouse interactions are integrated across every editor component:
 ### 4.7 Tree Indentation & Guide Lines
 - Folders and nested files in the explorer are displayed with visual tree branch guide lines (`├─`, `└─`, `│  `) showing folder hierarchies cleanly.
 - Guide lines use the theme's indent guide color when unselected and highlight cleanly when the file or folder is selected.
+- Configurable via `explorer_tree_lines` in `config.toml` or directly in the Settings modal (`[ Enabled ]` / `[ Disabled ]`). When disabled, the tree falls back to clean space indentation.
 
 ---
 
@@ -203,7 +204,7 @@ Mouse interactions are integrated across every editor component:
 
 ### 6.2 Settings Modal
 1. **Interactive Toggle & Cycle via Space**:
-   - Highlighting boolean options (`Autocomplete`, `Show Indent Guides`, `File Explorer Preview`, `Highlight Matching Bracket`) and pressing `Space` immediately toggles their state (`[ Enabled ]` / `[ Disabled ]`).
+   - Highlighting boolean options (`Autocomplete`, `Show Indent Guides`, `Explorer Tree Lines`, `File Explorer Preview`, `Highlight Matching Bracket`) and pressing `Space` immediately toggles their state (`[ Enabled ]` / `[ Disabled ]`).
    - Highlighting list options (`Notification Position`, `Color Theme`, `UI Scale`) and pressing `Space` cycles through values/presets in real time.
 2. **Free-Choice Prompt Modal via Enter**:
    - For free-choice configurations (`Preview Max Size`, `UI Scale`), pressing `Enter` opens a dedicated input dialog (matching the rename workflow) pre-filled with the current value and a context-aware prompt (e.g. asking for size in MB for preview size, or scale factor for UI scale). Confirming updates the setting (clamped cleanly, e.g. scale between 0.5 and 3.0) and returns to the Settings list.

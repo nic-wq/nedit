@@ -63,6 +63,8 @@ pub struct Config {
     #[serde(default = "default_true")]
     pub show_indent_guides: bool,
     #[serde(default = "default_true")]
+    pub explorer_tree_lines: bool,
+    #[serde(default = "default_true")]
     pub preview_enabled: bool,
     #[serde(default = "default_preview_max_size")]
     pub preview_max_size: usize,
@@ -155,6 +157,7 @@ impl Config {
             keybinds,
             theme: default_theme(),
             show_indent_guides: true,
+            explorer_tree_lines: true,
             preview_enabled: true,
             preview_max_size: default_preview_max_size(),
             highlight_matching_bracket: true,
@@ -223,6 +226,13 @@ impl Config {
             .and_then(toml::Value::as_bool)
         {
             config.show_indent_guides = enabled;
+        }
+
+        if let Some(enabled) = value
+            .get("explorer_tree_lines")
+            .and_then(toml::Value::as_bool)
+        {
+            config.explorer_tree_lines = enabled;
         }
 
         if let Some(enabled) = value

@@ -56,6 +56,7 @@ impl I18n {
         defaults.insert("settings_hint".to_string(), "Space: Toggle / Change  |  Enter: Edit / Select  |  Esc: Close".to_string());
         defaults.insert("setting_autocomplete".to_string(), "Autocomplete".to_string());
         defaults.insert("setting_indent_guides".to_string(), "Show Indent Guides".to_string());
+        defaults.insert("setting_explorer_tree_lines".to_string(), "Explorer Tree Lines".to_string());
         defaults.insert("setting_preview_enabled".to_string(), "File Explorer Preview".to_string());
         defaults.insert("setting_bracket_matching".to_string(), "Highlight Matching Bracket".to_string());
         defaults.insert("setting_notification_position".to_string(), "Notification Position".to_string());

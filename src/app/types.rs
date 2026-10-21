@@ -32,6 +32,7 @@ pub enum FuzzyMode {
 pub enum SettingId {
     Autocomplete,
     IndentGuides,
+    ExplorerTreeLines,
     FilePreview,
     BracketMatching,
     NotificationPosition,
@@ -41,9 +42,10 @@ pub enum SettingId {
 }
 
 impl SettingId {
-    pub const ALL: [SettingId; 8] = [
+    pub const ALL: [SettingId; 9] = [
         SettingId::Autocomplete,
         SettingId::IndentGuides,
+        SettingId::ExplorerTreeLines,
         SettingId::FilePreview,
         SettingId::BracketMatching,
         SettingId::NotificationPosition,
@@ -56,6 +58,7 @@ impl SettingId {
         match self {
             SettingId::Autocomplete => "autocomplete",
             SettingId::IndentGuides => "indent_guides",
+            SettingId::ExplorerTreeLines => "explorer_tree_lines",
             SettingId::FilePreview => "preview_enabled",
             SettingId::BracketMatching => "bracket_matching",
             SettingId::NotificationPosition => "notification_position",
@@ -69,6 +72,7 @@ impl SettingId {
         match self {
             SettingId::Autocomplete => "󰈈 ",
             SettingId::IndentGuides => "󰘳 ",
+            SettingId::ExplorerTreeLines => "󰙅 ",
             SettingId::FilePreview => "󰈔 ",
             SettingId::BracketMatching => "󰅩 ",
             SettingId::NotificationPosition => "󰂚 ",
@@ -82,6 +86,7 @@ impl SettingId {
         match self {
             SettingId::Autocomplete => "setting_autocomplete",
             SettingId::IndentGuides => "setting_indent_guides",
+            SettingId::ExplorerTreeLines => "setting_explorer_tree_lines",
             SettingId::FilePreview => "setting_preview_enabled",
             SettingId::BracketMatching => "setting_bracket_matching",
             SettingId::NotificationPosition => "setting_notification_position",
@@ -95,6 +100,7 @@ impl SettingId {
         match self {
             SettingId::Autocomplete => "Autocomplete",
             SettingId::IndentGuides => "Show Indent Guides",
+            SettingId::ExplorerTreeLines => "Explorer Tree Lines",
             SettingId::FilePreview => "File Explorer Preview",
             SettingId::BracketMatching => "Highlight Matching Bracket",
             SettingId::NotificationPosition => "Notification Position",

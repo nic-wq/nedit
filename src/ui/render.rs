@@ -913,7 +913,11 @@ fn draw_explorer(f: &mut Frame, app: &App, area: Rect, colors: &UIColors) {
             }
             items.push(ListItem::new(Line::from(spans)).style(style));
         } else {
-            let tree_prefix = build_explorer_tree_prefix(&app.explorer.items, actual_idx);
+            let tree_prefix = if app.config.explorer_tree_lines {
+                build_explorer_tree_prefix(&app.explorer.items, actual_idx)
+            } else {
+                format!(" {}", "  ".repeat(item.depth))
+            };
             let icon = app
                 .icon_registry
                 .get_icon(&item.path, item.is_dir, item.expanded);
@@ -3824,6 +3828,7 @@ mod explorer_marquee_and_truncation_tests {
             .collect();
 
         assert!(all_text.contains("Autocomplete"));
+        assert!(all_text.contains("Explorer Tree Lines"));
         assert!(all_text.contains("Preview Max Size"));
         assert!(all_text.contains("UI Scale"));
         assert!(all_text.contains("[ 1.00x ]"));
@@ -3876,5 +3881,56 @@ mod explorer_marquee_and_truncation_tests {
 
         assert!(all_text.contains("Enter scale factor"), "Prompt must ask for scale factor, not MB. Got: {}", all_text);
         assert!(!all_text.contains("in MB"));
+    }
+
+    #[test]
+    fn test_explorer_tree_lines_disabled_setting() {
+        use crate::explorer::FileItem;
+        use std::path::PathBuf;
+
+        let mut app = App::new(&[]);
+        app.show_explorer = true;
+        app.explorer.items = vec![
+            FileItem { path: PathBuf::from("root"), is_dir: true, name: "root".to_string(), depth: 0, expanded: true },
+            FileItem { path: PathBuf::from("root/file1"), is_dir: false, name: "file1".to_string(), depth: 1, expanded: false },
+        ];
+
+        let width = 80;
+        let height = 24;
+
+        // With explorer_tree_lines enabled (default)
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_explorer(f, &app, Rect::new(0, 0, 30, height), &colors);
+            })
+            .unwrap();
+        let rendered = terminal.backend().buffer().clone();
+        let all_text_enabled: String = (0..height)
+            .flat_map(|y| (0..30).map(move |x| (x, y)))
+            .map(|(x, y)| rendered[(x, y)].symbol().to_string())
+            .collect();
+        assert!(all_text_enabled.contains("└─"));
+
+        // With explorer_tree_lines disabled
+        app.config.explorer_tree_lines = false;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_explorer(f, &app, Rect::new(0, 0, 30, height), &colors);
+            })
+            .unwrap();
+        let rendered = terminal.backend().buffer().clone();
+        let all_text_disabled: String = (0..height)
+            .flat_map(|y| (0..30).map(move |x| (x, y)))
+            .map(|(x, y)| rendered[(x, y)].symbol().to_string())
+            .collect();
+        assert!(!all_text_disabled.contains("└─"));
+        assert!(!all_text_disabled.contains("├─"));
+        assert!(all_text_disabled.contains("file1"));
     }
 }
