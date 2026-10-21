@@ -152,9 +152,10 @@ These shortcuts are built into NEdit's core engine and cannot be rebound:
 | **Explorer** | **Double Click (file)** | Open file in editor and shift focus to editor |
 | **Explorer** | **Double Click (folder)** | Toggle directory expansion (expand / collapse) |
 | **Explorer** | **Right Click** | Select item and open context menu (`Open`, `Rename`, `Delete`, `New File`, `New Folder`, `Move`, `Copy Path`, `Set as Root`) |
-| **Explorer** | **Scroll Wheel** | Scroll file list up / down |
-| **Modals** | **Left Click** | Click button directly (`Confirm`, `Cancel`, `Save`, `Discard`, etc.) |
-| **Modals** | **Hover** | Highlight button under mouse pointer |
+| **Modals** | **Left Click (buttons)** | Click button directly (`Confirm`, `Cancel`, `Save`, `Discard`, etc.) |
+| **Modals** | **Left Click (`󰅖`)** | Click top-right close icon `󰅖` to cancel and dismiss modal |
+| **Modals** | **Hover** | Highlight button or top-right `󰅖` close icon (turns yellow) under mouse |
+| **Toasts** | **Hover** | Highlight close button `󰅖` (turns yellow on hover, gray otherwise) |
 | **Toasts** | **Left Click (`󰅖`)** | Instantly dismiss floating notification toast |
 | **Context Menu** | **Left Click (item)** | Run selected action and close menu |
 | **Context Menu** | **Left Click (outside)**| Dismiss context menu |

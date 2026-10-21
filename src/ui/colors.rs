@@ -71,6 +71,24 @@ impl UIColors {
             _ => self.error,
         }
     }
+
+    /// Background color for notification toasts, ensuring a solid card distinct from `bg`.
+    pub fn toast_bg(&self) -> Color {
+        if self.surface != self.bg {
+            self.surface
+        } else {
+            self.button_bg()
+        }
+    }
+
+    /// Foreground color for toast close button: Yellow on hover, high-contrast gray otherwise.
+    pub fn toast_close_fg(&self, is_hovered: bool) -> Color {
+        if is_hovered {
+            Color::Yellow
+        } else {
+            self.text_muted()
+        }
+    }
 }
 
 fn map_color(color: syntect::highlighting::Color) -> Color {

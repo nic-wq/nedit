@@ -588,6 +588,7 @@ impl App {
                 self.fuzzy_input_timestamp = None;
                 self.fuzzy_input_reset_idx = false;
                 self.update_fuzzy(reset);
+                self.needs_redraw = true;
             }
         }
     }
@@ -638,6 +639,7 @@ impl App {
     }
 
     pub fn update_fuzzy(&mut self, reset_idx: bool) {
+        self.needs_redraw = true;
         let query = self.fuzzy_query.to_lowercase();
         if query.is_empty() && self.fuzzy_mode == FuzzyMode::Content {
             self.fuzzy_results = Vec::new();

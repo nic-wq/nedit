@@ -60,7 +60,11 @@ fn handle_paste(app: &mut App, text: String) {
             app.fuzzy_clamp();
             app.fuzzy_insert_str(&sanitized);
             if app.fuzzy_is_live_mode() {
-                app.schedule_fuzzy_update(true);
+                if app.fuzzy_mode == crate::app::FuzzyMode::Content {
+                    app.schedule_fuzzy_update(true);
+                } else {
+                    app.update_fuzzy(true);
+                }
             }
         }
         return;
@@ -115,6 +119,7 @@ pub(crate) fn cancel_modal(app: &mut App) {
     }
     app.is_fuzzy = false;
     app.modal_button_idx = None;
+    app.modal_close_button_hitbox = None;
     app.clear_fuzzy_query();
     app.pending_path = None;
     app.move_dir = None;
@@ -854,6 +859,17 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
 
             // 2. Modals capture all clicks when active
             if app.is_fuzzy {
+                // Check modal close button ('X' button at top right)
+                if let Some(close_rect) = app.modal_close_button_hitbox {
+                    if mouse.row == close_rect.y
+                        && mouse.column >= close_rect.x
+                        && mouse.column < close_rect.x + close_rect.width
+                    {
+                        cancel_modal(app);
+                        return;
+                    }
+                }
+
                 // Check modal buttons
                 for btn in app.modal_button_hitboxes.clone() {
                     if mouse.column >= btn.x
@@ -1085,7 +1101,6 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 let screen_w = app.screen_area.width;
                 let screen_h = app.screen_area.height;
                 app.open_editor_context_menu(mouse.column, mouse.row, screen_w, screen_h);
-                return;
             } else if app
                 .explorer_area
                 .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
@@ -1107,7 +1122,6 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                         let screen_w = app.screen_area.width;
                         let screen_h = app.screen_area.height;
                         app.open_explorer_context_menu(mouse.column, mouse.row, screen_w, screen_h, target_idx);
-                        return;
                     }
                 }
             }
@@ -1415,8 +1429,11 @@ fn handle_fuzzy_text_keys(app: &mut App, key: KeyEvent) -> bool {
         _ => return false,
     }
     if mutated && app.fuzzy_is_live_mode() {
-        // Debounce: run after 80ms pause, like the generic typing path.
-        app.schedule_fuzzy_update(true);
+        if app.fuzzy_mode == crate::app::FuzzyMode::Content {
+            app.schedule_fuzzy_update(true);
+        } else {
+            app.update_fuzzy(true);
+        }
     }
     true
 }
@@ -1660,12 +1677,20 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         KeyCode::Char(c) => {
             app.fuzzy_clamp();
             app.fuzzy_insert_str(&c.to_string());
-            app.schedule_fuzzy_update(true); // debounce: run after 80ms pause
+            if app.fuzzy_mode == crate::app::FuzzyMode::Content {
+                app.schedule_fuzzy_update(true);
+            } else {
+                app.update_fuzzy(true);
+            }
         }
         KeyCode::Backspace => {
             app.fuzzy_clamp();
             app.fuzzy_backspace();
-            app.schedule_fuzzy_update(true); // debounce: run after 80ms pause
+            if app.fuzzy_mode == crate::app::FuzzyMode::Content {
+                app.schedule_fuzzy_update(true);
+            } else {
+                app.update_fuzzy(true);
+            }
         }
         _ => {}
     }
@@ -2329,6 +2354,21 @@ mod tests {
         handle_fuzzy_input(&mut app, key(KeyCode::Left));
         handle_fuzzy_input(&mut app, key(KeyCode::Char('x')));
         assert_eq!(app.fuzzy_query, "");
+    }
+
+    #[test]
+    fn single_character_filters_command_palette_immediately() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::CommandPalette);
+        let total_initial = app.fuzzy_results.len();
+        assert!(total_initial > 5);
+
+        // Type a single character 's'
+        super::handle_key_event(&mut app, key(KeyCode::Char('s')));
+        assert_eq!(app.fuzzy_query, "s");
+        // Must be filtered immediately without waiting for debounce
+        assert!(app.fuzzy_results.len() < total_initial);
+        assert!(app.needs_redraw);
     }
 
     #[test]
@@ -3065,6 +3105,36 @@ mod tests {
         super::handle_mouse_event(&mut app, event);
 
         assert!(!app.is_fuzzy);
+    }
+
+    #[test]
+    fn test_clicking_modal_close_button_cancels_modal() {
+        let mut app = App::new(&[]);
+        app.is_fuzzy = true;
+        app.fuzzy_mode = crate::app::FuzzyMode::Files;
+
+        app.modal_close_button_hitbox = Some(ratatui::layout::Rect::new(80, 5, 3, 1));
+
+        // Click outside hitbox (col 50, row 5) -> does not cancel
+        let event_outside = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 50,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event_outside);
+        assert!(app.is_fuzzy);
+
+        // Click on close button (col 81, row 5) -> cancels modal
+        let event_close = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 81,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, event_close);
+        assert!(!app.is_fuzzy);
+        assert!(app.modal_close_button_hitbox.is_none());
     }
 
     #[test]

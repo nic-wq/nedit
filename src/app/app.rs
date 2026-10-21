@@ -110,6 +110,7 @@ pub struct App {
     pub last_explorer_click_item: Option<usize>,
     pub last_explorer_click_time: std::time::Instant,
     pub modal_button_idx: Option<usize>,
+    pub modal_close_button_hitbox: Option<Rect>,
     pub context_menu: Option<crate::app::types::ContextMenu>,
 }
 
@@ -321,6 +322,7 @@ impl App {
             last_explorer_click_item: None,
             last_explorer_click_time: std::time::Instant::now(),
             modal_button_idx: None,
+            modal_close_button_hitbox: None,
             context_menu: None,
         };
 

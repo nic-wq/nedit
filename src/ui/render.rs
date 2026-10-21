@@ -1685,8 +1685,19 @@ fn draw_toasts(f: &mut Frame, app: &App, colors: &UIColors) {
         );
         // Small close button on the top border, just left of the corner.
         if let Some((cx, cy)) = toast_close_cell(layout) {
+            let is_hovered = app.mouse_pos == Some((cx, cy));
+            let close_style = if is_hovered {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .bg(colors.bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(colors.toast_close_fg(false))
+                    .bg(colors.bg)
+            };
             let close = Paragraph::new(app.icon_registry.get_command_icon("Close Tab"))
-                .style(Style::default().fg(kind_color).bg(colors.bg));
+                .style(close_style);
             f.render_widget(close, Rect::new(cx, cy, 1, 1));
         }
     }
@@ -1932,6 +1943,37 @@ fn centered_rect_fixed(w: u16, h: u16, r: Rect) -> Rect {
     Rect::new(x, y, w, h)
 }
 
+fn draw_modal_close_button(f: &mut Frame, app: &mut App, area: Rect, colors: &UIColors) {
+    if area.width < 10 {
+        return;
+    }
+    let close_x = area.x + area.width.saturating_sub(2);
+    let close_y = area.y;
+    let visual_rect = Rect::new(close_x, close_y, 1, 1);
+    let hitbox_rect = Rect::new(close_x, close_y, 2, 1);
+
+    let is_hovered = app
+        .mouse_pos
+        .map(|(mx, my)| my == close_y && (mx == close_x || mx == close_x + 1))
+        .unwrap_or(false);
+
+    let close_style = if is_hovered {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(colors.text_muted())
+    };
+
+    let icon = app.icon_registry.get_command_icon("Close Tab");
+    f.render_widget(
+        Paragraph::new(Span::styled(icon, close_style)).bg(colors.bg),
+        visual_rect,
+    );
+
+    app.modal_close_button_hitbox = Some(hitbox_rect);
+}
+
 fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     let area = centered_rect_fixed(66, 9, f.area());
     f.render_widget(Clear, area);
@@ -2173,6 +2215,7 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     }
 
     f.render_widget(Paragraph::new(hint_line), Rect::new(inner_x, inner_y + 6, inner_w, 1));
+    draw_modal_close_button(f, app, area, colors);
 }
 
 fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
@@ -2293,6 +2336,7 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         )])),
         Rect::new(inner_x, inner_y + 6, inner_w, 1),
     );
+    draw_modal_close_button(f, app, area, colors);
 }
 
 fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
@@ -2704,11 +2748,13 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
 
     f.render_widget(List::new(items), chunks[2]);
     f.render_widget(block, area);
+    draw_modal_close_button(f, app, area, colors);
 }
 
 fn draw_fuzzy_finder(f: &mut Frame, app: &mut App, colors: &UIColors) {
     app.modal_button_hitboxes.clear();
     app.modal_list_area = None;
+    app.modal_close_button_hitbox = None;
 
     match app.fuzzy_mode {
         FuzzyMode::DeleteConfirm | FuzzyMode::UnsavedChanges | FuzzyMode::ExternalChange => {
@@ -3059,13 +3105,29 @@ mod toast_render_tests {
         assert_eq!(buf[(77, 19)].symbol(), "╮");
         assert_eq!(buf[(58, 22)].symbol(), "╰");
         assert_eq!(buf[(77, 22)].symbol(), "╯");
-        // No filled card and no clearing halo: the interior blends with the
+        // No filled elevated card: the interior blends with the
         // editor background, only border/text/progress carry color.
         let colors = get_colors(&app);
         assert_eq!(buf[(60, 20)].bg, colors.bg);
         assert_eq!(buf[(60, 20)].symbol(), "H");
-        // The close button replaces the top border just left of the corner.
+        // The close button replaces the top border just left of the corner with muted color.
         assert_ne!(buf[(76, 19)].symbol(), "─");
+        assert_eq!(buf[(76, 19)].fg, colors.toast_close_fg(false));
+    }
+
+    #[test]
+    fn toast_close_button_hover_and_unhover() {
+        let mut app = app_with_toast("Hi");
+        let colors = get_colors(&app);
+
+        // 1. Without hover: close button has toast_close_fg(false)
+        let buf_unhovered = render_toasts(&app, 80, 24);
+        assert_eq!(buf_unhovered[(76, 19)].fg, colors.toast_close_fg(false));
+
+        // 2. With hover on (76, 19): close button turns yellow
+        app.mouse_pos = Some((76, 19));
+        let buf_hovered = render_toasts(&app, 80, 24);
+        assert_eq!(buf_hovered[(76, 19)].fg, ratatui::style::Color::Yellow);
     }
 
     #[test]
@@ -3478,5 +3540,87 @@ mod explorer_marquee_and_truncation_tests {
 
             assert!(all_text.contains("[Active]"));
         }
+    }
+
+    #[test]
+    fn test_modal_close_button_renders_in_all_modals() {
+        let mut app = App::new(&[]);
+        let width = 100;
+        let height = 30;
+
+        for mode in [FuzzyMode::DeleteConfirm, FuzzyMode::Create, FuzzyMode::Files] {
+            app.is_fuzzy = true;
+            app.fuzzy_mode = mode;
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+
+            terminal
+                .draw(|f| {
+                    let colors = get_colors(&app);
+                    draw_fuzzy_finder(f, &mut app, &colors);
+                })
+                .unwrap();
+
+            assert!(
+                app.modal_close_button_hitbox.is_some(),
+                "Modal close button hitbox must be set for mode {:?}",
+                mode
+            );
+            let hitbox = app.modal_close_button_hitbox.unwrap();
+
+            let rendered = terminal.backend().buffer().clone();
+            let close_cell = &rendered[(hitbox.x, hitbox.y)];
+            assert_eq!(
+                close_cell.symbol(),
+                "󰅖",
+                "Modal close button icon must render in mode {:?}",
+                mode
+            );
+            let colors = get_colors(&app);
+            assert_eq!(
+                close_cell.fg,
+                colors.text_muted(),
+                "Unhovered close button must have text_muted color"
+            );
+        }
+    }
+
+    #[test]
+    fn test_modal_close_button_hover_and_unhover() {
+        let mut app = App::new(&[]);
+        app.is_fuzzy = true;
+        app.fuzzy_mode = FuzzyMode::Files;
+        let width = 100;
+        let height = 30;
+
+        // 1. Unhovered: text_muted
+        app.mouse_pos = None;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_fuzzy_finder(f, &mut app, &colors);
+            })
+            .unwrap();
+
+        let hitbox = app.modal_close_button_hitbox.unwrap();
+        let rendered = terminal.backend().buffer().clone();
+        let colors = get_colors(&app);
+        assert_eq!(rendered[(hitbox.x, hitbox.y)].fg, colors.text_muted());
+
+        // 2. Hovered: Yellow
+        app.mouse_pos = Some((hitbox.x, hitbox.y));
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_fuzzy_finder(f, &mut app, &colors);
+            })
+            .unwrap();
+
+        let rendered = terminal.backend().buffer().clone();
+        assert_eq!(rendered[(hitbox.x, hitbox.y)].fg, ratatui::style::Color::Yellow);
     }
 }

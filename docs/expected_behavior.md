@@ -113,11 +113,14 @@ Mouse interactions are integrated across every editor component:
    - All actions directly reuse NEdit's native modal workflows (`Rename`, `DeleteConfirm`, `Create`, `Move`).
 
 ### 3.4 Modal Dialogs
-1. **Button Clicks**: Clicking on any modal button executes that action (`Confirm`, `Cancel`, `Save`, `Discard`, `Reload`, `Keep`).
-2. **Mouse Hover**: Moving mouse over modal buttons highlights and selects them in real time.
+1. **Top-Right Close Button**: Every modal displays an always-visible close button `󰅖` on its top-right border. Moving the mouse over the `󰅖` icon highlights it in bold yellow (matching tab close button aesthetics); left-clicking it cancels/closes the modal.
+2. **Button Clicks**: Clicking on any modal button executes that action (`Confirm`, `Cancel`, `Save`, `Discard`, `Reload`, `Keep`).
+3. **Mouse Hover**: Moving mouse over modal buttons highlights and selects them in real time.
 
 ### 3.5 Floating Notification Toasts
-- Left-clicking the `󰅖` icon on any toast dismisses it immediately.
+- **Seamless Editor Background**: Notification toasts blend cleanly with the editor background (`colors.bg`), preventing transparency artifacts or square halos while leaving borders, text, progress bar, and close button prominently styled.
+- **Interactive Close Button**: The top-right `󰅖` icon renders in high-contrast gray by default and lights up in bold yellow when hovered with the mouse.
+- **Dismissal**: Left-clicking the `󰅖` icon dismisses the toast immediately.
 
 ### 3.6 Context Menus
 - Left-clicking any context menu item executes the action and closes the menu.
