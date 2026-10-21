@@ -70,6 +70,12 @@ pub struct Config {
     pub highlight_matching_bracket: bool,
     #[serde(default)]
     pub notification_position: NotificationPosition,
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+}
+
+fn default_scale() -> f64 {
+    1.0
 }
 
 fn default_true() -> bool {
@@ -153,6 +159,7 @@ impl Config {
             preview_max_size: default_preview_max_size(),
             highlight_matching_bracket: true,
             notification_position: NotificationPosition::default(),
+            scale: 1.0,
         }
     }
 
@@ -245,6 +252,13 @@ impl Config {
             .and_then(toml::Value::as_str)
         {
             config.notification_position = NotificationPosition::parse(pos);
+        }
+
+        if let Some(scale) = value
+            .get("scale")
+            .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
+        {
+            config.scale = scale.clamp(0.5, 3.0);
         }
 
         if let Some(keybinds) = value.get("keybinds").and_then(toml::Value::as_table) {

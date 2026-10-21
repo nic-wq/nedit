@@ -213,10 +213,11 @@ pub fn render(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(f.area());
 
-    // Explorer sidebar has a consistent standard width (20%) so large file names
+    // Explorer sidebar has a consistent standard width (20% scaled) so large file names
     // never distort the panel layout or squeeze the editor pane.
     let explorer_width = if app.show_explorer {
-        DEFAULT_EXPLORER_WIDTH_PERCENT
+        let scaled = ((DEFAULT_EXPLORER_WIDTH_PERCENT as f64) * app.config.scale).round() as u16;
+        scaled.clamp(10, 50)
     } else {
         0
     };
@@ -1986,7 +1987,9 @@ fn draw_modal_close_button(f: &mut Frame, app: &mut App, area: Rect, colors: &UI
 }
 
 fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
-    let area = centered_rect_fixed(66, 9, f.area());
+    let w = (((66.0 * app.config.scale).round() as u16).max(30)).min(f.area().width);
+    let h = (((9.0 * app.config.scale).round() as u16).max(7)).min(f.area().height);
+    let area = centered_rect_fixed(w, h, f.area());
     f.render_widget(Clear, area);
 
     let is_delete = app.fuzzy_mode == FuzzyMode::DeleteConfirm;
@@ -2230,7 +2233,9 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
 }
 
 fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
-    let area = centered_rect_fixed(66, 8, f.area());
+    let w = (((66.0 * app.config.scale).round() as u16).max(30)).min(f.area().width);
+    let h = (((8.0 * app.config.scale).round() as u16).max(6)).min(f.area().height);
+    let area = centered_rect_fixed(w, h, f.area());
     f.render_widget(Clear, area);
 
     let (title, prompt, icon) = match app.fuzzy_mode {
@@ -2356,9 +2361,11 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
 }
 
 fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
-    let w: u16 = 74.min(f.area().width.saturating_sub(4));
-    let h: u16 = ((f.area().height as f32 * 0.6) as u16)
-        .max(16)
+    let base_w = (74.0 * app.config.scale).round() as u16;
+    let w: u16 = base_w.max(30).min(f.area().width.saturating_sub(4));
+    let base_h = (((f.area().height as f32 * 0.6) as f64) * app.config.scale).round() as u16;
+    let h: u16 = base_h
+        .max(12)
         .min(f.area().height.saturating_sub(2));
     let area = centered_rect_fixed(w, h, f.area());
 
@@ -3738,6 +3745,8 @@ mod explorer_marquee_and_truncation_tests {
 
         assert!(all_text.contains("Autocomplete"));
         assert!(all_text.contains("Preview Max Size"));
+        assert!(all_text.contains("UI Scale"));
+        assert!(all_text.contains("[ 1.00x ]"));
         assert!(all_text.contains("[ Enabled ]"));
     }
 }

@@ -200,9 +200,9 @@ Mouse interactions are integrated across every editor component:
 ### 6.2 Settings Modal
 1. **Interactive Toggle & Cycle via Space**:
    - Highlighting boolean options (`Autocomplete`, `Show Indent Guides`, `File Explorer Preview`, `Highlight Matching Bracket`) and pressing `Space` immediately toggles their state (`[ Enabled ]` / `[ Disabled ]`).
-   - Highlighting list options (`Notification Position`, `Color Theme`) and pressing `Space` cycles through values in real time.
-2. **Free-Choice Prompt Modal via Enter / Space**:
-   - For free-choice configurations (`Preview Max Size`), pressing `Space` or `Enter` opens a dedicated input dialog (matching the rename workflow) pre-filled with the current value in MB. Confirming updates the setting and returns to the Settings list.
+   - Highlighting list options (`Notification Position`, `Color Theme`, `UI Scale`) and pressing `Space` cycles through values/presets in real time.
+2. **Free-Choice Prompt Modal via Enter**:
+   - For free-choice configurations (`Preview Max Size`, `UI Scale`), pressing `Enter` opens a dedicated input dialog (matching the rename workflow) pre-filled with the current value. Confirming updates the setting (clamped cleanly, e.g. scale between 0.5 and 3.0) and returns to the Settings list.
 3. **Instant Live Persistence**:
    - Every modified preference updates the active editor environment immediately and serializes cleanly to `~/.config/nedit/config.toml`.
    - Toast alerts provide immediate confirmation of each applied change.

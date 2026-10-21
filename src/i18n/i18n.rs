@@ -61,6 +61,7 @@ impl I18n {
         defaults.insert("setting_notification_position".to_string(), "Notification Position".to_string());
         defaults.insert("setting_theme".to_string(), "Color Theme".to_string());
         defaults.insert("setting_preview_max_size".to_string(), "Preview Max Size".to_string());
+        defaults.insert("setting_scale".to_string(), "UI Scale".to_string());
         defaults.insert("setting_input_title".to_string(), "Edit Setting".to_string());
         defaults.insert("setting_input_prompt".to_string(), "Enter value in MB (e.g. 5):".to_string());
         defaults.insert("enabled".to_string(), "Enabled".to_string());

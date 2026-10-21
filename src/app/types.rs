@@ -37,10 +37,11 @@ pub enum SettingId {
     NotificationPosition,
     Theme,
     PreviewMaxSize,
+    Scale,
 }
 
 impl SettingId {
-    pub const ALL: [SettingId; 7] = [
+    pub const ALL: [SettingId; 8] = [
         SettingId::Autocomplete,
         SettingId::IndentGuides,
         SettingId::FilePreview,
@@ -48,6 +49,7 @@ impl SettingId {
         SettingId::NotificationPosition,
         SettingId::Theme,
         SettingId::PreviewMaxSize,
+        SettingId::Scale,
     ];
 
     pub fn key(&self) -> &'static str {
@@ -59,6 +61,7 @@ impl SettingId {
             SettingId::NotificationPosition => "notification_position",
             SettingId::Theme => "theme",
             SettingId::PreviewMaxSize => "preview_max_size",
+            SettingId::Scale => "scale",
         }
     }
 
@@ -71,6 +74,7 @@ impl SettingId {
             SettingId::NotificationPosition => "󰂚 ",
             SettingId::Theme => "󰏘 ",
             SettingId::PreviewMaxSize => "󰋊 ",
+            SettingId::Scale => "󰍍 ",
         }
     }
 
@@ -83,6 +87,7 @@ impl SettingId {
             SettingId::NotificationPosition => "setting_notification_position",
             SettingId::Theme => "setting_theme",
             SettingId::PreviewMaxSize => "setting_preview_max_size",
+            SettingId::Scale => "setting_scale",
         }
     }
 
@@ -95,11 +100,12 @@ impl SettingId {
             SettingId::NotificationPosition => "Notification Position",
             SettingId::Theme => "Color Theme",
             SettingId::PreviewMaxSize => "Preview Max Size",
+            SettingId::Scale => "UI Scale",
         }
     }
 
     pub fn is_free_choice(&self) -> bool {
-        matches!(self, SettingId::PreviewMaxSize)
+        matches!(self, SettingId::PreviewMaxSize | SettingId::Scale)
     }
 }
 

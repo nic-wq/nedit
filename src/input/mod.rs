@@ -1621,7 +1621,11 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         if let Some(key_path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
             let key_str = key_path.to_string_lossy();
             if let Some(id) = crate::app::types::SettingId::ALL.iter().find(|id| id.key() == key_str.as_ref()) {
-                app.toggle_or_edit_setting(*id);
+                if *id == crate::app::types::SettingId::Scale {
+                    app.cycle_scale_setting();
+                } else {
+                    app.toggle_or_edit_setting(*id);
+                }
                 return;
             }
         }

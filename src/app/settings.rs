@@ -46,15 +46,45 @@ impl App {
                 let mb = (self.config.preview_max_size / (1024 * 1024)).max(1);
                 format!("[ {} MB ]", mb)
             }
+            SettingId::Scale => {
+                format!("[ {:.2}x ]", self.config.scale)
+            }
         }
+    }
+
+    pub fn cycle_scale_setting(&mut self) {
+        let presets = [0.75, 0.85, 1.0, 1.15, 1.25, 1.5];
+        let current = self.config.scale;
+        let mut next_scale = presets[0];
+        for (i, p) in presets.iter().enumerate() {
+            if (p - current).abs() < 0.05 {
+                next_scale = presets[(i + 1) % presets.len()];
+                break;
+            } else if *p > current + 0.05 {
+                next_scale = *p;
+                break;
+            }
+        }
+        self.config.scale = next_scale;
+        let _ = self.config.save();
+        self.show_notification(
+            format!("{}: Scale = {:.2}x", self.i18n.t("setting_updated"), next_scale),
+            NotificationType::Info,
+        );
+        self.update_fuzzy(false);
+        self.needs_redraw = true;
     }
 
     pub fn toggle_or_edit_setting(&mut self, id: SettingId) {
         if id.is_free_choice() {
             self.setting_input_target = Some(id);
             self.fuzzy_mode = FuzzyMode::SettingInput;
-            let current_mb = (self.config.preview_max_size / (1024 * 1024)).max(1);
-            self.set_fuzzy_query(current_mb.to_string());
+            let current_val = match id {
+                SettingId::PreviewMaxSize => (self.config.preview_max_size / (1024 * 1024)).max(1).to_string(),
+                SettingId::Scale => format!("{:.2}", self.config.scale),
+                _ => String::new(),
+            };
+            self.set_fuzzy_query(current_val);
             self.needs_redraw = true;
             return;
         }
@@ -145,7 +175,7 @@ impl App {
                     );
                 }
             }
-            SettingId::PreviewMaxSize => {}
+            SettingId::PreviewMaxSize | SettingId::Scale => {}
         }
 
         if let Err(e) = self.config.save() {
@@ -189,6 +219,38 @@ impl App {
                 self.setting_input_target = Some(target);
                 self.show_notification(
                     "Invalid size (enter a positive number in MB, e.g. 5)".to_string(),
+                    NotificationType::Error,
+                );
+                self.needs_redraw = true;
+                return;
+            } else if target == SettingId::Scale {
+                let input = self.fuzzy_query.trim().replace(',', ".");
+                if let Ok(scale) = input.parse::<f64>() {
+                    if (0.5..=3.0).contains(&scale) {
+                        self.config.scale = scale;
+                        if let Err(e) = self.config.save() {
+                            self.show_notification(
+                                format!("Error saving config: {}", e),
+                                NotificationType::Error,
+                            );
+                        } else {
+                            self.show_notification(
+                                format!(
+                                    "{}: Scale = {:.2}x",
+                                    self.i18n.t("setting_updated"),
+                                    scale
+                                ),
+                                NotificationType::Info,
+                            );
+                        }
+                        self.toggle_fuzzy(FuzzyMode::Settings);
+                        self.needs_redraw = true;
+                        return;
+                    }
+                }
+                self.setting_input_target = Some(target);
+                self.show_notification(
+                    "Invalid scale (enter a number between 0.5 and 3.0, e.g. 1.25)".to_string(),
                     NotificationType::Error,
                 );
                 self.needs_redraw = true;
@@ -246,5 +308,25 @@ mod tests {
 
         assert_eq!(app.fuzzy_mode, FuzzyMode::Settings);
         assert_eq!(app.config.preview_max_size, 7 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_scale_setting_cycling_and_free_choice() {
+        let mut app = App::new(&[]);
+        assert!((app.config.scale - 1.0).abs() < 0.01);
+
+        // Cycle scale
+        app.cycle_scale_setting();
+        assert!((app.config.scale - 1.15).abs() < 0.01);
+
+        // Free choice
+        app.toggle_or_edit_setting(SettingId::Scale);
+        assert_eq!(app.fuzzy_mode, FuzzyMode::SettingInput);
+        assert_eq!(app.setting_input_target, Some(SettingId::Scale));
+
+        app.set_fuzzy_query("1.35".to_string());
+        app.apply_setting_input();
+        assert_eq!(app.fuzzy_mode, FuzzyMode::Settings);
+        assert!((app.config.scale - 1.35).abs() < 0.01);
     }
 }
