@@ -187,14 +187,28 @@ Mouse interactions are integrated across every editor component:
 | **Command Palette** | `Ctrl + P` | Fast palette displaying shortcuts right-aligned and filtering actions contextually (e.g. `Close Tab`, `Save`, `Undo`, etc., only appear when a tab is open). Matches by action name, aliases (`open`, `grep`, `global`), or shortcut keys. |
 | **Themes** | `Ctrl + Alt + T` | Theme selector with live preview updating editor colors as you navigate. |
 | **DocSelect** | `Ctrl + H` | Built-in documentation chooser (General Docs, Expected Behavior, i18n, Keybinds, Lua API). |
+| **Settings** | `Ctrl + P` → Settings | Interactive preferences manager to view and toggle configuration options live. |
 
 ### 6.1 Command Palette Contextuality & Shortcuts
 - **Right-Aligned Shortcuts**: Each command with a configured keybinding renders its shortcut (e.g., `CTRL+S`, `CTRL+W`, `CTRL+P`, `CTRL+O`, `CTRL+G`) aligned on the right edge of the modal item.
 - **Context Awareness**:
   - Buffer-specific commands (`Save`, `Close Tab`, `Local Search`, `Undo`, `Redo`, `Copy`, `Paste`, `Cut`, `Select All`) are dynamically hidden when on the welcome screen or when no tabs are open.
   - Script revert (`Undo Last Script`) is only listed if a live script modification was previously performed.
-  - Always available commands (`New File`, `File Name Search`, `Toggle Explorer`, `Content Search`, `Switch Theme`, `Open Live Script`, `Quit`, `Open Help`) remain accessible in all contexts.
-- **Dual & Alias Query Filtering**: Users can filter the palette by searching for the command name, common aliases (e.g., typing `"open"` matches `File Name Search`, typing `"grep"` or `"global"` matches `Content Search`), or directly by its shortcut key (e.g., `"ctrl+w"`).
+  - Always available commands (`New File`, `File Name Search`, `Toggle Explorer`, `Content Search`, `Switch Theme`, `Open Live Script`, `Quit`, `Open Help`, `Settings`) remain accessible in all contexts.
+- **Dual & Alias Query Filtering**: Users can filter the palette by searching for the command name, common aliases (e.g., typing `"open"` matches `File Name Search`, typing `"grep"` or `"global"` matches `Content Search`, typing `"config"` or `"preferences"` matches `Settings`), or directly by its shortcut key (e.g., `"ctrl+w"`).
+
+### 6.2 Settings Modal
+1. **Interactive Toggle & Cycle via Space**:
+   - Highlighting boolean options (`Autocomplete`, `Show Indent Guides`, `File Explorer Preview`, `Highlight Matching Bracket`) and pressing `Space` immediately toggles their state (`[ Enabled ]` / `[ Disabled ]`).
+   - Highlighting list options (`Notification Position`, `Color Theme`) and pressing `Space` cycles through values in real time.
+2. **Free-Choice Prompt Modal via Enter / Space**:
+   - For free-choice configurations (`Preview Max Size`), pressing `Space` or `Enter` opens a dedicated input dialog (matching the rename workflow) pre-filled with the current value in MB. Confirming updates the setting and returns to the Settings list.
+3. **Instant Live Persistence**:
+   - Every modified preference updates the active editor environment immediately and serializes cleanly to `~/.config/nedit/config.toml`.
+   - Toast alerts provide immediate confirmation of each applied change.
+4. **Mouse & Close Button**:
+   - Clicking any row triggers its toggle or opens its input dialog.
+   - The top-right `󰅖` button or `Esc` cancels and dismisses the dialog cleanly.
 
 ---
 

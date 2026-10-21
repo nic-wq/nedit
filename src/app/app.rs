@@ -112,6 +112,7 @@ pub struct App {
     pub modal_button_idx: Option<usize>,
     pub modal_close_button_hitbox: Option<Rect>,
     pub context_menu: Option<crate::app::types::ContextMenu>,
+    pub setting_input_target: Option<crate::app::types::SettingId>,
 }
 
 const EMBEDDED_SYNTAXES: &[(&str, &str)] = &[
@@ -324,6 +325,7 @@ impl App {
             modal_button_idx: None,
             modal_close_button_hitbox: None,
             context_menu: None,
+            setting_input_target: None,
         };
 
         let is_huge_system_dir = initial_root == Path::new("/")
@@ -849,7 +851,7 @@ impl App {
                 (format!("󰄬 {}", self.i18n.t("keep")), ModalAction::KeepExternal, false),
                 (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],
-            FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs => vec![
+            FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs | FuzzyMode::SettingInput => vec![
                 (format!("󰄬 {}", self.i18n.t("confirm")), ModalAction::ConfirmInput, false),
                 (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],

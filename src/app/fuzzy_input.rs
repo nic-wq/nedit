@@ -31,6 +31,7 @@ impl App {
                 | FuzzyMode::CommandPalette
                 | FuzzyMode::Move
                 | FuzzyMode::DocSelect
+                | FuzzyMode::Settings
         )
     }
 

@@ -205,6 +205,7 @@ Pressing search shortcuts activates specialized modal finders:
 4. **Command Palette (`Ctrl+P`)**: Quick searchable palette displaying keyboard shortcuts directly aligned on the right of each action. Commands are context-aware (e.g. `Close Tab`, `Save`, `Undo`, `Redo`, `Copy`, `Paste`, `Cut`, `Select All`, and `Local Search` are only displayed when an active buffer is open; `Undo Last Script` only appears after running a live script). Both command names, common aliases (`open`, `grep`, `global`), and shortcut keys can be typed into the query to filter matches.
 5. **Theme Selector (`Ctrl+Alt+T`)**: Live preview of installed Sublime `.tmTheme` color themes.
 6. **File Operations (`Alt+O` in Explorer)**: Rename, Delete, Move, Create, and Set as Root.
+7. **Settings Modal (`Ctrl+P` → Settings)**: Interactive preferences dialog to toggle and configure editor options (Autocomplete, Show Indent Guides, File Explorer Preview, Highlight Matching Bracket, Notification Position, Color Theme, and Preview Max Size) without editing files manually. Press `Space` to toggle or cycle options, and `Enter` or `Space` on free-choice settings (like Preview Max Size in MB) to edit via a prompt modal. All changes apply live and persist to `config.toml`.
 
 ---
 

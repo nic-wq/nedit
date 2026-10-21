@@ -155,6 +155,9 @@ These shortcuts are built into NEdit's core engine and cannot be rebound:
 | **Modals** | **Left Click (buttons)** | Click button directly (`Confirm`, `Cancel`, `Save`, `Discard`, etc.) |
 | **Modals** | **Left Click (`󰅖`)** | Click top-right close icon `󰅖` to cancel and dismiss modal |
 | **Modals** | **Hover** | Highlight button or top-right `󰅖` close icon (turns yellow) under mouse |
+| **Settings** | **Space** | Toggle boolean setting or cycle list option (Position, Theme) |
+| **Settings** | **Enter** | Open free-choice input dialog (Preview Max Size) or toggle option |
+| **Settings** | **Left Click (row)** | Toggle or edit setting directly under mouse pointer |
 | **Toasts** | **Hover** | Highlight close button `󰅖` (turns yellow on hover, gray otherwise) |
 | **Toasts** | **Left Click (`󰅖`)** | Instantly dismiss floating notification toast |
 | **Context Menu** | **Left Click (item)** | Run selected action and close menu |

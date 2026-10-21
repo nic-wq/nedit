@@ -7,6 +7,7 @@ pub mod toast;
 mod live_script;
 pub mod matcher;
 mod theme;
+mod settings;
 pub mod types;
 
 // We include documentation files as static strings to ensure they are always available 
@@ -21,5 +22,5 @@ pub use app::{App, LargeFileLoadResult};
 pub use file_ops::trim_memory;
 pub use types::{
     ContextMenu, ContextMenuAction, ContextMenuItem, ContextMenuTarget, Focus, FuzzyMode,
-    ModalAction, ModalButtonHitbox, NotificationType, TabHitbox,
+    ModalAction, ModalButtonHitbox, NotificationType, SettingId, TabHitbox,
 };

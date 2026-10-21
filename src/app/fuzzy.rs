@@ -679,6 +679,7 @@ impl App {
                 commands.push("Select All");
             }
             commands.push("Open Help");
+            commands.push("Settings");
 
             self.fuzzy_results = commands
                 .into_iter()
@@ -695,6 +696,7 @@ impl App {
                         let matches_alias = match *c {
                             "File Name Search" => "open file fuzzy".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
                             "Content Search" => "global grep".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
+                            "Settings" => "config preferences options opcoes configuracoes".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
                             _ => false,
                         };
                         matches_name || matches_shortcut || matches_alias
@@ -773,9 +775,38 @@ impl App {
             return;
         }
 
+        if self.fuzzy_mode == FuzzyMode::Settings {
+            self.fuzzy_results = crate::app::types::SettingId::ALL
+                .iter()
+                .filter(|id| {
+                    if query.is_empty() {
+                        true
+                    } else {
+                        let name = self.i18n.t(id.i18n_key()).to_lowercase();
+                        let default_name = id.default_label().to_lowercase();
+                        let val = self.get_setting_value(**id).to_lowercase();
+                        name.contains(&query) || default_name.contains(&query) || val.contains(&query)
+                    }
+                })
+                .map(|id| PathBuf::from(id.key()))
+                .collect();
+            if reset_idx {
+                self.fuzzy_idx = 0;
+            } else {
+                self.fuzzy_idx = self
+                    .fuzzy_idx
+                    .min(self.fuzzy_results.len().saturating_sub(1));
+            }
+            return;
+        }
+
         if self.fuzzy_mode == FuzzyMode::Create
             || self.fuzzy_mode == FuzzyMode::ExternalChange
             || self.fuzzy_mode == FuzzyMode::UnsavedChanges
+            || self.fuzzy_mode == FuzzyMode::SettingInput
+            || self.fuzzy_mode == FuzzyMode::Rename
+            || self.fuzzy_mode == FuzzyMode::SaveAs
+            || self.fuzzy_mode == FuzzyMode::DeleteConfirm
         {
             self.fuzzy_results = Vec::new();
             return;

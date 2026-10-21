@@ -1,11 +1,11 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 /// Corner of the screen where notification toasts appear.
 /// Set with `notification_position` in `config.toml`, e.g. `"top-right"`.
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum NotificationPosition {
     TopLeft,
@@ -41,9 +41,18 @@ impl NotificationPosition {
             Self::BottomRight => "bottom-right",
         }
     }
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::BottomRight => Self::BottomLeft,
+            Self::BottomLeft => Self::TopLeft,
+            Self::TopLeft => Self::TopRight,
+            Self::TopRight => Self::BottomRight,
+        }
+    }
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
     #[serde(default = "default_true")]
     pub autocomplete_enabled: bool,
@@ -82,11 +91,25 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn load() -> Self {
+    pub fn config_path() -> PathBuf {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("nedit");
-        let config_path = config_dir.join("config.toml");
+        config_dir.join("config.toml")
+    }
+
+    pub fn save(&self) -> Result<(), std::io::Error> {
+        let path = Self::config_path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let toml_str = toml::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        fs::write(path, toml_str)
+    }
+
+    pub fn load() -> Self {
+        let config_path = Self::config_path();
 
         if let Ok(content) = fs::read_to_string(&config_path) {
             return Self::from_toml_with_defaults(&content).unwrap_or_else(|_| Self::new());
@@ -162,6 +185,7 @@ impl Config {
             "Select All" => "select_all",
             "Open Help" => "open_help",
             "Command Palette" => "command_palette",
+            "Settings" => "open_settings",
             _ => return None,
         };
         let kb = self.get_keybind(action);
@@ -265,6 +289,7 @@ impl Config {
             "open_help",
             "run_live_script",
             "set_as_root",
+            "open_settings",
         ]
     }
 }
@@ -354,5 +379,29 @@ mod tests {
         assert_eq!(config.get_command_shortcut("Local Search"), Some("CTRL+F".to_string()));
         assert_eq!(config.get_command_shortcut("Command Palette"), Some("CTRL+P".to_string()));
         assert_eq!(config.get_command_shortcut("Nonexistent Command"), None);
+    }
+
+    #[test]
+    fn notification_position_cycles_cleanly() {
+        use NotificationPosition::*;
+        assert_eq!(BottomRight.next(), BottomLeft);
+        assert_eq!(BottomLeft.next(), TopLeft);
+        assert_eq!(TopLeft.next(), TopRight);
+        assert_eq!(TopRight.next(), BottomRight);
+    }
+
+    #[test]
+    fn config_saves_and_loads_roundtrip() {
+        let mut config = super::Config::new();
+        config.autocomplete_enabled = false;
+        config.preview_max_size = 10 * 1024 * 1024;
+        config.notification_position = NotificationPosition::TopLeft;
+
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let loaded = super::Config::from_toml_with_defaults(&toml_str).unwrap();
+
+        assert_eq!(loaded.autocomplete_enabled, false);
+        assert_eq!(loaded.preview_max_size, 10 * 1024 * 1024);
+        assert_eq!(loaded.notification_position, NotificationPosition::TopLeft);
     }
 }

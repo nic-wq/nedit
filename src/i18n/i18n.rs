@@ -51,6 +51,21 @@ impl I18n {
         defaults.insert("file_changed".to_string(), "File Changed".to_string());
         defaults.insert("file_changed_externally".to_string(), "File changed on disk. Reload?".to_string());
         defaults.insert("select_documentation".to_string(), "Select Documentation".to_string());
+        defaults.insert("settings".to_string(), "Settings".to_string());
+        defaults.insert("settings_title".to_string(), "Settings".to_string());
+        defaults.insert("settings_hint".to_string(), "Space: Toggle / Change  |  Enter: Edit / Select  |  Esc: Close".to_string());
+        defaults.insert("setting_autocomplete".to_string(), "Autocomplete".to_string());
+        defaults.insert("setting_indent_guides".to_string(), "Show Indent Guides".to_string());
+        defaults.insert("setting_preview_enabled".to_string(), "File Explorer Preview".to_string());
+        defaults.insert("setting_bracket_matching".to_string(), "Highlight Matching Bracket".to_string());
+        defaults.insert("setting_notification_position".to_string(), "Notification Position".to_string());
+        defaults.insert("setting_theme".to_string(), "Color Theme".to_string());
+        defaults.insert("setting_preview_max_size".to_string(), "Preview Max Size".to_string());
+        defaults.insert("setting_input_title".to_string(), "Edit Setting".to_string());
+        defaults.insert("setting_input_prompt".to_string(), "Enter value in MB (e.g. 5):".to_string());
+        defaults.insert("enabled".to_string(), "Enabled".to_string());
+        defaults.insert("disabled".to_string(), "Disabled".to_string());
+        defaults.insert("setting_updated".to_string(), "Setting updated".to_string());
 
         // Modal Prompts & Descriptions
         defaults.insert("new_file_folder_title".to_string(), "New File / Folder".to_string());

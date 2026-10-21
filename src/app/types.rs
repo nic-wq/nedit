@@ -24,6 +24,83 @@ pub enum FuzzyMode {
     Create,
     UnsavedChanges,
     ExternalChange,
+    Settings,
+    SettingInput,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingId {
+    Autocomplete,
+    IndentGuides,
+    FilePreview,
+    BracketMatching,
+    NotificationPosition,
+    Theme,
+    PreviewMaxSize,
+}
+
+impl SettingId {
+    pub const ALL: [SettingId; 7] = [
+        SettingId::Autocomplete,
+        SettingId::IndentGuides,
+        SettingId::FilePreview,
+        SettingId::BracketMatching,
+        SettingId::NotificationPosition,
+        SettingId::Theme,
+        SettingId::PreviewMaxSize,
+    ];
+
+    pub fn key(&self) -> &'static str {
+        match self {
+            SettingId::Autocomplete => "autocomplete",
+            SettingId::IndentGuides => "indent_guides",
+            SettingId::FilePreview => "preview_enabled",
+            SettingId::BracketMatching => "bracket_matching",
+            SettingId::NotificationPosition => "notification_position",
+            SettingId::Theme => "theme",
+            SettingId::PreviewMaxSize => "preview_max_size",
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match self {
+            SettingId::Autocomplete => "󰈈 ",
+            SettingId::IndentGuides => "󰘳 ",
+            SettingId::FilePreview => "󰈔 ",
+            SettingId::BracketMatching => "󰅩 ",
+            SettingId::NotificationPosition => "󰂚 ",
+            SettingId::Theme => "󰏘 ",
+            SettingId::PreviewMaxSize => "󰋊 ",
+        }
+    }
+
+    pub fn i18n_key(&self) -> &'static str {
+        match self {
+            SettingId::Autocomplete => "setting_autocomplete",
+            SettingId::IndentGuides => "setting_indent_guides",
+            SettingId::FilePreview => "setting_preview_enabled",
+            SettingId::BracketMatching => "setting_bracket_matching",
+            SettingId::NotificationPosition => "setting_notification_position",
+            SettingId::Theme => "setting_theme",
+            SettingId::PreviewMaxSize => "setting_preview_max_size",
+        }
+    }
+
+    pub fn default_label(&self) -> &'static str {
+        match self {
+            SettingId::Autocomplete => "Autocomplete",
+            SettingId::IndentGuides => "Show Indent Guides",
+            SettingId::FilePreview => "File Explorer Preview",
+            SettingId::BracketMatching => "Highlight Matching Bracket",
+            SettingId::NotificationPosition => "Notification Position",
+            SettingId::Theme => "Color Theme",
+            SettingId::PreviewMaxSize => "Preview Max Size",
+        }
+    }
+
+    pub fn is_free_choice(&self) -> bool {
+        matches!(self, SettingId::PreviewMaxSize)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

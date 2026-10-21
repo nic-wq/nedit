@@ -1053,8 +1053,19 @@ fn draw_editor(
             .get(&app.current_theme)
             .or_else(|| app.theme_set.themes.get("NEdit Dark Complete"))
             .or_else(|| app.theme_set.themes.get("NEdit Dark"))
-            .or_else(|| app.theme_set.themes.values().next())
-            .expect("No themes loaded — check your theme directory");
+            .or_else(|| app.theme_set.themes.values().next());
+        let theme = match theme {
+            Some(t) => t,
+            None => {
+                app.ensure_all_themes_loaded();
+                app.theme_set
+                    .themes
+                    .get(&app.current_theme)
+                    .or_else(|| app.theme_set.themes.get("NEdit Dark Complete"))
+                    .or_else(|| app.theme_set.themes.values().next())
+                    .expect("No themes loaded — check your theme directory")
+            }
+        };
         (theme, app.syntax_set.as_ref())
     };
 
@@ -2238,6 +2249,11 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             format!(" {}", app.i18n.t("save_buffer_as_prompt")),
             "󰆓 ",
         ),
+        FuzzyMode::SettingInput => (
+            format!(" 󰒓  {} ", app.i18n.t("setting_input_title")),
+            format!(" {}", app.i18n.t("setting_input_prompt")),
+            "󰒓 ",
+        ),
         _ => return,
     };
 
@@ -2357,6 +2373,7 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         FuzzyMode::CommandPalette => format!(" 󰘳  {} ", app.i18n.t("command_palette")),
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
         FuzzyMode::DocSelect => format!(" 󰈔  {} ", app.i18n.t("select_documentation")),
+        FuzzyMode::Settings => format!(" 󰒓  {} ", app.i18n.t("settings_title")),
         _ => " Search ".to_string(),
     };
 
@@ -2399,6 +2416,16 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             Style::default().fg(colors.text_muted()),
         ));
         (Paragraph::new(Line::from(spans)), prefix_width)
+    } else if app.fuzzy_mode == FuzzyMode::Settings && app.fuzzy_query.is_empty() {
+        let mut spans = vec![Span::styled(" 󰒓 ", Style::default().fg(colors.accent))];
+        spans.push(Span::styled(
+            app.i18n.t("settings_hint"),
+            Style::default().fg(colors.text_muted()),
+        ));
+        (
+            Paragraph::new(Line::from(spans)),
+            UnicodeWidthStr::width(" 󰒓 "),
+        )
     } else {
         let mut spans = vec![Span::styled("   ", Style::default().fg(colors.accent))];
         spans.extend(query_spans);
@@ -2434,7 +2461,8 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         FuzzyMode::CommandPalette
         | FuzzyMode::FileOptions
         | FuzzyMode::Move
-        | FuzzyMode::DocSelect => app.fuzzy_results.len(),
+        | FuzzyMode::DocSelect
+        | FuzzyMode::Settings => app.fuzzy_results.len(),
         _ => 0,
     };
 
@@ -2714,6 +2742,68 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 })
                 .collect()
         }
+    } else if app.fuzzy_mode == FuzzyMode::Settings {
+        if app.fuzzy_results.is_empty() {
+            vec![]
+        } else {
+            let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
+            let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
+            let list_width = chunks[2].width as usize;
+            app.fuzzy_results[safe_start..end_idx]
+                .iter()
+                .enumerate()
+                .map(|(idx, path)| {
+                    let i = safe_start + idx;
+                    let key_str = path.to_string_lossy();
+                    let setting_id = crate::app::types::SettingId::ALL
+                        .iter()
+                        .find(|id| id.key() == key_str.as_ref())
+                        .cloned();
+                    let is_selected = i == app.fuzzy_idx;
+                    let style = if is_selected {
+                        Style::default()
+                            .bg(colors.sel)
+                            .fg(colors.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(colors.fg)
+                    };
+
+                    let (icon, name, value_str) = if let Some(id) = setting_id {
+                        let name = app.i18n.t(id.i18n_key());
+                        let val = app.get_setting_value(id);
+                        (id.icon(), name, val)
+                    } else {
+                        ("󰒓 ", key_str.as_ref(), String::new())
+                    };
+
+                    let left_text = format!(" {} {}", icon, name);
+                    let left_len = UnicodeWidthStr::width(left_text.as_str());
+                    let val_text = format!("{} ", value_str);
+                    let val_len = UnicodeWidthStr::width(val_text.as_str());
+                    let pad_len = list_width.saturating_sub(left_len + val_len).max(1);
+                    let pad = " ".repeat(pad_len);
+
+                    let val_style = if is_selected {
+                        Style::default()
+                            .bg(colors.sel)
+                            .fg(colors.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else if value_str.contains("Enabled") || value_str.contains("enabled") {
+                        Style::default().fg(colors.accent)
+                    } else {
+                        Style::default().fg(colors.text_muted())
+                    };
+
+                    ListItem::new(Line::from(vec![
+                        Span::styled(left_text, style),
+                        Span::styled(pad, style),
+                        Span::styled(val_text, val_style),
+                    ]))
+                    .style(style)
+                })
+                .collect()
+        }
     } else if app.fuzzy_results.is_empty() {
         vec![]
     } else {
@@ -2760,7 +2850,7 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &mut App, colors: &UIColors) {
         FuzzyMode::DeleteConfirm | FuzzyMode::UnsavedChanges | FuzzyMode::ExternalChange => {
             draw_confirmation_modal(f, app, colors);
         }
-        FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs => {
+        FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs | FuzzyMode::SettingInput => {
             draw_input_modal(f, app, colors);
         }
         _ => {
@@ -3622,5 +3712,32 @@ mod explorer_marquee_and_truncation_tests {
 
         let rendered = terminal.backend().buffer().clone();
         assert_eq!(rendered[(hitbox.x, hitbox.y)].fg, ratatui::style::Color::Yellow);
+    }
+
+    #[test]
+    fn test_settings_modal_renders_items_and_badges() {
+        let mut app = App::new(&[]);
+        app.open_settings();
+        let width = 100;
+        let height = 30;
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|f| {
+                let colors = get_colors(&app);
+                draw_fuzzy_finder(f, &mut app, &colors);
+            })
+            .unwrap();
+
+        let rendered = terminal.backend().buffer().clone();
+        let all_text: String = (0..height)
+            .flat_map(|y| (0..width).map(move |x| (x, y)))
+            .map(|(x, y)| rendered[(x, y)].symbol().to_string())
+            .collect();
+
+        assert!(all_text.contains("Autocomplete"));
+        assert!(all_text.contains("Preview Max Size"));
+        assert!(all_text.contains("[ Enabled ]"));
     }
 }

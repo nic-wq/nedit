@@ -108,6 +108,13 @@ fn is_editor_left_drag(app: &App, mouse: MouseEvent) -> bool {
 }
 
 pub(crate) fn cancel_modal(app: &mut App) {
+    if app.fuzzy_mode == crate::app::FuzzyMode::SettingInput {
+        app.setting_input_target = None;
+        app.modal_button_idx = None;
+        app.modal_close_button_hitbox = None;
+        app.toggle_fuzzy(crate::app::FuzzyMode::Settings);
+        return;
+    }
     if app.fuzzy_mode == crate::app::FuzzyMode::ExternalChange {
         if let Some(idx) = app.pending_buffer_idx {
             if let Some(path) = app.buffers.get(idx).and_then(|b| b.path.clone()) {
@@ -120,6 +127,7 @@ pub(crate) fn cancel_modal(app: &mut App) {
     app.is_fuzzy = false;
     app.modal_button_idx = None;
     app.modal_close_button_hitbox = None;
+    app.setting_input_target = None;
     app.clear_fuzzy_query();
     app.pending_path = None;
     app.move_dir = None;
@@ -267,6 +275,20 @@ pub(crate) fn execute_fuzzy_enter(app: &mut App) {
     }
     if app.fuzzy_mode == crate::app::FuzzyMode::DeleteConfirm {
         execute_delete_confirm(app);
+        return;
+    }
+    if app.fuzzy_mode == crate::app::FuzzyMode::SettingInput {
+        app.apply_setting_input();
+        return;
+    }
+    if app.fuzzy_mode == crate::app::FuzzyMode::Settings {
+        if let Some(key_path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+            let key_str = key_path.to_string_lossy();
+            if let Some(id) = crate::app::types::SettingId::ALL.iter().find(|id| id.key() == key_str.as_ref()) {
+                app.toggle_or_edit_setting(*id);
+                return;
+            }
+        }
         return;
     }
     if app.fuzzy_mode == crate::app::FuzzyMode::CommandPalette {
@@ -1517,6 +1539,7 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         crate::app::FuzzyMode::Create
             | crate::app::FuzzyMode::Rename
             | crate::app::FuzzyMode::SaveAs
+            | crate::app::FuzzyMode::SettingInput
     ) {
         if let Some(btn_idx) = app.modal_button_idx {
             match key.code {
@@ -1594,6 +1617,16 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
         }
     }
 
+    if app.fuzzy_mode == crate::app::FuzzyMode::Settings && key.code == KeyCode::Char(' ') {
+        if let Some(key_path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+            let key_str = key_path.to_string_lossy();
+            if let Some(id) = crate::app::types::SettingId::ALL.iter().find(|id| id.key() == key_str.as_ref()) {
+                app.toggle_or_edit_setting(*id);
+                return;
+            }
+        }
+    }
+
     if app.fuzzy_has_editable_input() && handle_fuzzy_text_keys(app, key) {
         return;
     }
@@ -1652,6 +1685,8 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
                 crate::app::FuzzyMode::CommandPalette => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::Move => app.fuzzy_results.len(),
                 crate::app::FuzzyMode::DocSelect => app.fuzzy_results.len(),
+                crate::app::FuzzyMode::Settings => app.fuzzy_results.len(),
+                crate::app::FuzzyMode::SettingInput => 0,
                 crate::app::FuzzyMode::Create => 0,
                 crate::app::FuzzyMode::UnsavedChanges => 0,
                 crate::app::FuzzyMode::ExternalChange => 0,
@@ -2169,6 +2204,10 @@ fn handle_command_palette_selection(app: &mut App, cmd: &str) -> bool {
         }
         "Open Help" => {
             app.open_docs();
+            return true;
+        }
+        "Settings" => {
+            app.open_settings();
             return true;
         }
         _ => {}
@@ -3135,6 +3174,57 @@ mod tests {
         super::handle_mouse_event(&mut app, event_close);
         assert!(!app.is_fuzzy);
         assert!(app.modal_close_button_hitbox.is_none());
+    }
+
+    #[test]
+    fn test_command_palette_settings_selection() {
+        let mut app = App::new(&[]);
+        app.toggle_fuzzy(FuzzyMode::CommandPalette);
+        assert!(app.fuzzy_results.iter().any(|r| r.to_string_lossy() == "Settings"));
+
+        // Select Settings
+        let idx = app.fuzzy_results.iter().position(|r| r.to_string_lossy() == "Settings").unwrap();
+        app.fuzzy_idx = idx;
+        super::execute_fuzzy_enter(&mut app);
+
+        assert_eq!(app.fuzzy_mode, FuzzyMode::Settings);
+        assert!(app.fuzzy_results.len() >= 6);
+    }
+
+    #[test]
+    fn test_settings_modal_space_key_toggles() {
+        let mut app = App::new(&[]);
+        app.open_settings();
+        assert!(app.config.autocomplete_enabled);
+
+        // Press Space on Autocomplete (index 0)
+        app.fuzzy_idx = 0;
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Char(' ')));
+        assert!(!app.config.autocomplete_enabled);
+
+        // Press Space again -> Enabled
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Char(' ')));
+        assert!(app.config.autocomplete_enabled);
+    }
+
+    #[test]
+    fn test_settings_modal_enter_on_free_choice_and_esc() {
+        let mut app = App::new(&[]);
+        app.open_settings();
+
+        // Find PreviewMaxSize index
+        let idx = app.fuzzy_results.iter().position(|r| r.to_string_lossy() == "preview_max_size").unwrap();
+        app.fuzzy_idx = idx;
+
+        // Enter opens SettingInput
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Enter));
+        assert_eq!(app.fuzzy_mode, FuzzyMode::SettingInput);
+        assert_eq!(app.setting_input_target, Some(crate::app::types::SettingId::PreviewMaxSize));
+
+        // Esc returns to Settings modal
+        super::handle_fuzzy_input(&mut app, key(KeyCode::Esc));
+        assert_eq!(app.fuzzy_mode, FuzzyMode::Settings);
+        assert!(app.setting_input_target.is_none());
     }
 
     #[test]
