@@ -219,7 +219,9 @@ Automate text transformations on the current file using interactive Lua scripts:
 1. Open Live Script with `Ctrl+P` → **Open Live Script**.
 2. A split panel opens on the right, pre-configured for Lua.
 3. Edit your Lua script and press `F9` to execute it instantly on the target file on the left.
-4. If needed, press `Ctrl+P` → **Undo Last Script** to restore the file to its state prior to execution.
+4. Save your script to the local library (`~/.config/nedit/scripts/`) using `Ctrl+S` or `Ctrl+P` → **Save Live Script**. When editing a previously saved script, NEdit prompts whether to overwrite or save as new.
+5. Browse and open saved scripts anytime via `Ctrl+P` → **Open Saved Live Script**, with in-place rename (`F2`), deletion (`Del`), and right-click context menu support.
+6. If needed, press `Ctrl+P` → **Undo Last Script** to restore the file to its state prior to execution.
 
 ### Basic API Summary:
 - `nedit.current_file()`: Returns path of target file.

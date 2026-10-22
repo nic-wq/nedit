@@ -65,6 +65,7 @@ pub struct App {
     pub notifications: Vec<crate::app::toast::Toast>,
     pub live_script_mode: bool,
     pub live_script_buffer_idx: Option<usize>,
+    pub live_script_origin: Option<String>,
     pub target_buffer_idx: Option<usize>,
     pub watcher: Option<RecommendedWatcher>,
     pub fs_event_receiver: Receiver<notify::Result<notify::Event>>,
@@ -204,6 +205,7 @@ impl App {
         let _ = fs::create_dir_all(&config_dir);
         let _ = fs::create_dir_all(config_dir.join("syntax"));
         let _ = fs::create_dir_all(config_dir.join("themes"));
+        let _ = fs::create_dir_all(config_dir.join("scripts"));
 
         let config = Config::load();
         let theme_file = config_dir.join("theme.txt");
@@ -283,6 +285,7 @@ impl App {
             notifications: Vec::new(),
             live_script_mode: false,
             live_script_buffer_idx: None,
+            live_script_origin: None,
             target_buffer_idx: None,
             watcher,
             fs_event_receiver: rx,
@@ -877,12 +880,17 @@ impl App {
                     ]
                 }
             }
+            FuzzyMode::SaveScriptChoice => vec![
+                (format!("󰆓 {}", self.i18n.t("overwrite")), ModalAction::SaveScriptOverwrite, false),
+                (format!("󰄬 {}", self.i18n.t("save_as_new")), ModalAction::SaveScriptAsNew, false),
+                (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
+            ],
             FuzzyMode::ExternalChange => vec![
                 (format!("󰑐 {}", self.i18n.t("reload")), ModalAction::ReloadExternal, false),
                 (format!("󰄬 {}", self.i18n.t("keep")), ModalAction::KeepExternal, false),
                 (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],
-            FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs | FuzzyMode::SettingInput => vec![
+            FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs | FuzzyMode::SettingInput | FuzzyMode::SaveLiveScript => vec![
                 (format!("󰄬 {}", self.i18n.t("confirm")), ModalAction::ConfirmInput, false),
                 (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],
@@ -1007,6 +1015,73 @@ impl App {
             target: ContextMenuTarget::ExplorerItem(path, is_dir),
         });
         self.needs_redraw = true;
+    }
+
+    pub fn open_saved_script_context_menu(
+        &mut self,
+        script_path: PathBuf,
+        mouse_x: u16,
+        mouse_y: u16,
+        screen_w: u16,
+        screen_h: u16,
+    ) {
+        use crate::app::types::{ContextMenu, ContextMenuAction, ContextMenuItem, ContextMenuTarget};
+
+        let items = vec![
+            ContextMenuItem {
+                label: "Open",
+                i18n_key: "open",
+                icon: "󰢱",
+                shortcut: Some("Enter"),
+                action: ContextMenuAction::OpenFile,
+                is_danger: false,
+            },
+            ContextMenuItem {
+                label: "Rename",
+                i18n_key: "rename",
+                icon: "󰏫",
+                shortcut: Some("F2"),
+                action: ContextMenuAction::Rename,
+                is_danger: false,
+            },
+            ContextMenuItem {
+                label: "Delete",
+                i18n_key: "delete",
+                icon: "󰆴",
+                shortcut: Some("Del"),
+                action: ContextMenuAction::Delete,
+                is_danger: true,
+            },
+        ];
+
+        let menu_width = 24u16.min(screen_w.saturating_sub(2));
+        let menu_height = (items.len() as u16 + 2).min(screen_h.saturating_sub(2));
+
+        let x = if mouse_x + menu_width > screen_w {
+            screen_w.saturating_sub(menu_width)
+        } else {
+            mouse_x
+        };
+        let y = if mouse_y + menu_height > screen_h {
+            screen_h.saturating_sub(menu_height)
+        } else {
+            mouse_y
+        };
+
+        self.context_menu = Some(ContextMenu {
+            x,
+            y,
+            width: menu_width,
+            height: menu_height,
+            items,
+            selected_idx: 0,
+            target: ContextMenuTarget::SavedScriptItem(script_path),
+        });
+        self.needs_redraw = true;
+    }
+
+    pub fn scripts_dir() -> PathBuf {
+        Self::config_dir().join("scripts")
     }
 
     pub fn close_context_menu(&mut self) {

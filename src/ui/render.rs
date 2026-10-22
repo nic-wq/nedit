@@ -2076,6 +2076,7 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             }
         }
         FuzzyMode::ExternalChange => format!(" 󰑐  {} ", app.i18n.t("external_change")),
+        FuzzyMode::SaveScriptChoice => format!(" 󰆓  {} ", app.i18n.t("save_script_choice_title")),
         _ => " Dialog ".to_string(),
     };
 
@@ -2232,6 +2233,40 @@ fn draw_confirmation_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 ]),
             )
         }
+        FuzzyMode::SaveScriptChoice => {
+            let origin_name = app.live_script_origin.as_deref().unwrap_or("script");
+            let trunc_name = truncate_with_ellipsis(origin_name, inner_w.saturating_sub(6) as usize);
+
+            let prompt = format!(" {}", app.i18n.t("save_script_choice_prompt"));
+            let warning = format!("  {}", app.i18n.t("save_script_choice_warning"));
+            (
+                Line::from(vec![
+                    Span::styled(
+                        prompt,
+                        Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled("  󰢱 ", Style::default().fg(colors.accent)),
+                    Span::styled(
+                        trunc_name,
+                        Style::default().fg(colors.fg).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled(
+                        warning,
+                        Style::default().fg(colors.text_muted()),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled(
+                        " [←/→] Select   [Enter] Confirm   [O] Overwrite   [N] Save as New   [Esc] Cancel",
+                        Style::default().fg(colors.text_muted()),
+                    ),
+                ]),
+            )
+        }
         _ => return,
     };
 
@@ -2322,6 +2357,11 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             format!(" 󰆓  {} ", app.i18n.t("save_buffer_as_title")),
             format!(" {}", app.i18n.t("save_buffer_as_prompt")),
             "󰆓 ",
+        ),
+        FuzzyMode::SaveLiveScript => (
+            format!(" 󰆓  {} ", app.i18n.t("save_live_script_title")),
+            format!(" {}", app.i18n.t("save_live_script_prompt")),
+            "󰢱 ",
         ),
         FuzzyMode::SettingInput => {
             let prompt = match app.setting_input_target {
@@ -2440,6 +2480,22 @@ fn draw_input_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     draw_modal_close_button(f, app, area, colors);
 }
 
+fn extract_script_meta(path: &std::path::Path) -> Option<String> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path).ok()?;
+    let reader = std::io::BufReader::new(file);
+    for line in reader.lines().take(5).flatten() {
+        let trimmed = line.trim();
+        if let Some(desc) = trimmed.strip_prefix("-- Description:") {
+            let clean = desc.trim();
+            if !clean.is_empty() {
+                return Some(clean.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     let base_w = (74.0 * app.config.scale).round() as u16;
     let w: u16 = base_w.max(30).min(f.area().width.saturating_sub(4));
@@ -2461,6 +2517,7 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         FuzzyMode::Move => format!(" 󰏫  {} ", app.i18n.t("move_file")),
         FuzzyMode::DocSelect => format!(" 󰈔  {} ", app.i18n.t("select_documentation")),
         FuzzyMode::Settings => format!(" 󰒓  {} ", app.i18n.t("settings_title")),
+        FuzzyMode::SavedScripts => format!(" 󰢱  {} ", app.i18n.t("saved_scripts_title")),
         _ => " Search ".to_string(),
     };
 
@@ -2513,6 +2570,16 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             Paragraph::new(Line::from(spans)),
             UnicodeWidthStr::width(" 󰒓 "),
         )
+    } else if app.fuzzy_mode == FuzzyMode::SavedScripts && app.fuzzy_query.is_empty() {
+        let mut spans = vec![Span::styled(" 󰢱 ", Style::default().fg(colors.accent))];
+        spans.push(Span::styled(
+            app.i18n.t("saved_scripts_hint"),
+            Style::default().fg(colors.text_muted()),
+        ));
+        (
+            Paragraph::new(Line::from(spans)),
+            UnicodeWidthStr::width(" 󰢱 "),
+        )
     } else {
         let mut spans = vec![Span::styled("   ", Style::default().fg(colors.accent))];
         spans.extend(query_spans);
@@ -2549,7 +2616,8 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         | FuzzyMode::FileOptions
         | FuzzyMode::Move
         | FuzzyMode::DocSelect
-        | FuzzyMode::Settings => app.fuzzy_results.len(),
+        | FuzzyMode::Settings
+        | FuzzyMode::SavedScripts => app.fuzzy_results.len(),
         _ => 0,
     };
 
@@ -2895,6 +2963,75 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
                 })
                 .collect()
         }
+    } else if app.fuzzy_mode == FuzzyMode::SavedScripts {
+        if app.fuzzy_results.is_empty() {
+            vec![ListItem::new(Span::styled(
+                format!("  {}", app.i18n.t("no_saved_scripts")),
+                Style::default().fg(colors.text_muted()),
+            ))]
+        } else {
+            let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
+            let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
+            let list_width = chunks[2].width as usize;
+            app.fuzzy_results[safe_start..end_idx]
+                .iter()
+                .enumerate()
+                .map(|(idx, path)| {
+                    let i = safe_start + idx;
+                    let stem = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let is_selected = i == app.fuzzy_idx;
+                    let is_active = app.live_script_origin.as_deref() == Some(&stem);
+                    let style = if is_selected {
+                        Style::default()
+                            .bg(colors.sel)
+                            .fg(colors.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(colors.fg)
+                    };
+                    let icon = "󰢱";
+                    let desc = extract_script_meta(path);
+                    let left_text = format!(" {} {}", icon, stem);
+                    let left_len = UnicodeWidthStr::width(left_text.as_str());
+                    let right_text = if let Some(d) = desc {
+                        if is_active {
+                            format!("{} [Active]", d)
+                        } else {
+                            d
+                        }
+                    } else if is_active {
+                        "[Active]".to_string()
+                    } else {
+                        String::new()
+                    };
+                    let right_len = UnicodeWidthStr::width(right_text.as_str());
+                    let pad_len = list_width.saturating_sub(left_len + right_len + 2).max(1);
+                    let pad = " ".repeat(pad_len);
+                    let right_style = if is_selected {
+                        Style::default()
+                            .bg(colors.sel)
+                            .fg(colors.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else if is_active {
+                        Style::default()
+                            .fg(colors.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(colors.text_muted())
+                    };
+
+                    ListItem::new(Line::from(vec![
+                        Span::styled(left_text, style),
+                        Span::styled(pad, style),
+                        Span::styled(right_text, right_style),
+                    ]))
+                    .style(style)
+                })
+                .collect()
+        }
     } else if app.fuzzy_results.is_empty() {
         vec![]
     } else {
@@ -2938,10 +3075,17 @@ fn draw_fuzzy_finder(f: &mut Frame, app: &mut App, colors: &UIColors) {
     app.modal_close_button_hitbox = None;
 
     match app.fuzzy_mode {
-        FuzzyMode::DeleteConfirm | FuzzyMode::UnsavedChanges | FuzzyMode::ExternalChange => {
+        FuzzyMode::DeleteConfirm
+        | FuzzyMode::UnsavedChanges
+        | FuzzyMode::ExternalChange
+        | FuzzyMode::SaveScriptChoice => {
             draw_confirmation_modal(f, app, colors);
         }
-        FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs | FuzzyMode::SettingInput => {
+        FuzzyMode::Create
+        | FuzzyMode::Rename
+        | FuzzyMode::SaveAs
+        | FuzzyMode::SettingInput
+        | FuzzyMode::SaveLiveScript => {
             draw_input_modal(f, app, colors);
         }
         _ => {

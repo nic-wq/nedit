@@ -26,6 +26,9 @@ pub enum FuzzyMode {
     ExternalChange,
     Settings,
     SettingInput,
+    SavedScripts,
+    SaveLiveScript,
+    SaveScriptChoice,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,6 +149,8 @@ pub enum ModalAction {
     ReloadExternal,
     KeepExternal,
     ConfirmInput,
+    SaveScriptOverwrite,
+    SaveScriptAsNew,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,6 +196,7 @@ pub struct ContextMenuItem {
 pub enum ContextMenuTarget {
     Editor,
     ExplorerItem(std::path::PathBuf, bool),
+    SavedScriptItem(std::path::PathBuf),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

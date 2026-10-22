@@ -30,6 +30,40 @@ local content = nedit.current_content()
 -- format logic here...
 ```
 
+The `-- Name:` comment is automatically used by NEdit to suggest a slugified filename when saving the script to your local library. The `-- Description:` comment is displayed on the right side of the script picker modal.
+
+---
+
+## 💾 Live Script Library & Local Storage
+
+NEdit includes a built-in local script library that allows you to save, load, and organize your favorite Lua automation scripts across sessions.
+
+### Storage Directory
+All saved live scripts are stored as standard `.lua` files in:
+```bash
+~/.config/nedit/scripts/<name>.lua
+```
+
+### Saving a Script (`Ctrl+S` or Command Palette)
+- When focused on the Live Script pane, press `Ctrl+S` or select **Save Live Script** from the Command Palette (`Ctrl+P`).
+- If saving for the first time, an input dialog prompts for the script name (pre-filled from `-- Name:` if present).
+- **Overwrite vs. Save as New**: If you modify a script that was loaded from the library, NEdit displays a confirmation dialog asking:
+  - `[ Overwrite ]` (`O`): Overwrites the existing script file on disk.
+  - `[ Save as New ]` (`N`): Prompts for a new name (defaulting to `<origin>_copy`).
+  - `[ Cancel ]` (`Esc`): Cancels saving.
+
+### Opening Saved Scripts
+- Press `Ctrl+P` → select **Open Saved Live Script**.
+- An interactive fuzzy search modal displays all saved scripts with their names, descriptions, and active badges.
+- Select a script and press `Enter` (or click) to load it immediately into the Live Script pane.
+
+### In-Place Library Management
+Inside the **Open Saved Live Script** picker, you can manage scripts directly without leaving the editor:
+- **Open**: Press `Enter` or click on a script row.
+- **Rename**: Press `F2` to rename the highlighted script in-place.
+- **Delete**: Press `Delete` or `Del` to delete the script (with confirmation dialog).
+- **Context Menu**: Right-click on any script row to open a context menu with **Open**, **Rename**, and **Delete** actions.
+
 ---
 
 ## 📚 API Reference

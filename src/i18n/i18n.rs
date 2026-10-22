@@ -70,6 +70,17 @@ impl I18n {
         defaults.insert("enabled".to_string(), "Enabled".to_string());
         defaults.insert("disabled".to_string(), "Disabled".to_string());
         defaults.insert("setting_updated".to_string(), "Setting updated".to_string());
+        defaults.insert("saved_scripts_title".to_string(), "Saved Live Scripts".to_string());
+        defaults.insert("saved_scripts_hint".to_string(), "Type to filter... (Enter: Open, F2: Rename, Del: Delete)".to_string());
+        defaults.insert("no_saved_scripts".to_string(), "No saved scripts found".to_string());
+        defaults.insert("save_live_script_title".to_string(), "Save Live Script".to_string());
+        defaults.insert("save_live_script_prompt".to_string(), "Enter script name:".to_string());
+        defaults.insert("save_script_choice_title".to_string(), "Save Live Script".to_string());
+        defaults.insert("save_script_choice_prompt".to_string(), "Script has been modified from existing saved script:".to_string());
+        defaults.insert("save_script_choice_warning".to_string(), "Choose whether to overwrite original or save as a new script.".to_string());
+        defaults.insert("script_saved".to_string(), "Script saved".to_string());
+        defaults.insert("loaded_live_script".to_string(), "Loaded script".to_string());
+        defaults.insert("script_already_up_to_date".to_string(), "Script is already up to date".to_string());
 
         // Modal Prompts & Descriptions
         defaults.insert("new_file_folder_title".to_string(), "New File / Folder".to_string());
@@ -96,6 +107,8 @@ impl I18n {
         defaults.insert("reload".to_string(), "Reload".to_string());
         defaults.insert("keep".to_string(), "Keep".to_string());
         defaults.insert("set_as_root".to_string(), "Set as Root".to_string());
+        defaults.insert("overwrite".to_string(), "Overwrite".to_string());
+        defaults.insert("save_as_new".to_string(), "Save as New".to_string());
 
         // Context Menu Actions
         defaults.insert("copy".to_string(), "Copy".to_string());

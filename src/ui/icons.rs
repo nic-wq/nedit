@@ -142,6 +142,8 @@ impl IconRegistry {
             "Prev Tab" => "󰅨 ",
             "Next Tab" => "󰅩 ",
             "Open Live Script" => "󰢱 ",
+            "Open Saved Live Script" => "󰢱 ",
+            "Save Live Script" => "󰆓 ",
             "Undo Last Script" => "󰕌 ",
             "Quit" => "󰈆 ",
             "Undo" => "󰕌 ",

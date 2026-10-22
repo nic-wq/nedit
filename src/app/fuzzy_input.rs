@@ -14,7 +14,10 @@ impl App {
     pub fn fuzzy_has_editable_input(&self) -> bool {
         !matches!(
             self.fuzzy_mode,
-            FuzzyMode::UnsavedChanges | FuzzyMode::ExternalChange | FuzzyMode::DeleteConfirm
+            FuzzyMode::UnsavedChanges
+                | FuzzyMode::ExternalChange
+                | FuzzyMode::DeleteConfirm
+                | FuzzyMode::SaveScriptChoice
         )
     }
 
@@ -32,6 +35,7 @@ impl App {
                 | FuzzyMode::Move
                 | FuzzyMode::DocSelect
                 | FuzzyMode::Settings
+                | FuzzyMode::SavedScripts
         )
     }
 

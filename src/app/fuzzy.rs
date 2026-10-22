@@ -7,7 +7,7 @@ use std::sync::Arc;
 use walkdir::WalkDir;
 
 use super::matcher::{FuzzyFileResult, FuzzyMatcher};
-use super::{App, FuzzyMode, NotificationType};
+use super::{App, FuzzyMode};
 
 // Binary file extensions to skip during indexing and content search
 const BINARY_EXTENSIONS: &[&str] = &[
@@ -404,10 +404,7 @@ impl App {
                 && self.live_script_mode
                 && Some(self.current_buffer_idx) == self.live_script_buffer_idx
             {
-                self.show_notification(
-                    "Live scripts cannot be saved".to_string(),
-                    NotificationType::Info,
-                );
+                self.save_live_script();
                 return;
             }
 
@@ -441,7 +438,7 @@ impl App {
 
     // We slugify names to ensure they are safe for the filesystem across different OSs
     // while maintaining a readable and consistent naming convention for user-generated scripts.
-    fn slugify(&self, name: &str) -> String {
+    pub(crate) fn slugify(&self, name: &str) -> String {
         name.to_lowercase()
             .chars()
             .map(|c| if c.is_alphanumeric() { c } else { '_' })
@@ -666,6 +663,12 @@ impl App {
             }
             commands.push("Switch Theme");
             commands.push("Open Live Script");
+            commands.push("Open Saved Live Script");
+            if self.live_script_mode
+                && Some(self.current_buffer_idx) == self.live_script_buffer_idx
+            {
+                commands.push("Save Live Script");
+            }
             if self.last_script_undo.is_some() {
                 commands.push("Undo Last Script");
             }
@@ -697,6 +700,8 @@ impl App {
                             "File Name Search" => "open file fuzzy".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
                             "Content Search" => "global grep".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
                             "Settings" => "config preferences options opcoes configuracoes".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
+                            "Open Saved Live Script" => "scripts library lua load saved".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
+                            "Save Live Script" => "save script library export lua".split_whitespace().any(|a| a.contains(&query) || query.contains(a)),
                             _ => false,
                         };
                         matches_name || matches_shortcut || matches_alias
@@ -800,6 +805,29 @@ impl App {
             return;
         }
 
+        if self.fuzzy_mode == FuzzyMode::SavedScripts {
+            let scripts = self.list_saved_scripts();
+            self.fuzzy_results = scripts
+                .into_iter()
+                .filter(|path| {
+                    if query.is_empty() {
+                        true
+                    } else {
+                        let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                        file_stem.to_lowercase().contains(&query)
+                    }
+                })
+                .collect();
+            if reset_idx {
+                self.fuzzy_idx = 0;
+            } else {
+                self.fuzzy_idx = self
+                    .fuzzy_idx
+                    .min(self.fuzzy_results.len().saturating_sub(1));
+            }
+            return;
+        }
+
         if self.fuzzy_mode == FuzzyMode::Create
             || self.fuzzy_mode == FuzzyMode::ExternalChange
             || self.fuzzy_mode == FuzzyMode::UnsavedChanges
@@ -807,6 +835,8 @@ impl App {
             || self.fuzzy_mode == FuzzyMode::Rename
             || self.fuzzy_mode == FuzzyMode::SaveAs
             || self.fuzzy_mode == FuzzyMode::DeleteConfirm
+            || self.fuzzy_mode == FuzzyMode::SaveLiveScript
+            || self.fuzzy_mode == FuzzyMode::SaveScriptChoice
         {
             self.fuzzy_results = Vec::new();
             return;

@@ -49,6 +49,7 @@ Configure these in the `[keybinds]` section of `~/.config/nedit/config.toml`:
 | Action | Default | Description |
 | :--- | :--- | :--- |
 | `run_live_script` | `f9` | Execute active Lua Live Script on the left target file |
+| `save_live_script` | `ctrl+s` | Save active Live Script to local library (`~/.config/nedit/scripts/`) |
 
 ---
 
@@ -119,6 +120,10 @@ These shortcuts are built into NEdit's core engine and cannot be rebound:
 | **Text Prompts** (`Create`, `Rename`, `Save As`) | `TAB` / `DOWN` | Move focus from text input to action buttons (`Confirm`, `Cancel`) |
 | **Text Prompts** | `UP` | Move focus back to text input |
 | **Text Prompts** | `ENTER` | Submit and confirm text |
+| **Saved Scripts** | `F2` | Rename highlighted script in-place |
+| **Saved Scripts** | `DEL` / `DELETE` | Delete highlighted script (with confirmation modal) |
+| **Save Script Choice** | `O` | Overwrite original saved script |
+| **Save Script Choice** | `N` | Save as new script with custom name |
 
 ### Explorer Navigation & Search
 
@@ -155,6 +160,7 @@ These shortcuts are built into NEdit's core engine and cannot be rebound:
 | **Modals** | **Left Click (buttons)** | Click button directly (`Confirm`, `Cancel`, `Save`, `Discard`, etc.) |
 | **Modals** | **Left Click (`󰅖`)** | Click top-right close icon `󰅖` to cancel and dismiss modal |
 | **Modals** | **Hover** | Highlight button or top-right `󰅖` close icon (turns yellow) under mouse |
+| **Saved Scripts** | **Right Click** | Open context menu for highlighted script (`Open`, `Rename`, `Delete`) |
 | **Settings** | **Space** | Toggle boolean setting or cycle list option (Position, Theme) |
 | **Settings** | **Enter** | Open free-choice input dialog (Preview Max Size) or toggle option |
 | **Settings** | **Left Click (row)** | Toggle or edit setting directly under mouse pointer |

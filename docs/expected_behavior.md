@@ -199,7 +199,8 @@ Mouse interactions are integrated across every editor component:
 - **Context Awareness**:
   - Buffer-specific commands (`Save`, `Close Tab`, `Local Search`, `Undo`, `Redo`, `Copy`, `Paste`, `Cut`, `Select All`) are dynamically hidden when on the welcome screen or when no tabs are open.
   - Script revert (`Undo Last Script`) is only listed if a live script modification was previously performed.
-  - Always available commands (`New File`, `File Name Search`, `Toggle Explorer`, `Content Search`, `Switch Theme`, `Open Live Script`, `Quit`, `Open Help`, `Settings`) remain accessible in all contexts.
+  - Always available commands (`New File`, `File Name Search`, `Toggle Explorer`, `Content Search`, `Switch Theme`, `Open Live Script`, `Open Saved Live Script`, `Quit`, `Open Help`, `Settings`) remain accessible in all contexts.
+  - Contextual commands like `Save Live Script` only appear when focused on the active Live Script pane.
 - **Dual & Alias Query Filtering**: Users can filter the palette by searching for the command name, common aliases (e.g., typing `"open"` matches `File Name Search`, typing `"grep"` or `"global"` matches `Content Search`, typing `"config"` or `"preferences"` matches `Settings`), or directly by its shortcut key (e.g., `"ctrl+w"`).
 
 ### 6.2 Settings Modal
@@ -233,6 +234,19 @@ Interactive side-by-side scripting for automated code transformations:
    - `nedit.write_current_file(text)`: Overwrites entire target file content.
    - `nedit.notify(message, [type], [duration])`: Spawns a floating notification toast. *(Aliases: `nedit.toast`, `nedit.show_notification`)*.
 
+### 7.1 Local Live Script Library
+- **Saving Scripts (`Ctrl+S` / Command Palette)**: Live scripts can be saved to `~/.config/nedit/scripts/<name>.lua`. If a script originates from the library and is modified, a modal prompt appears offering:
+  - `[ Overwrite ]` (`O`): Overwrite the current script file.
+  - `[ Save as New ]` (`N`): Save as a new script with custom name (defaults to `<name>_copy`).
+  - `[ Cancel ]` (`Esc`): Cancel save operation.
+- **Slugified Name Suggestion**: If the script begins with `-- Name: <name>`, this name is automatically slugified and pre-filled in the save modal.
+- **Script Picker (`Ctrl+P` → Open Saved Live Script)**:
+  - Interactive fuzzy search modal listing all `.lua` scripts in `~/.config/nedit/scripts/`.
+  - Shows script name, description (extracted from `-- Description:`), and `[Active]` badge if currently open in the split view.
+  - In-place Rename with `F2`.
+  - In-place Delete with `Del` / `Delete` (with confirmation modal).
+  - Right-click context menu offering `Open`, `Rename`, and `Delete`.
+
 ---
 
 ## 8. Floating Notification Toasts
@@ -258,6 +272,7 @@ All configuration files are stored in `~/.config/nedit/`:
 | `language.toml` | Custom UI translations and label overrides. |
 | `themes/` | Directory for custom Sublime `.tmTheme` color themes. |
 | `syntax/` | Directory for custom `.sublime-syntax` language definitions. |
+| `scripts/` | Directory for user-saved Lua live scripts (`~/.config/nedit/scripts/*.lua`). |
 | `icons/` | Custom Nerd Font icon mappings (.toml). |
 | `cache/` | Precompiled syntax highlight dumps for fast application startup. |
 

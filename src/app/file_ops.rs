@@ -375,6 +375,7 @@ impl App {
 
         self.live_script_mode = false;
         self.live_script_buffer_idx = None;
+        self.live_script_origin = None;
         self.target_buffer_idx = None;
     }
 
@@ -512,10 +513,7 @@ impl App {
         if self.live_script_mode
             && Some(self.current_buffer_idx) == self.live_script_buffer_idx
         {
-            self.show_notification(
-                "Live scripts cannot be saved".to_string(),
-                NotificationType::Info,
-            );
+            self.save_live_script();
             return;
         }
 
