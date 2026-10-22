@@ -354,13 +354,44 @@ impl App {
         app
     }
 
+    pub fn percent_decode(input: &str) -> String {
+        let mut bytes = Vec::with_capacity(input.len());
+        let mut chars = input.bytes();
+        while let Some(b) = chars.next() {
+            if b == b'%' {
+                let h1 = chars.next();
+                let h2 = chars.next();
+                if let (Some(h1), Some(h2)) = (h1, h2) {
+                    if let Ok(val) = u8::from_str_radix(std::str::from_utf8(&[h1, h2]).unwrap_or(""), 16) {
+                        bytes.push(val);
+                        continue;
+                    }
+                    bytes.push(b'%');
+                    bytes.push(h1);
+                    bytes.push(h2);
+                } else {
+                    bytes.push(b'%');
+                    if let Some(h1) = h1 {
+                        bytes.push(h1);
+                    }
+                }
+            } else {
+                bytes.push(b);
+            }
+        }
+        String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).to_string())
+    }
+
     pub fn parse_path_arg(arg: &str) -> PathBuf {
-        let clean = if let Some(stripped) = arg.strip_prefix("file://") {
+        let clean = if let Some(stripped) = arg.strip_prefix("file://localhost") {
+            stripped
+        } else if let Some(stripped) = arg.strip_prefix("file://") {
             stripped
         } else {
             arg
         };
-        PathBuf::from(clean)
+        let decoded = Self::percent_decode(clean);
+        PathBuf::from(decoded)
     }
 
     pub fn find_project_root_or_parent(file_path: &Path, current_dir: &Path) -> Option<PathBuf> {
@@ -1112,5 +1143,22 @@ mod tests {
         assert!(ss.find_syntax_by_extension("py").is_some());
         assert!(ss.find_syntax_by_extension("js").is_some());
         assert!(ss.find_syntax_by_extension("html").is_some());
+    }
+
+    #[test]
+    fn test_parse_path_arg_file_uri_and_percent_decoding() {
+        use std::path::PathBuf;
+        assert_eq!(
+            App::parse_path_arg("file:///tmp/sample%20file.txt"),
+            PathBuf::from("/tmp/sample file.txt")
+        );
+        assert_eq!(
+            App::parse_path_arg("file://localhost/tmp/hello%2Bworld.rs"),
+            PathBuf::from("/tmp/hello+world.rs")
+        );
+        assert_eq!(
+            App::parse_path_arg("src/main.rs"),
+            PathBuf::from("src/main.rs")
+        );
     }
 }

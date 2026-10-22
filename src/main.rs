@@ -13,6 +13,8 @@ use ratatui::{
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, IsTerminal};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -58,6 +60,9 @@ fn count_files_in_dir(path: &Path) -> usize {
 }
 
 fn command_exists(command: &str) -> bool {
+    if command.contains('/') {
+        return Path::new(command).is_file();
+    }
     let Some(path) = std::env::var_os("PATH") else {
         return false;
     };
@@ -574,6 +579,107 @@ fn run_diagnostics(args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn spawn_in_terminal(args: &[String]) -> anyhow::Result<bool> {
+    if std::env::var("_NEDIT_SPAWNED").is_ok() {
+        return Ok(false);
+    }
+
+    let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nedit"));
+
+    let working_dir = args.get(1).and_then(|a| {
+        let p = App::parse_path_arg(a);
+        if p.is_dir() {
+            Some(p)
+        } else if let Some(parent) = p.parent() {
+            if parent.exists() {
+                Some(parent.to_path_buf())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+
+    let try_spawn = |term: &str, term_args: &[&str]| -> bool {
+        let mut cmd = std::process::Command::new(term);
+        cmd.args(term_args);
+        cmd.arg(&current_exe);
+        cmd.args(&args[1..]);
+        cmd.env("_NEDIT_SPAWNED", "1");
+        cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        if let Some(ref dir) = working_dir {
+            cmd.current_dir(dir);
+        }
+        #[cfg(unix)]
+        cmd.process_group(0);
+
+        cmd.spawn().is_ok()
+    };
+
+    // 1. Check $TERMINAL if set
+    if let Ok(custom_term) = std::env::var("TERMINAL") {
+        let trimmed = custom_term.trim();
+        if !trimmed.is_empty() && command_exists(trimmed) {
+            let term_args: &[&str] = if trimmed.contains("wezterm") {
+                &["start", "--"]
+            } else if trimmed.contains("gnome-terminal")
+                || trimmed.contains("ptyxis")
+                || trimmed.contains("kgx")
+                || trimmed.contains("mate-terminal")
+            {
+                &["--"]
+            } else if trimmed.contains("xdg-terminal-exec") || trimmed.contains("foot") {
+                &[]
+            } else {
+                &["-e"]
+            };
+            if try_spawn(trimmed, term_args) {
+                return Ok(true);
+            }
+        }
+    }
+
+    // 2. Candidate list of terminal emulators in order of preference
+    let candidates: &[(&str, &[&str])] = &[
+        ("xdg-terminal-exec", &[]),
+        ("alacritty", &["-e"]),
+        ("kitty", &["-e"]),
+        ("foot", &[]),
+        ("wezterm", &["start", "--"]),
+        ("ghostty", &["-e"]),
+        ("gnome-terminal", &["--"]),
+        ("ptyxis", &["--"]),
+        ("kgx", &["--"]),
+        ("konsole", &["-e"]),
+        ("xfce4-terminal", &["-x"]),
+        ("mate-terminal", &["--"]),
+        ("x-terminal-emulator", &["-e"]),
+        ("xterm", &["-e"]),
+        ("rxvt", &["-e"]),
+        ("urxvt", &["-e"]),
+    ];
+
+    for &(term, term_args) in candidates {
+        if command_exists(term) && try_spawn(term, term_args) {
+            return Ok(true);
+        }
+    }
+
+    let _ = std::process::Command::new("notify-send")
+        .args([
+            "NEdit",
+            "Could not find an installed terminal emulator (e.g. Alacritty, Kitty, Foot).",
+            "-i",
+            "nedit",
+        ])
+        .spawn();
+
+    Ok(false)
+}
+
 fn main() -> anyhow::Result<()> {
     // Process arguments
     let args: Vec<String> = std::env::args().collect();
@@ -586,6 +692,14 @@ fn main() -> anyhow::Result<()> {
             .cloned()
             .collect();
         return run_diagnostics(&diagnostic_args);
+    }
+
+    // If launched in a GUI/desktop environment without an attached terminal,
+    // automatically spawn the user's preferred terminal emulator with NEdit.
+    if !io::stdout().is_terminal() && std::env::var("_NEDIT_SPAWNED").is_err() {
+        if spawn_in_terminal(&args)? {
+            return Ok(());
+        }
     }
 
     // Setup terminal
