@@ -714,37 +714,41 @@ fn handle_context_menu_input(app: &mut App, key: KeyEvent) {
         return;
     };
 
-    match key.code {
-        KeyCode::Esc => {
-            app.close_context_menu();
+    if app.config.matches(key, "context_menu_close") {
+        app.close_context_menu();
+        return;
+    }
+
+    if app.config.matches(key, "context_menu_up") {
+        if let Some(m) = &mut app.context_menu {
+            m.selected_idx = if m.selected_idx == 0 {
+                m.items.len().saturating_sub(1)
+            } else {
+                m.selected_idx - 1
+            };
+            app.needs_redraw = true;
         }
-        KeyCode::Up => {
-            if let Some(m) = &mut app.context_menu {
-                m.selected_idx = if m.selected_idx == 0 {
-                    m.items.len().saturating_sub(1)
-                } else {
-                    m.selected_idx - 1
-                };
+        return;
+    }
+
+    if app.config.matches(key, "context_menu_down") {
+        if let Some(m) = &mut app.context_menu {
+            if !m.items.is_empty() {
+                m.selected_idx = (m.selected_idx + 1) % m.items.len();
                 app.needs_redraw = true;
             }
         }
-        KeyCode::Down => {
-            if let Some(m) = &mut app.context_menu {
-                if !m.items.is_empty() {
-                    m.selected_idx = (m.selected_idx + 1) % m.items.len();
-                    app.needs_redraw = true;
-                }
-            }
+        return;
+    }
+
+    if app.config.matches(key, "context_menu_confirm") {
+        if let Some(item) = menu.items.get(menu.selected_idx) {
+            let action = item.action;
+            let target = menu.target;
+            app.close_context_menu();
+            execute_context_menu_action(app, action, target);
         }
-        KeyCode::Enter => {
-            if let Some(item) = menu.items.get(menu.selected_idx) {
-                let action = item.action;
-                let target = menu.target;
-                app.close_context_menu();
-                execute_context_menu_action(app, action, target);
-            }
-        }
-        _ => {}
+        return;
     }
 }
 
@@ -1364,36 +1368,21 @@ fn handle_key_event(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    // Tab cycling is unified on Ctrl+Alt+←/→ (and Ctrl+Tab): it works from any
-    // buffer, including the live script pane, which is pinned as the last
-    // tab — so plain cycling always reaches the script and back.
-    match (key.code, key.modifiers) {
-        (KeyCode::Tab, KeyModifiers::CONTROL) => {
-            app.switch_tab_relative(1);
+    // Tab cycling and direct jumping (configurable)
+    if app.config.matches(key, "next_tab") || app.config.matches(key, "cycle_next_tab") {
+        app.switch_tab_relative(1);
+        return;
+    }
+    if app.config.matches(key, "prev_tab") || app.config.matches(key, "cycle_prev_tab") {
+        app.switch_tab_relative(-1);
+        return;
+    }
+    for idx in 1..=9 {
+        let action = format!("tab_{idx}");
+        if app.config.matches(key, &action) {
+            app.switch_tab(idx - 1);
             return;
         }
-        (KeyCode::Tab, m)
-            if m.contains(KeyModifiers::CONTROL) && m.contains(KeyModifiers::SHIFT) =>
-        {
-            app.switch_tab_relative(-1);
-            return;
-        }
-        (KeyCode::Left, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
-            app.switch_tab_relative(-1);
-            return;
-        }
-        (KeyCode::Right, m) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
-            app.switch_tab_relative(1);
-            return;
-        }
-        (KeyCode::Char(c), KeyModifiers::ALT) if c.is_ascii_digit() => {
-            let idx = c.to_digit(10).unwrap() as usize;
-            if idx > 0 {
-                app.switch_tab(idx - 1);
-            }
-            return;
-        }
-        _ => {}
     }
 
     if app.is_fuzzy {
@@ -2105,6 +2094,25 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
         return;
     }
 
+    let has_autocomplete = !app.buffers[current_idx].autocomplete_options.is_empty()
+        || app.buffers[current_idx].show_autocomplete_list;
+
+    if has_autocomplete {
+        if app.config.matches(key, "autocomplete_dismiss") {
+            let buf = &mut app.buffers[current_idx];
+            buf.show_autocomplete_list = false;
+            buf.autocomplete_options.clear();
+            app.needs_redraw = true;
+            return;
+        }
+
+        if app.config.matches(key, "autocomplete_accept") && !app.buffers[current_idx].is_read_only {
+            app.buffers[current_idx].accept_autocomplete();
+            app.needs_redraw = true;
+            return;
+        }
+    }
+
     if app.buffers[current_idx].show_autocomplete_list
         && app.buffers[current_idx].autocomplete_options.len() > 1
     {
@@ -2194,8 +2202,24 @@ fn handle_editor_input(app: &mut App, key: KeyEvent) {
                 buffer.move_cursor(0, 1, 80);
             }
         }
-        (KeyCode::Home, _) => app.buffers[current_idx].move_to_line_start(),
-        (KeyCode::End, _) => app.buffers[current_idx].move_to_line_end(),
+        (KeyCode::Home, m) => {
+            let buffer = &mut app.buffers[current_idx];
+            if m.contains(KeyModifiers::SHIFT) && buffer.selection_start.is_none() {
+                buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
+            } else if !m.contains(KeyModifiers::SHIFT) {
+                buffer.selection_start = None;
+            }
+            buffer.move_to_line_start();
+        }
+        (KeyCode::End, m) => {
+            let buffer = &mut app.buffers[current_idx];
+            if m.contains(KeyModifiers::SHIFT) && buffer.selection_start.is_none() {
+                buffer.selection_start = Some((buffer.cursor_row, buffer.cursor_col));
+            } else if !m.contains(KeyModifiers::SHIFT) {
+                buffer.selection_start = None;
+            }
+            buffer.move_to_line_end();
+        }
         (KeyCode::Char(c), KeyModifiers::NONE) | (KeyCode::Char(c), KeyModifiers::SHIFT)
             if !app.buffers[current_idx].is_read_only =>
         {
@@ -3688,6 +3712,200 @@ mod tests {
         };
         super::handle_mouse_event(&mut app, scroll_up);
         assert_eq!(app.buffers[0].scroll_row, 0);
+    }
+
+    #[test]
+    fn test_shift_home_and_shift_end_selection() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.insert_text("The quick brown fox jumps over the lazy dog");
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+
+        // Position cursor at index 10 (beginning of "brown")
+        app.buffers[0].cursor_col = 10;
+        assert_eq!(app.buffers[0].selection_start, None);
+
+        // Shift+End extends selection to end of line
+        super::handle_editor_input(&mut app, key_mods(KeyCode::End, KeyModifiers::SHIFT));
+        assert_eq!(app.buffers[0].selection_start, Some((0, 10)));
+        assert_eq!(app.buffers[0].cursor_col, 43);
+        assert_eq!(
+            app.buffers[0].get_selected_text(),
+            Some("brown fox jumps over the lazy dog".to_string())
+        );
+
+        // Shift+Home extends selection from initial start (10) to 0
+        super::handle_editor_input(&mut app, key_mods(KeyCode::Home, KeyModifiers::SHIFT));
+        assert_eq!(app.buffers[0].selection_start, Some((0, 10)));
+        assert_eq!(app.buffers[0].cursor_col, 0);
+        assert_eq!(
+            app.buffers[0].get_selected_text(),
+            Some("The quick ".to_string())
+        );
+
+        // Plain Home (without Shift) clears selection and sets cursor to 0
+        super::handle_editor_input(&mut app, key(KeyCode::Home));
+        assert_eq!(app.buffers[0].selection_start, None);
+        assert_eq!(app.buffers[0].cursor_col, 0);
+        assert_eq!(app.buffers[0].get_selected_text(), None);
+
+        // Set cursor to 10 and press plain End -> clears selection and moves to end
+        app.buffers[0].cursor_col = 10;
+        app.buffers[0].selection_start = Some((0, 5));
+        super::handle_editor_input(&mut app, key(KeyCode::End));
+        assert_eq!(app.buffers[0].selection_start, None);
+        assert_eq!(app.buffers[0].cursor_col, 43);
+    }
+
+    #[test]
+    fn test_tab_management_shortcuts_default_and_custom() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        app.buffers.clear();
+
+        let mut b0 = crate::buffer::EditorBuffer::new();
+        b0.path = Some(std::path::PathBuf::from("tab0.txt"));
+        let mut b1 = crate::buffer::EditorBuffer::new();
+        b1.path = Some(std::path::PathBuf::from("tab1.txt"));
+        let mut b2 = crate::buffer::EditorBuffer::new();
+        b2.path = Some(std::path::PathBuf::from("tab2.txt"));
+
+        app.buffers.push(b0);
+        app.buffers.push(b1);
+        app.buffers.push(b2);
+        app.current_buffer_idx = 0;
+
+        // Default: Ctrl+Tab switches to next tab
+        super::handle_key_event(&mut app, key_mods(KeyCode::Tab, KeyModifiers::CONTROL));
+        assert_eq!(app.current_buffer_idx, 1);
+
+        // Default: Ctrl+Alt+Right cycles to next tab
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Right, KeyModifiers::CONTROL | KeyModifiers::ALT),
+        );
+        assert_eq!(app.current_buffer_idx, 2);
+
+        // Default: Ctrl+Shift+Tab switches to previous tab
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Tab, KeyModifiers::CONTROL | KeyModifiers::SHIFT),
+        );
+        assert_eq!(app.current_buffer_idx, 1);
+
+        // Default: Ctrl+Alt+Left cycles to previous tab
+        super::handle_key_event(
+            &mut app,
+            key_mods(KeyCode::Left, KeyModifiers::CONTROL | KeyModifiers::ALT),
+        );
+        assert_eq!(app.current_buffer_idx, 0);
+
+        // Default: Alt+3 jumps to tab 3 (index 2)
+        super::handle_key_event(&mut app, key_mods(KeyCode::Char('3'), KeyModifiers::ALT));
+        assert_eq!(app.current_buffer_idx, 2);
+
+        // Default: Alt+1 jumps to tab 1 (index 0)
+        super::handle_key_event(&mut app, key_mods(KeyCode::Char('1'), KeyModifiers::ALT));
+        assert_eq!(app.current_buffer_idx, 0);
+
+        // Custom keybinds configuration:
+        app.config.keybinds.insert("next_tab".to_string(), "ctrl+j".to_string());
+        app.config.keybinds.insert("prev_tab".to_string(), "ctrl+k".to_string());
+        app.config.keybinds.insert("tab_2".to_string(), "ctrl+2".to_string());
+
+        super::handle_key_event(&mut app, key_mods(KeyCode::Char('j'), KeyModifiers::CONTROL));
+        assert_eq!(app.current_buffer_idx, 1);
+
+        super::handle_key_event(&mut app, key_mods(KeyCode::Char('k'), KeyModifiers::CONTROL));
+        assert_eq!(app.current_buffer_idx, 0);
+
+        super::handle_key_event(&mut app, key_mods(KeyCode::Char('2'), KeyModifiers::CONTROL));
+        assert_eq!(app.current_buffer_idx, 1);
+    }
+
+    #[test]
+    fn test_autocomplete_shortcuts_default_and_custom() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        let mut buffer = crate::buffer::EditorBuffer::new();
+        buffer.insert_text("banana bandage\nban");
+        buffer.cursor_row = 1;
+        buffer.cursor_col = 3;
+        app.current_buffer_idx = app.push_buffer(buffer);
+
+        app.buffers[app.current_buffer_idx].update_autocomplete();
+        assert!(!app.buffers[app.current_buffer_idx].autocomplete_options.is_empty());
+
+        // Default: Shift+Right accepts autocomplete
+        super::handle_editor_input(
+            &mut app,
+            key_mods(KeyCode::Right, KeyModifiers::SHIFT),
+        );
+        let buf = &app.buffers[app.current_buffer_idx];
+        assert_eq!(buf.line_text(1), "banana");
+        assert!(buf.autocomplete_options.is_empty());
+
+        // Test default: Esc dismisses autocomplete
+        let buf_mut = &mut app.buffers[app.current_buffer_idx];
+        buf_mut.insert_text("\nban");
+        buf_mut.update_autocomplete();
+        assert!(!buf_mut.autocomplete_options.is_empty());
+
+        super::handle_editor_input(&mut app, key(KeyCode::Esc));
+        let buf = &app.buffers[app.current_buffer_idx];
+        assert_eq!(buf.line_text(2), "ban");
+        assert!(buf.autocomplete_options.is_empty());
+
+        // Test custom keybindings for accept and dismiss
+        app.config.keybinds.insert("autocomplete_accept".to_string(), "ctrl+y".to_string());
+        app.config.keybinds.insert("autocomplete_dismiss".to_string(), "ctrl+x".to_string());
+
+        let buf_mut = &mut app.buffers[app.current_buffer_idx];
+        buf_mut.insert_text("\nban");
+        buf_mut.update_autocomplete();
+        assert!(!buf_mut.autocomplete_options.is_empty());
+
+        // Ctrl+Y accepts
+        super::handle_editor_input(&mut app, key_mods(KeyCode::Char('y'), KeyModifiers::CONTROL));
+        assert_eq!(app.buffers[app.current_buffer_idx].line_text(3), "banana");
+
+        // Ctrl+X dismisses
+        let buf_mut = &mut app.buffers[app.current_buffer_idx];
+        buf_mut.insert_text("\nban");
+        buf_mut.update_autocomplete();
+        assert!(!buf_mut.autocomplete_options.is_empty());
+
+        super::handle_editor_input(&mut app, key_mods(KeyCode::Char('x'), KeyModifiers::CONTROL));
+        assert_eq!(app.buffers[app.current_buffer_idx].line_text(4), "ban");
+        assert!(app.buffers[app.current_buffer_idx].autocomplete_options.is_empty());
+    }
+
+    #[test]
+    fn test_context_menu_custom_keybinds() {
+        let mut app = App::new(&[]);
+        app.screen_area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        app.open_editor_context_menu(10, 10, 80, 24);
+        assert!(app.context_menu.is_some());
+        assert_eq!(app.context_menu.as_ref().unwrap().selected_idx, 0);
+
+        // Configure custom keybinds for context menu
+        app.config.keybinds.insert("context_menu_down".to_string(), "j".to_string());
+        app.config.keybinds.insert("context_menu_up".to_string(), "k".to_string());
+        app.config.keybinds.insert("context_menu_close".to_string(), "q".to_string());
+
+        // Press 'j' -> moves down
+        super::handle_key_event(&mut app, key(KeyCode::Char('j')));
+        assert_eq!(app.context_menu.as_ref().unwrap().selected_idx, 1);
+
+        // Press 'k' -> moves up
+        super::handle_key_event(&mut app, key(KeyCode::Char('k')));
+        assert_eq!(app.context_menu.as_ref().unwrap().selected_idx, 0);
+
+        // Press 'q' -> closes context menu
+        super::handle_key_event(&mut app, key(KeyCode::Char('q')));
+        assert!(app.context_menu.is_none());
     }
 }
 

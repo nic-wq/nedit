@@ -9,12 +9,25 @@ impl Config {
             return false;
         }
 
+        for single_bind in bind.split(',') {
+            if self.matches_single_bind(event, single_bind.trim()) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn matches_single_bind(&self, event: KeyEvent, bind: &str) -> bool {
+        if bind.is_empty() {
+            return false;
+        }
+
         let parts: Vec<&str> = bind.split('+').collect();
         let mut target_modifiers = KeyModifiers::NONE;
         let mut target_code = KeyCode::Null;
 
         for part in parts {
-            match part.to_lowercase().as_str() {
+            match part.trim().to_lowercase().as_str() {
                 "ctrl" => target_modifiers |= KeyModifiers::CONTROL,
                 "alt" => target_modifiers |= KeyModifiers::ALT,
                 "shift" => target_modifiers |= KeyModifiers::SHIFT,
@@ -26,7 +39,13 @@ impl Config {
                 "down" => target_code = KeyCode::Down,
                 "left" => target_code = KeyCode::Left,
                 "right" => target_code = KeyCode::Right,
+                "home" => target_code = KeyCode::Home,
+                "end" => target_code = KeyCode::End,
+                "pageup" | "pgup" => target_code = KeyCode::PageUp,
+                "pagedown" | "pgdn" => target_code = KeyCode::PageDown,
+                "space" => target_code = KeyCode::Char(' '),
                 "backspace" => target_code = KeyCode::Backspace,
+                "delete" | "del" => target_code = KeyCode::Delete,
                 "f1" => target_code = KeyCode::F(1),
                 "f2" => target_code = KeyCode::F(2),
                 "f3" => target_code = KeyCode::F(3),
@@ -39,7 +58,7 @@ impl Config {
                 "f10" => target_code = KeyCode::F(10),
                 "f11" => target_code = KeyCode::F(11),
                 "f12" => target_code = KeyCode::F(12),
-                c if c.len() == 1 => {
+                c if c.chars().count() == 1 => {
                     target_code = KeyCode::Char(c.chars().next().unwrap());
                 }
                 _ => {}

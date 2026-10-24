@@ -51,6 +51,32 @@ Configure these in the `[keybinds]` section of `~/.config/nedit/config.toml`:
 | `run_live_script` | `f9` | Execute active Lua Live Script on the left target file |
 | `save_live_script` | `ctrl+s` | Save active Live Script to local library (`~/.config/nedit/scripts/`) |
 
+### Tab Management
+
+| Action | Default | Description |
+| :--- | :--- | :--- |
+| `next_tab` | `ctrl+tab` | Switch to next tab |
+| `prev_tab` | `ctrl+shift+tab` | Switch to previous tab |
+| `cycle_next_tab` | `ctrl+alt+right` | Cycle to next tab (script pane is always last) |
+| `cycle_prev_tab` | `ctrl+alt+left` | Cycle to previous tab |
+| `tab_1` through `tab_9` | `alt+1` through `alt+9` | Jump directly to tab index 1 through 9 |
+
+### Autocomplete
+
+| Action | Default | Description |
+| :--- | :--- | :--- |
+| `autocomplete_accept` | `shift+right` | Accept suggested autocomplete word |
+| `autocomplete_dismiss` | `esc` | Dismiss autocomplete suggestion |
+
+### Context Menus (Right-Click Menus)
+
+| Action | Default | Description |
+| :--- | :--- | :--- |
+| `context_menu_up` | `up` | Cycle upward through menu items |
+| `context_menu_down` | `down` | Cycle downward through menu items |
+| `context_menu_confirm` | `enter` | Execute highlighted item and close menu |
+| `context_menu_close` | `esc` | Close context menu without performing any action |
+
 ---
 
 ## 🔒 Hardcoded Shortcuts
@@ -83,31 +109,6 @@ These shortcuts are built into NEdit's core engine and cannot be rebound:
 | `DELETE` | Delete character after cursor (or delete selection) |
 | `TAB` | Insert 4 spaces (soft tab) |
 | `CTRL + BACKSPACE` / `CTRL + H` | Delete previous word |
-
-### Tab Management
-
-| Shortcut | Action |
-| :--- | :--- |
-| `CTRL + TAB` | Switch to next tab |
-| `CTRL + SHIFT + TAB` | Switch to previous tab |
-| `CTRL + ALT + RIGHT` | Cycle to next tab (script pane is always last) |
-| `CTRL + ALT + LEFT` | Cycle to previous tab |
-| `ALT + 1` through `ALT + 9` | Jump directly to tab index 1 through 9 |
-
-### Autocomplete
-
-| Shortcut | Action |
-| :--- | :--- |
-| `SHIFT + RIGHT` | Accept suggested autocomplete word |
-| `ESC` | Dismiss autocomplete suggestion |
-
-### Context Menus (Right-Click Menus)
-
-| Shortcut | Action |
-| :--- | :--- |
-| `UP` / `DOWN` | Cycle through menu items |
-| `ENTER` | Execute highlighted item and close menu |
-| `ESC` | Close context menu without performing any action |
 
 ### Modals & Dialogs
 

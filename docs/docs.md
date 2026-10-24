@@ -190,10 +190,10 @@ NEdit provides first-class, intuitive mouse interactions across all interface co
 ### Built-in Navigation & Editing Shortcuts
 
 - **Cursor**: `Arrow Keys`, `Ctrl+Left` / `Ctrl+Right` (word jumps), `Home` / `End` (line start/end).
-- **Selection**: `Shift + Arrow Keys` to extend selection.
-- **Tabs**: `Ctrl + Tab` / `Ctrl + Shift + Tab` to cycle tabs; `Alt + 1`..`Alt + 9` jump directly to tab index.
-- **Autocomplete**: `Shift + Right` accepts the suggestion; `Esc` dismisses it.
-- **Context Menus**: `↑` / `↓` navigates options, `Enter` executes, `Esc` dismisses.
+- **Selection**: `Shift + Arrow Keys` to extend selection; `Shift + Home` / `Shift + End` to extend selection to start / end of line.
+- **Tabs**: `Ctrl + Tab` / `Ctrl + Shift + Tab` to cycle tabs; `Alt + 1`..`Alt + 9` jump directly to tab index (configurable in `[keybinds]`).
+- **Autocomplete**: `Shift + Right` accepts the suggestion; `Esc` dismisses it (configurable in `[keybinds]`).
+- **Context Menus**: `↑` / `↓` navigates options, `Enter` executes, `Esc` dismisses (configurable in `[keybinds]`).
 - **Confirmation Modals**: `←` / `→` or `Tab` selects buttons, `Enter` executes action, `Esc` cancels.
 
 ---

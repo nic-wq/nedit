@@ -152,6 +152,25 @@ impl Config {
         keybinds.insert("run_live_script".to_string(), "f9".to_string());
         keybinds.insert("set_as_root".to_string(), "ctrl+enter".to_string());
 
+        // Tab Management
+        keybinds.insert("next_tab".to_string(), "ctrl+tab".to_string());
+        keybinds.insert("prev_tab".to_string(), "ctrl+shift+tab".to_string());
+        keybinds.insert("cycle_next_tab".to_string(), "ctrl+alt+right".to_string());
+        keybinds.insert("cycle_prev_tab".to_string(), "ctrl+alt+left".to_string());
+        for i in 1..=9 {
+            keybinds.insert(format!("tab_{i}"), format!("alt+{i}"));
+        }
+
+        // Autocomplete
+        keybinds.insert("autocomplete_accept".to_string(), "shift+right".to_string());
+        keybinds.insert("autocomplete_dismiss".to_string(), "esc".to_string());
+
+        // Context Menus
+        keybinds.insert("context_menu_up".to_string(), "up".to_string());
+        keybinds.insert("context_menu_down".to_string(), "down".to_string());
+        keybinds.insert("context_menu_confirm".to_string(), "enter".to_string());
+        keybinds.insert("context_menu_close".to_string(), "esc".to_string());
+
         Self {
             autocomplete_enabled: true,
             keybinds,
@@ -167,13 +186,37 @@ impl Config {
     }
 
     pub fn get_keybind(&self, action: &str) -> String {
-        self.keybinds.get(action).cloned().unwrap_or_else(|| {
-            Self::new()
-                .keybinds
-                .get(action)
-                .cloned()
-                .unwrap_or_default()
-        })
+        if let Some(val) = self.keybinds.get(action) {
+            return val.clone();
+        }
+        let aliases: &[&str] = match action {
+            "next_tab" => &["switch_next_tab"],
+            "prev_tab" => &["switch_prev_tab"],
+            "switch_next_tab" => &["next_tab"],
+            "switch_prev_tab" => &["prev_tab"],
+            "context_menu_confirm" => &["context_menu_execute"],
+            "context_menu_execute" => &["context_menu_confirm"],
+            "context_menu_close" => &["context_menu_cancel", "context_menu_dismiss"],
+            "context_menu_cancel" | "context_menu_dismiss" => &["context_menu_close"],
+            "autocomplete_dismiss" => &["autocomplete_cancel"],
+            "autocomplete_cancel" => &["autocomplete_dismiss"],
+            _ => &[],
+        };
+        for alias in aliases {
+            if let Some(val) = self.keybinds.get(*alias) {
+                return val.clone();
+            }
+        }
+        let defaults = Self::new();
+        if let Some(val) = defaults.keybinds.get(action) {
+            return val.clone();
+        }
+        for alias in aliases {
+            if let Some(val) = defaults.keybinds.get(*alias) {
+                return val.clone();
+            }
+        }
+        String::new()
     }
 
     pub fn get_command_shortcut(&self, command: &str) -> Option<String> {
@@ -196,6 +239,8 @@ impl Config {
             "Open Help" => "open_help",
             "Command Palette" => "command_palette",
             "Settings" => "open_settings",
+            "Next Tab" => "next_tab",
+            "Previous Tab" => "prev_tab",
             _ => return None,
         };
         let kb = self.get_keybind(action);
@@ -314,6 +359,28 @@ impl Config {
             "run_live_script",
             "set_as_root",
             "open_settings",
+            // Tab Management
+            "next_tab",
+            "prev_tab",
+            "cycle_next_tab",
+            "cycle_prev_tab",
+            "tab_1",
+            "tab_2",
+            "tab_3",
+            "tab_4",
+            "tab_5",
+            "tab_6",
+            "tab_7",
+            "tab_8",
+            "tab_9",
+            // Autocomplete
+            "autocomplete_accept",
+            "autocomplete_dismiss",
+            // Context Menu
+            "context_menu_up",
+            "context_menu_down",
+            "context_menu_confirm",
+            "context_menu_close",
         ]
     }
 }
@@ -427,5 +494,78 @@ mod tests {
         assert_eq!(loaded.autocomplete_enabled, false);
         assert_eq!(loaded.preview_max_size, 10 * 1024 * 1024);
         assert_eq!(loaded.notification_position, NotificationPosition::TopLeft);
+    }
+
+    #[test]
+    fn config_default_keybinds_for_tabs_autocomplete_and_context_menus() {
+        let config = super::Config::new();
+        assert_eq!(config.get_keybind("next_tab"), "ctrl+tab");
+        assert_eq!(config.get_keybind("prev_tab"), "ctrl+shift+tab");
+        assert_eq!(config.get_keybind("cycle_next_tab"), "ctrl+alt+right");
+        assert_eq!(config.get_keybind("cycle_prev_tab"), "ctrl+alt+left");
+        assert_eq!(config.get_keybind("tab_1"), "alt+1");
+        assert_eq!(config.get_keybind("tab_9"), "alt+9");
+        assert_eq!(config.get_keybind("autocomplete_accept"), "shift+right");
+        assert_eq!(config.get_keybind("autocomplete_dismiss"), "esc");
+        assert_eq!(config.get_keybind("context_menu_up"), "up");
+        assert_eq!(config.get_keybind("context_menu_down"), "down");
+        assert_eq!(config.get_keybind("context_menu_confirm"), "enter");
+        assert_eq!(config.get_keybind("context_menu_close"), "esc");
+    }
+
+    #[test]
+    fn config_loads_custom_keybinds_from_toml() {
+        let toml_str = r#"
+            [keybinds]
+            next_tab = "ctrl+j"
+            prev_tab = "ctrl+k"
+            cycle_next_tab = "ctrl+pageup"
+            cycle_prev_tab = "ctrl+pagedown"
+            tab_1 = "ctrl+1"
+            autocomplete_accept = "tab"
+            autocomplete_dismiss = "ctrl+c"
+            context_menu_up = "k"
+            context_menu_down = "j"
+            context_menu_confirm = "space"
+            context_menu_close = "q"
+        "#;
+        let config = super::Config::from_toml_with_defaults(toml_str).unwrap();
+        assert_eq!(config.get_keybind("next_tab"), "ctrl+j");
+        assert_eq!(config.get_keybind("prev_tab"), "ctrl+k");
+        assert_eq!(config.get_keybind("cycle_next_tab"), "ctrl+pageup");
+        assert_eq!(config.get_keybind("cycle_prev_tab"), "ctrl+pagedown");
+        assert_eq!(config.get_keybind("tab_1"), "ctrl+1");
+        assert_eq!(config.get_keybind("autocomplete_accept"), "tab");
+        assert_eq!(config.get_keybind("autocomplete_dismiss"), "ctrl+c");
+        assert_eq!(config.get_keybind("context_menu_up"), "k");
+        assert_eq!(config.get_keybind("context_menu_down"), "j");
+        assert_eq!(config.get_keybind("context_menu_confirm"), "space");
+        assert_eq!(config.get_keybind("context_menu_close"), "q");
+    }
+
+    #[test]
+    fn config_matches_comma_separated_and_aliases() {
+        let mut config = super::Config::new();
+        config.keybinds.insert("next_tab".to_string(), "ctrl+tab, ctrl+pageup".to_string());
+
+        let ev1 = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Tab,
+            crossterm::event::KeyModifiers::CONTROL,
+        );
+        let ev2 = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::PageUp,
+            crossterm::event::KeyModifiers::CONTROL,
+        );
+        let ev3 = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::PageDown,
+            crossterm::event::KeyModifiers::CONTROL,
+        );
+
+        assert!(config.matches(ev1, "next_tab"));
+        assert!(config.matches(ev2, "next_tab"));
+        assert!(!config.matches(ev3, "next_tab"));
+
+        // Alias switch_next_tab
+        assert!(config.matches(ev1, "switch_next_tab"));
     }
 }
