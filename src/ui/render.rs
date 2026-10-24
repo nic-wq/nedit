@@ -541,52 +541,40 @@ fn draw_tab_bar(f: &mut Frame, app: &mut App, area: Rect, colors: &UIColors) {
         let tab_content_len = UnicodeWidthStr::width(tab_content.as_str()) as u16;
 
         let close_btn_w = 3u16;
-        let is_tab_hovered = is_bar_hovered
-            && mouse_x >= cur_x
-            && mouse_x < cur_x + tab_content_len + close_btn_w;
+        let close_start_x = cur_x + tab_content_len;
+        let close_end_x = close_start_x + close_btn_w;
+        let is_close_hovered = is_bar_hovered && mouse_x >= close_start_x && mouse_x < close_end_x;
 
-        if is_tab_hovered {
-            let close_start_x = cur_x + tab_content_len;
-            let close_end_x = close_start_x + close_btn_w;
-            let is_close_hovered = mouse_x >= close_start_x && mouse_x < close_end_x;
-
-            let close_style = if is_close_hovered {
-                Style::default()
-                    .fg(colors.error)
-                    .add_modifier(Modifier::BOLD)
-                    .bg(if is_current { colors.sel } else { colors.bg })
-            } else {
-                Style::default()
-                    .fg(colors.text_muted())
-                    .bg(if is_current { colors.sel } else { colors.bg })
-            };
-
-            spans.push(Span::styled(tab_content, tab_style));
-            spans.push(Span::styled("󰅖 ", close_style));
-
-            let total_w = tab_content_len + close_btn_w;
-            app.tab_hitboxes.push(TabHitbox {
-                buffer_idx: i,
-                y: area.y,
-                tab_start_x: cur_x,
-                tab_end_x: (cur_x + total_w).min(max_x),
-                close_start_x: Some(close_start_x),
-                close_end_x: Some(close_end_x),
-            });
-            cur_x += total_w;
+        let close_bg = if is_current || is_target_in_split {
+            colors.sel
         } else {
-            spans.push(Span::styled(tab_content, tab_style));
-            let total_w = tab_content_len;
-            app.tab_hitboxes.push(TabHitbox {
-                buffer_idx: i,
-                y: area.y,
-                tab_start_x: cur_x,
-                tab_end_x: (cur_x + total_w).min(max_x),
-                close_start_x: None,
-                close_end_x: None,
-            });
-            cur_x += total_w;
-        }
+            colors.bg
+        };
+
+        let close_style = if is_close_hovered {
+            Style::default()
+                .fg(colors.error)
+                .add_modifier(Modifier::BOLD)
+                .bg(close_bg)
+        } else {
+            Style::default()
+                .fg(colors.text_muted())
+                .bg(close_bg)
+        };
+
+        spans.push(Span::styled(tab_content, tab_style));
+        spans.push(Span::styled("󰅖 ", close_style));
+
+        let total_w = tab_content_len + close_btn_w;
+        app.tab_hitboxes.push(TabHitbox {
+            buffer_idx: i,
+            y: area.y,
+            tab_start_x: cur_x,
+            tab_end_x: (cur_x + total_w).min(max_x),
+            close_start_x: Some(close_start_x),
+            close_end_x: Some(close_end_x),
+        });
+        cur_x += total_w;
 
         spans.push(Span::raw(" "));
         cur_x += 1;
@@ -3818,7 +3806,7 @@ mod explorer_marquee_and_truncation_tests {
         let backend = TestBackend::new(width, height);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        // 1. Without mouse hover: no close button rendered, hitboxes have close_start_x == None
+        // 1. Without mouse hover: close button is fixed and rendered for all tabs
         app.mouse_pos = None;
         terminal
             .draw(|f| {
@@ -3829,12 +3817,12 @@ mod explorer_marquee_and_truncation_tests {
 
         let rendered = terminal.backend().buffer().clone();
         let row0_unhovered: String = (0..width).map(|x| rendered[(x, 0)].symbol().to_string()).collect();
-        assert!(!row0_unhovered.contains("󰅖"));
+        assert!(row0_unhovered.contains("󰅖"));
         assert_eq!(app.tab_hitboxes.len(), 2);
-        assert!(app.tab_hitboxes[0].close_start_x.is_none());
-        assert!(app.tab_hitboxes[1].close_start_x.is_none());
+        assert!(app.tab_hitboxes[0].close_start_x.is_some());
+        assert!(app.tab_hitboxes[1].close_start_x.is_some());
 
-        // 2. With mouse hover over tab 0: tab 0 shows close button and records close hitbox
+        // 2. With mouse hover: close buttons and hitboxes remain fixed and active
         app.mouse_pos = Some((5, 0));
         terminal
             .draw(|f| {
@@ -3848,7 +3836,8 @@ mod explorer_marquee_and_truncation_tests {
         assert!(row0_hovered.contains("󰅖"));
         assert!(app.tab_hitboxes[0].close_start_x.is_some());
         assert!(app.tab_hitboxes[0].close_end_x.is_some());
-        assert!(app.tab_hitboxes[1].close_start_x.is_none());
+        assert!(app.tab_hitboxes[1].close_start_x.is_some());
+        assert!(app.tab_hitboxes[1].close_end_x.is_some());
     }
 
     #[test]

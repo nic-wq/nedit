@@ -4075,5 +4075,48 @@ mod tests {
         super::handle_mouse_event(&mut app, click_script_body);
         assert_eq!(app.current_buffer_idx, script_idx);
     }
+
+    #[test]
+    fn test_fixed_tab_close_button_closes_regular_tab_directly() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        let mut buf1 = crate::buffer::EditorBuffer::new();
+        buf1.path = Some(std::path::PathBuf::from("/tmp/first.rs"));
+        let mut buf2 = crate::buffer::EditorBuffer::new();
+        buf2.path = Some(std::path::PathBuf::from("/tmp/second.rs"));
+        app.buffers.push(buf1);
+        app.buffers.push(buf2);
+        app.current_buffer_idx = 0;
+
+        // Render to generate hitboxes with mouse_pos = None (no hover)
+        app.mouse_pos = None;
+        let width = 100;
+        let height = 30;
+        let backend = ratatui::backend::TestBackend::new(width, height);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                crate::ui::render(f, &mut app);
+            })
+            .unwrap();
+
+        // Both tabs have close hitboxes despite no mouse hover
+        assert_eq!(app.tab_hitboxes.len(), 2);
+        let tab0_close_x = app.tab_hitboxes[0].close_start_x.expect("tab 0 close hitbox is fixed");
+        let tab0_y = app.tab_hitboxes[0].y;
+
+        // Click close button on tab 0
+        let click_close = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: tab0_close_x,
+            row: tab0_y,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click_close);
+
+        // Tab 0 was closed without requiring hover state first
+        assert_eq!(app.buffers.len(), 1);
+        assert_eq!(app.buffers[0].path.as_deref().unwrap(), std::path::Path::new("/tmp/second.rs"));
+    }
 }
 
