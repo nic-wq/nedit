@@ -244,9 +244,8 @@ pub fn render(f: &mut Frame, app: &mut App) {
 
     app.editor_area = editor_chunks[1];
 
-    draw_tab_bar(f, app, editor_chunks[0], &colors);
-
     if app.is_welcome {
+        draw_tab_bar(f, app, editor_chunks[0], &colors);
         draw_welcome_screen(f, app, editor_chunks[1], &colors);
     } else if app.live_script_mode {
         app.ensure_current_theme_loaded();
@@ -269,6 +268,22 @@ pub fn render(f: &mut Frame, app: &mut App) {
         }
 
         if target_idx < app.buffers.len() && script_idx < app.buffers.len() {
+            let tab_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(50),
+                    Constraint::Length(1),
+                    Constraint::Percentage(50),
+                ])
+                .split(editor_chunks[0]);
+            let target_tab_area = tab_chunks[0];
+            let separator_tab_area = tab_chunks[1];
+            let script_tab_area = tab_chunks[2];
+
+            draw_tab_bar(f, app, target_tab_area, &colors);
+            draw_split_separator(f, separator_tab_area, &colors);
+            draw_live_script_tab_bar(f, app, script_tab_area, &colors);
+
             let split_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
@@ -283,6 +298,8 @@ pub fn render(f: &mut Frame, app: &mut App) {
 
             let target_body_area = editor_body_area(app, target_area, target_idx);
             let script_body_area = editor_body_area(app, script_area, script_idx);
+            app.live_script_target_area = Some(target_body_area);
+            app.live_script_pane_area = Some(script_body_area);
 
             if let Some(target_buf) = app.buffers.get_mut(target_idx) {
                 let width = target_body_area.width as usize;
@@ -312,6 +329,9 @@ pub fn render(f: &mut Frame, app: &mut App) {
                 &colors,
             );
         } else if !app.buffers.is_empty() {
+            app.live_script_target_area = None;
+            app.live_script_pane_area = None;
+            draw_tab_bar(f, app, editor_chunks[0], &colors);
             draw_editor_pane(
                 f,
                 app,
@@ -322,6 +342,9 @@ pub fn render(f: &mut Frame, app: &mut App) {
             );
         }
     } else if !app.buffers.is_empty() {
+        app.live_script_target_area = None;
+        app.live_script_pane_area = None;
+        draw_tab_bar(f, app, editor_chunks[0], &colors);
         app.ensure_current_theme_loaded();
         let current = app
             .buffers
@@ -492,11 +515,17 @@ fn draw_tab_bar(f: &mut Frame, app: &mut App, area: Rect, colors: &UIColors) {
         let name = truncate_with_ellipsis(&full_name, 20);
 
         let is_current = i == app.current_buffer_idx;
+        let is_target_in_split = app.live_script_mode
+            && Some(i) == app.target_buffer_idx
+            && app.current_buffer_idx == app.live_script_buffer_idx.unwrap_or(usize::MAX);
+
         let tab_style = if is_current {
             Style::default()
                 .fg(colors.accent)
                 .add_modifier(Modifier::BOLD)
                 .bg(colors.sel)
+        } else if is_target_in_split {
+            Style::default().fg(colors.fg).bg(colors.sel)
         } else {
             Style::default().fg(colors.fg)
         };
@@ -562,6 +591,76 @@ fn draw_tab_bar(f: &mut Frame, app: &mut App, area: Rect, colors: &UIColors) {
         spans.push(Span::raw(" "));
         cur_x += 1;
     }
+
+    f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.bg), area);
+}
+
+fn draw_live_script_tab_bar(f: &mut Frame, app: &mut App, area: Rect, colors: &UIColors) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let Some(script_idx) = app.live_script_buffer_idx else {
+        return;
+    };
+    let Some(script_buf) = app.buffers.get(script_idx) else {
+        return;
+    };
+
+    let is_bar_hovered = app.mouse_pos.map(|(_, my)| my == area.y).unwrap_or(false);
+    let mouse_x = app.mouse_pos.map(|(mx, _)| mx).unwrap_or(0);
+
+    let origin_name = app.live_script_origin.as_deref();
+    let raw_title = match origin_name {
+        Some(origin) => format!("Live Script: {}", origin),
+        None => "Live Script".to_string(),
+    };
+    let max_title_w = (area.width as usize).saturating_sub(9).max(6);
+    let title = truncate_with_ellipsis(&raw_title, max_title_w);
+    let mod_str = if script_buf.modified { " *" } else { "" };
+
+    let is_current = app.current_buffer_idx == script_idx;
+    let tab_style = if is_current {
+        Style::default()
+            .fg(colors.accent)
+            .add_modifier(Modifier::BOLD)
+            .bg(colors.sel)
+    } else {
+        Style::default().fg(colors.fg)
+    };
+
+    let tab_content = format!(" 󰢱 {title}{mod_str} ");
+    let tab_content_len = UnicodeWidthStr::width(tab_content.as_str()) as u16;
+
+    let close_btn_w = 3u16;
+    let cur_x = area.x;
+    let close_start_x = cur_x + tab_content_len;
+    let close_end_x = close_start_x + close_btn_w;
+
+    let is_close_hovered = is_bar_hovered && mouse_x >= close_start_x && mouse_x < close_end_x;
+    let close_style = if is_close_hovered {
+        Style::default()
+            .fg(colors.error)
+            .add_modifier(Modifier::BOLD)
+            .bg(if is_current { colors.sel } else { colors.bg })
+    } else {
+        Style::default()
+            .fg(colors.text_muted())
+            .bg(if is_current { colors.sel } else { colors.bg })
+    };
+
+    let mut spans = Vec::new();
+    spans.push(Span::styled(tab_content, tab_style));
+    spans.push(Span::styled("󰅖 ", close_style));
+
+    let total_w = tab_content_len + close_btn_w;
+    app.tab_hitboxes.push(TabHitbox {
+        buffer_idx: script_idx,
+        y: area.y,
+        tab_start_x: cur_x,
+        tab_end_x: (cur_x + total_w).min(area.x + area.width),
+        close_start_x: Some(close_start_x),
+        close_end_x: Some(close_end_x),
+    });
 
     f.render_widget(Paragraph::new(Line::from(spans)).bg(colors.bg), area);
 }

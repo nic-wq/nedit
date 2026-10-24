@@ -756,18 +756,22 @@ fn get_scroll_target_buffer_idx(app: &App, col: u16, row: u16) -> Option<usize> 
     if app.is_welcome || app.buffers.is_empty() {
         return None;
     }
-    if !app.editor_area.contains(ratatui::layout::Position::new(col, row)) {
-        return None;
-    }
+    let pos = ratatui::layout::Position::new(col, row);
     if app.live_script_mode {
-        let mid_x = app.editor_area.x + app.editor_area.width / 2;
-        if col < mid_x {
-            app.target_buffer_idx.or(Some(app.current_buffer_idx))
-        } else {
-            app.live_script_buffer_idx.or(Some(app.current_buffer_idx))
+        if app.live_script_target_area.map(|a| a.contains(pos)).unwrap_or(false) {
+            return app.target_buffer_idx.or(Some(app.current_buffer_idx));
         }
-    } else {
+        if app.live_script_pane_area.map(|a| a.contains(pos)).unwrap_or(false) {
+            return app.live_script_buffer_idx.or(Some(app.current_buffer_idx));
+        }
+        if app.editor_area.contains(pos) {
+            return Some(app.current_buffer_idx);
+        }
+        None
+    } else if app.editor_area.contains(pos) {
         Some(app.current_buffer_idx)
+    } else {
+        None
     }
 }
 
@@ -1028,7 +1032,7 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                         }
                     }
                     // Clicked tab body: switch buffer
-                    app.current_buffer_idx = tab.buffer_idx;
+                    app.switch_tab(tab.buffer_idx);
                     if let Some(idx) = app.preview_buffer_idx {
                         app.clear_preview(idx);
                     }
@@ -1039,17 +1043,40 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
             }
 
             // 4. Editor clicks
-            if app
-                .editor_area
-                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
-            {
+            let clicked_editor_pane = if app.live_script_mode {
+                let pos = ratatui::layout::Position::new(mouse.column, mouse.row);
+                let target_idx = app.target_buffer_idx.unwrap_or(0);
+                let script_idx = app.live_script_buffer_idx.unwrap_or(0);
+                if app.live_script_target_area.map(|a| a.contains(pos)).unwrap_or(false) {
+                    Some((target_idx, app.live_script_target_area.unwrap()))
+                } else if app.live_script_pane_area.map(|a| a.contains(pos)).unwrap_or(false) {
+                    Some((script_idx, app.live_script_pane_area.unwrap()))
+                } else if app.editor_area.contains(pos) {
+                    Some((app.current_buffer_idx, app.editor_area))
+                } else {
+                    None
+                }
+            } else {
+                let pos = ratatui::layout::Position::new(mouse.column, mouse.row);
+                if app.editor_area.contains(pos) {
+                    Some((app.current_buffer_idx, app.editor_area))
+                } else {
+                    None
+                }
+            };
+
+            if let Some((target_buf_idx, pane_area)) = clicked_editor_pane {
                 app.focus = Focus::Editor;
+                if app.current_buffer_idx != target_buf_idx {
+                    app.switch_tab(target_buf_idx);
+                }
+                app.editor_area = pane_area;
                 if let Some(idx) = app.preview_buffer_idx {
                     app.clear_preview(idx);
                 }
-                let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
-                let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
-                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                let rel_col = mouse.column.saturating_sub(pane_area.x) as usize;
+                let rel_row = mouse.row.saturating_sub(pane_area.y) as usize;
+                if let Some(buffer) = app.buffers.get_mut(target_buf_idx) {
                     if buffer.is_loading {
                         return;
                     }
@@ -3906,6 +3933,147 @@ mod tests {
         // Press 'q' -> closes context menu
         super::handle_key_event(&mut app, key(KeyCode::Char('q')));
         assert!(app.context_menu.is_none());
+    }
+
+    #[test]
+    fn test_live_script_tab_click_switches_and_close_prompts_confirmation() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.path = Some(std::path::PathBuf::from("/tmp/doc.txt"));
+        buf.insert_text("hello target file");
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+
+        // Open live script
+        app.open_live_script();
+        assert!(app.live_script_mode);
+        let script_idx = app.live_script_buffer_idx.expect("script buffer created");
+        assert_eq!(app.current_buffer_idx, script_idx);
+
+        // Render to generate tab hitboxes
+        let width = 100;
+        let height = 30;
+        let backend = ratatui::backend::TestBackend::new(width, height);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                crate::ui::render(f, &mut app);
+            })
+            .unwrap();
+
+        // Check that tab_hitboxes has both target tab (idx 0) and live script tab (idx 1)
+        assert!(app.tab_hitboxes.iter().any(|t| t.buffer_idx == 0));
+        let script_tab = app
+            .tab_hitboxes
+            .iter()
+            .find(|t| t.buffer_idx == script_idx)
+            .cloned()
+            .expect("live script tab hitbox must exist");
+        assert!(script_tab.close_start_x.is_some());
+        assert!(script_tab.close_end_x.is_some());
+
+        // 1. Switch to target buffer by clicking target tab
+        let target_tab = app.tab_hitboxes.iter().find(|t| t.buffer_idx == 0).cloned().unwrap();
+        let click_target = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: target_tab.tab_start_x + 1,
+            row: target_tab.y,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click_target);
+        assert_eq!(app.current_buffer_idx, 0);
+
+        // 2. Switch back to live script by clicking live script tab body
+        let click_script_body = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: script_tab.tab_start_x + 1,
+            row: script_tab.y,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click_script_body);
+        assert_eq!(app.current_buffer_idx, script_idx);
+
+        // 3. Click close 'X' on live script tab -> prompts confirmation modal (UnsavedChanges) ALWAYS
+        let close_x = script_tab.close_start_x.unwrap();
+        let click_close = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: close_x,
+            row: script_tab.y,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click_close);
+
+        assert!(app.is_fuzzy);
+        assert_eq!(app.fuzzy_mode, crate::app::types::FuzzyMode::UnsavedChanges);
+        assert_eq!(app.pending_action, Some(crate::app::types::PendingAction::CloseTab));
+        assert_eq!(app.pending_buffer_idx, Some(script_idx));
+
+        // 4. Cancel leaves live script open
+        super::handle_key_event(&mut app, key(KeyCode::Esc));
+        assert!(!app.is_fuzzy);
+        assert!(app.live_script_mode);
+        assert_eq!(app.live_script_buffer_idx, Some(script_idx));
+
+        // 5. Click close again and confirm Discard -> closes live script
+        super::handle_mouse_event(&mut app, click_close);
+        assert!(app.is_fuzzy);
+        // Press Enter on default Discard button (index 0)
+        super::handle_key_event(&mut app, key(KeyCode::Enter));
+        assert!(!app.is_fuzzy);
+        assert!(!app.live_script_mode);
+        assert_eq!(app.live_script_buffer_idx, None);
+    }
+
+    #[test]
+    fn test_live_script_pane_body_clicks_switch_focus() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.path = Some(std::path::PathBuf::from("/tmp/doc.txt"));
+        buf.insert_text("line 1\nline 2\nline 3");
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+
+        app.open_live_script();
+        let script_idx = app.live_script_buffer_idx.unwrap();
+
+        // Render to calculate layout and set live_script_target_area & live_script_pane_area
+        let width = 100;
+        let height = 30;
+        let backend = ratatui::backend::TestBackend::new(width, height);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                crate::ui::render(f, &mut app);
+            })
+            .unwrap();
+
+        let target_area = app.live_script_target_area.expect("target body area exists");
+        let script_area = app.live_script_pane_area.expect("script body area exists");
+
+        // Focus is currently on script pane
+        assert_eq!(app.current_buffer_idx, script_idx);
+
+        // Click inside target area body (left side) -> switches to target buffer (idx 0)
+        let click_target_body = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: target_area.x + 5,
+            row: target_area.y + 1,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click_target_body);
+        assert_eq!(app.current_buffer_idx, 0);
+
+        // Click inside script area body (right side) -> switches to script buffer
+        let click_script_body = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: script_area.x + 5,
+            row: script_area.y + 1,
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, click_script_body);
+        assert_eq!(app.current_buffer_idx, script_idx);
     }
 }
 
