@@ -116,6 +116,7 @@ pub struct App {
     pub setting_input_target: Option<crate::app::types::SettingId>,
     pub live_script_target_area: Option<Rect>,
     pub live_script_pane_area: Option<Rect>,
+    pub last_saved_dir: Option<PathBuf>,
 }
 
 const EMBEDDED_SYNTAXES: &[(&str, &str)] = &[
@@ -333,6 +334,7 @@ impl App {
             setting_input_target: None,
             live_script_target_area: None,
             live_script_pane_area: None,
+            last_saved_dir: None,
         };
 
         let is_huge_system_dir = initial_root == Path::new("/")
@@ -894,7 +896,7 @@ impl App {
                 (format!("󰄬 {}", self.i18n.t("keep")), ModalAction::KeepExternal, false),
                 (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],
-            FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SaveAs | FuzzyMode::SettingInput | FuzzyMode::SaveLiveScript => vec![
+            FuzzyMode::Create | FuzzyMode::Rename | FuzzyMode::SettingInput | FuzzyMode::SaveLiveScript => vec![
                 (format!("󰄬 {}", self.i18n.t("confirm")), ModalAction::ConfirmInput, false),
                 (format!("󰅖 {}", self.i18n.t("cancel")), ModalAction::Cancel, false),
             ],

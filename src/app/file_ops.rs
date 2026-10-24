@@ -111,6 +111,12 @@ impl App {
             self.clear_preview(preview_idx);
         }
 
+        if self.last_saved_dir.is_none() {
+            if let Some(parent) = path.parent() {
+                self.last_saved_dir = Some(parent.to_path_buf());
+            }
+        }
+
         for (i, buf) in self.buffers.iter().enumerate() {
             if let Some(p) = &buf.path {
                 if p == &path {
@@ -527,6 +533,9 @@ impl App {
                 Ok(()) => {
                     self.refresh_explorer();
                     if let Some(p) = path.clone() {
+                        if let Some(parent) = p.parent() {
+                            self.last_saved_dir = Some(parent.to_path_buf());
+                        }
                         self.record_file_mtime(&p);
                         self.show_notification(
                             format!("Saved to {}", p.display()),
@@ -540,6 +549,18 @@ impl App {
                 ),
             }
         }
+    }
+
+    pub fn resolve_save_as_path(&self, raw: &str) -> PathBuf {
+        let trimmed = raw.trim();
+        if trimmed.starts_with('~') {
+            return self.expand_search_dir(trimmed);
+        }
+        let p = Path::new(trimmed);
+        if p.is_absolute() {
+            return p.to_path_buf();
+        }
+        self.explorer.root.join(p)
     }
 
     pub fn resolve_input_path(&self, raw: &str) -> PathBuf {

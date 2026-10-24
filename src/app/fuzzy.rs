@@ -225,7 +225,7 @@ impl App {
         }
     }
 
-    fn expand_search_dir(&self, dir: &str) -> PathBuf {
+    pub(crate) fn expand_search_dir(&self, dir: &str) -> PathBuf {
         if dir == "~" {
             return std::env::var("HOME")
                 .map(PathBuf::from)
@@ -295,6 +295,73 @@ impl App {
         suggestions.sort_by_key(|path| self.format_search_dir_for_query(path, prefer_home));
         suggestions.truncate(self.fuzzy_limit);
         Some(suggestions)
+    }
+
+    pub(crate) fn save_as_dir_suggestions(&self) -> Vec<PathBuf> {
+        let trimmed = self.fuzzy_query.trim();
+        let query_raw = trimmed.strip_prefix('@').unwrap_or(trimmed);
+
+        let mut results = Vec::new();
+
+        // When query is empty: if last_saved_dir exists, put it first as the default recommendation!
+        if query_raw.is_empty() {
+            if let Some(last_dir) = &self.last_saved_dir {
+                if last_dir.is_dir() {
+                    results.push(last_dir.clone());
+                }
+            }
+        }
+
+        let (base_dir, needle, prefer_home) = if query_raw.is_empty() {
+            (self.explorer.root.clone(), String::new(), false)
+        } else if query_raw.ends_with('/') {
+            (
+                self.expand_search_dir(query_raw),
+                String::new(),
+                query_raw.starts_with('~'),
+            )
+        } else if let Some((parent, fragment)) = query_raw.rsplit_once('/') {
+            (
+                self.expand_search_dir(parent),
+                fragment.to_lowercase(),
+                query_raw.starts_with('~'),
+            )
+        } else {
+            (
+                self.explorer.root.clone(),
+                query_raw.to_lowercase(),
+                query_raw.starts_with('~'),
+            )
+        };
+
+        if let Ok(entries) = fs::read_dir(&base_dir) {
+            let mut matched_dirs: Vec<PathBuf> = entries
+                .flatten()
+                .filter(|entry| entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+                .filter(|entry| {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    needle.is_empty() || name.starts_with(&needle)
+                })
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .map(|name| !crate::explorer::should_skip_dir_name(name))
+                        .unwrap_or(true)
+                })
+                .collect();
+
+            matched_dirs.sort_by_key(|path| self.format_search_dir_for_query(path, prefer_home));
+
+            for d in matched_dirs {
+                if !results.contains(&d) {
+                    results.push(d);
+                }
+            }
+        }
+
+        results.truncate(self.fuzzy_limit);
+        results
     }
 
     fn resolve_file_search_scope(&self) -> Option<(String, PathBuf)> {
@@ -422,6 +489,10 @@ impl App {
                         self.set_fuzzy_query(self.slugify(name.trim()));
                     }
                 }
+            }
+
+            if mode == FuzzyMode::SaveAs {
+                self.update_fuzzy(true);
             }
 
             if mode == FuzzyMode::Themes {
@@ -828,12 +899,19 @@ impl App {
             return;
         }
 
+        if self.fuzzy_mode == FuzzyMode::SaveAs {
+            self.fuzzy_results = self.save_as_dir_suggestions();
+            if reset_idx {
+                self.fuzzy_idx = 0;
+            }
+            return;
+        }
+
         if self.fuzzy_mode == FuzzyMode::Create
             || self.fuzzy_mode == FuzzyMode::ExternalChange
             || self.fuzzy_mode == FuzzyMode::UnsavedChanges
             || self.fuzzy_mode == FuzzyMode::SettingInput
             || self.fuzzy_mode == FuzzyMode::Rename
-            || self.fuzzy_mode == FuzzyMode::SaveAs
             || self.fuzzy_mode == FuzzyMode::DeleteConfirm
             || self.fuzzy_mode == FuzzyMode::SaveLiveScript
             || self.fuzzy_mode == FuzzyMode::SaveScriptChoice

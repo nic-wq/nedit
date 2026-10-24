@@ -36,6 +36,7 @@ impl App {
                 | FuzzyMode::DocSelect
                 | FuzzyMode::Settings
                 | FuzzyMode::SavedScripts
+                | FuzzyMode::SaveAs
         )
     }
 
