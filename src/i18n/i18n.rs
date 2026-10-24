@@ -88,6 +88,11 @@ impl I18n {
         defaults.insert("rename_item_title".to_string(), "Rename Item".to_string());
         defaults.insert("rename_item_prompt".to_string(), "Enter new name:".to_string());
         defaults.insert("save_buffer_as_title".to_string(), "Save Buffer As".to_string());
+        defaults.insert("save_as_step1_title".to_string(), "Save Buffer As — Choose Folder (1/2)".to_string());
+        defaults.insert("save_as_step2_title".to_string(), "Save Buffer As — File Name (2/2)".to_string());
+        defaults.insert("save_as_target_folder".to_string(), "Destination folder:".to_string());
+        defaults.insert("save_as_filter_folder_hint".to_string(), "Filter folders, or select below...".to_string());
+        defaults.insert("save_as_filename_hint".to_string(), "Enter file name with extension (e.g. main.rs)".to_string());
         defaults.insert("save_buffer_as_prompt".to_string(), "Enter destination file path:".to_string());
         defaults.insert("delete_prompt".to_string(), "Are you sure you want to delete?".to_string());
         defaults.insert("delete_warning".to_string(), "This action cannot be undone.".to_string());

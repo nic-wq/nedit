@@ -299,68 +299,84 @@ impl App {
 
     pub(crate) fn save_as_dir_suggestions(&self) -> Vec<PathBuf> {
         let trimmed = self.fuzzy_query.trim();
-        let query_raw = trimmed.strip_prefix('@').unwrap_or(trimmed);
+        let query_raw = trimmed.strip_prefix('@').unwrap_or(trimmed).trim_end_matches('/');
+        let needle = query_raw.to_lowercase();
+        let prefer_home = trimmed.starts_with('~');
 
         let mut results = Vec::new();
 
-        // When query is empty: if last_saved_dir exists, put it first as the default recommendation!
+        // 1. If query is empty and last_saved_dir exists, put it first as recommendation
         if query_raw.is_empty() {
             if let Some(last_dir) = &self.last_saved_dir {
                 if last_dir.is_dir() {
                     results.push(last_dir.clone());
                 }
             }
+            // Add project root (.)
+            if !results.contains(&self.explorer.root) {
+                results.push(self.explorer.root.clone());
+            }
         }
 
-        let (base_dir, needle, prefer_home) = if query_raw.is_empty() {
-            (self.explorer.root.clone(), String::new(), false)
-        } else if query_raw.ends_with('/') {
-            (
-                self.expand_search_dir(query_raw),
-                String::new(),
-                query_raw.starts_with('~'),
-            )
-        } else if let Some((parent, fragment)) = query_raw.rsplit_once('/') {
-            (
-                self.expand_search_dir(parent),
-                fragment.to_lowercase(),
-                query_raw.starts_with('~'),
-            )
+        // 2. Collect project directories recursively using WalkDir
+        let root = self.explorer.root.clone();
+        let root_for_filter = root.clone();
+        let mut dirs: Vec<PathBuf> = WalkDir::new(&root)
+            .max_depth(8)
+            .into_iter()
+            .filter_entry(move |entry| {
+                if entry.path() == root_for_filter {
+                    return true;
+                }
+                let name = entry.file_name().to_string_lossy();
+                !crate::explorer::should_skip_dir_name(name.as_ref())
+            })
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_dir() && e.path() != root)
+            .map(|e| e.into_path())
+            .collect();
+
+        dirs.sort_by(|a, b| {
+            let rel_a = a.strip_prefix(&root).unwrap_or(a);
+            let rel_b = b.strip_prefix(&root).unwrap_or(b);
+            rel_a.cmp(rel_b)
+        });
+
+        // 3. Filter directories if needle is non-empty
+        if !needle.is_empty() {
+            if let Some(last_dir) = &self.last_saved_dir {
+                let rel = self.format_search_dir_for_query(last_dir, prefer_home).to_lowercase();
+                if rel.contains(&needle) && !results.contains(last_dir) {
+                    results.push(last_dir.clone());
+                }
+            }
+            if needle == "." || needle == "root" || needle == "/" {
+                if !results.contains(&root) {
+                    results.push(root.clone());
+                }
+            }
+
+            for dir in dirs {
+                let rel = self.format_search_dir_for_query(&dir, prefer_home).to_lowercase();
+                if rel.contains(&needle) && !results.contains(&dir) {
+                    results.push(dir);
+                }
+            }
+
+            // If the query does not match any existing directory, provide option to create it
+            let custom_path = self.resolve_save_as_path(query_raw);
+            if !results.contains(&custom_path) && !custom_path.is_dir() {
+                results.push(custom_path);
+            }
         } else {
-            (
-                self.explorer.root.clone(),
-                query_raw.to_lowercase(),
-                query_raw.starts_with('~'),
-            )
-        };
-
-        if let Ok(entries) = fs::read_dir(&base_dir) {
-            let mut matched_dirs: Vec<PathBuf> = entries
-                .flatten()
-                .filter(|entry| entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
-                .filter(|entry| {
-                    let name = entry.file_name().to_string_lossy().to_lowercase();
-                    needle.is_empty() || name.starts_with(&needle)
-                })
-                .map(|entry| entry.path())
-                .filter(|path| {
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| !crate::explorer::should_skip_dir_name(name))
-                        .unwrap_or(true)
-                })
-                .collect();
-
-            matched_dirs.sort_by_key(|path| self.format_search_dir_for_query(path, prefer_home));
-
-            for d in matched_dirs {
-                if !results.contains(&d) {
-                    results.push(d);
+            for dir in dirs {
+                if !results.contains(&dir) {
+                    results.push(dir);
                 }
             }
         }
 
-        results.truncate(self.fuzzy_limit);
+        results.truncate(self.fuzzy_limit.max(50));
         results
     }
 
@@ -480,18 +496,9 @@ impl App {
             self.clear_fuzzy_query();
             self.fuzzy_limit = 20;
 
-            if mode == FuzzyMode::SaveAs && !self.buffers.is_empty() {
-                let buf = &self.buffers[self.current_buffer_idx];
-                if buf.content.len_lines() > 0 {
-                    let first_line = buf.content.line(0).to_string();
-                    let trimmed = first_line.trim();
-                    if let Some(name) = trimmed.strip_prefix("-- Name: ") {
-                        self.set_fuzzy_query(self.slugify(name.trim()));
-                    }
-                }
-            }
-
             if mode == FuzzyMode::SaveAs {
+                self.save_as_step = crate::app::types::SaveAsStep::SelectFolder;
+                self.save_as_target_dir = None;
                 self.update_fuzzy(true);
             }
 
@@ -900,7 +907,25 @@ impl App {
         }
 
         if self.fuzzy_mode == FuzzyMode::SaveAs {
-            self.fuzzy_results = self.save_as_dir_suggestions();
+            if self.save_as_step == crate::app::types::SaveAsStep::SelectFolder {
+                self.fuzzy_results = self.save_as_dir_suggestions();
+            } else {
+                if let Some(target_dir) = &self.save_as_target_dir {
+                    if let Ok(entries) = fs::read_dir(target_dir) {
+                        let mut files: Vec<PathBuf> = entries
+                            .flatten()
+                            .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+                            .map(|e| e.path())
+                            .collect();
+                        files.sort();
+                        self.fuzzy_results = files;
+                    } else {
+                        self.fuzzy_results = Vec::new();
+                    }
+                } else {
+                    self.fuzzy_results = Vec::new();
+                }
+            }
             if reset_idx {
                 self.fuzzy_idx = 0;
             }

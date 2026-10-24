@@ -32,6 +32,12 @@ pub enum FuzzyMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveAsStep {
+    SelectFolder,
+    EnterFileName,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingId {
     Autocomplete,
     IndentGuides,

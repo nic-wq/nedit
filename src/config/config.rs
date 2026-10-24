@@ -107,23 +107,37 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<(), std::io::Error> {
-        let path = Self::config_path();
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+        #[cfg(test)]
+        {
+            return Ok(());
         }
-        let toml_str = toml::to_string_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-        fs::write(path, toml_str)
+        #[allow(unreachable_code)]
+        {
+            let path = Self::config_path();
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let toml_str = toml::to_string_pretty(self)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            fs::write(path, toml_str)
+        }
     }
 
     pub fn load() -> Self {
-        let config_path = Self::config_path();
-
-        if let Ok(content) = fs::read_to_string(&config_path) {
-            return Self::from_toml_with_defaults(&content).unwrap_or_else(|_| Self::new());
+        #[cfg(test)]
+        {
+            return Self::new();
         }
+        #[allow(unreachable_code)]
+        {
+            let config_path = Self::config_path();
 
-        Self::new()
+            if let Ok(content) = fs::read_to_string(&config_path) {
+                return Self::from_toml_with_defaults(&content).unwrap_or_else(|_| Self::new());
+            }
+
+            Self::new()
+        }
     }
 
     pub fn new() -> Self {

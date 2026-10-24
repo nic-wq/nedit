@@ -2600,7 +2600,13 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
         FuzzyMode::DocSelect => format!(" 󰈔  {} ", app.i18n.t("select_documentation")),
         FuzzyMode::Settings => format!(" 󰒓  {} ", app.i18n.t("settings_title")),
         FuzzyMode::SavedScripts => format!(" 󰢱  {} ", app.i18n.t("saved_scripts_title")),
-        FuzzyMode::SaveAs => format!(" 󰆓  {} ", app.i18n.t("save_buffer_as_title")),
+        FuzzyMode::SaveAs => {
+            if app.save_as_step == crate::app::types::SaveAsStep::SelectFolder {
+                format!(" 󰆓  {} ", app.i18n.t("save_as_step1_title"))
+            } else {
+                format!(" 󰆓  {} ", app.i18n.t("save_as_step2_title"))
+            }
+        }
         _ => " Search ".to_string(),
     };
 
@@ -2663,33 +2669,43 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
             Paragraph::new(Line::from(spans)),
             UnicodeWidthStr::width(" 󰢱 "),
         )
-    } else if app.fuzzy_mode == FuzzyMode::SaveAs && app.fuzzy_query.is_empty() {
-        let mut spans = vec![Span::styled(" 󰆓 ", Style::default().fg(colors.accent))];
-        if let Some(last_dir) = &app.last_saved_dir {
-            let prefer_home = false;
-            let dir_str = app.format_search_dir_for_query(last_dir, prefer_home);
-            let clean_dir = dir_str.trim_end_matches('/');
-            spans.push(Span::styled(
-                format!(" [Tab: preencher '{clean_dir}/'] ou digite o caminho"),
-                Style::default().fg(colors.text_muted()),
-            ));
-        } else {
-            spans.push(Span::styled(
-                " Digite o caminho (ex: src/utils/math.rs)",
-                Style::default().fg(colors.text_muted()),
-            ));
-        }
-        (
-            Paragraph::new(Line::from(spans)),
-            UnicodeWidthStr::width(" 󰆓 "),
-        )
     } else if app.fuzzy_mode == FuzzyMode::SaveAs {
-        let mut spans = vec![Span::styled(" 󰆓 ", Style::default().fg(colors.accent))];
-        spans.extend(query_spans);
-        (
-            Paragraph::new(Line::from(spans)),
-            UnicodeWidthStr::width(" 󰆓 "),
-        )
+        if app.save_as_step == crate::app::types::SaveAsStep::SelectFolder {
+            let icon = " 󰉋 ";
+            let prefix_width = UnicodeWidthStr::width(icon);
+            let mut spans = vec![Span::styled(icon, Style::default().fg(colors.accent))];
+            if app.fuzzy_query.is_empty() {
+                spans.push(Span::styled(
+                    app.i18n.t("save_as_filter_folder_hint"),
+                    Style::default().fg(colors.text_muted()),
+                ));
+            } else {
+                spans.extend(query_spans);
+            }
+            (Paragraph::new(Line::from(spans)), prefix_width)
+        } else {
+            let target_label = app
+                .save_as_target_dir
+                .as_ref()
+                .map(|p| app.format_search_dir_for_query(p, false))
+                .unwrap_or_else(|| ".".to_string());
+            let clean_label = target_label.trim_end_matches('/');
+            let prefix = format!(" 󰈔 {}/ > ", if clean_label.is_empty() { "." } else { clean_label });
+            let prefix_width = UnicodeWidthStr::width(prefix.as_str());
+            let mut spans = vec![Span::styled(
+                prefix,
+                Style::default().fg(colors.accent).add_modifier(Modifier::BOLD),
+            )];
+            if app.fuzzy_query.is_empty() {
+                spans.push(Span::styled(
+                    app.i18n.t("save_as_filename_hint"),
+                    Style::default().fg(colors.text_muted()),
+                ));
+            } else {
+                spans.extend(query_spans);
+            }
+            (Paragraph::new(Line::from(spans)), prefix_width)
+        }
     } else {
         let mut spans = vec![Span::styled("   ", Style::default().fg(colors.accent))];
         spans.extend(query_spans);
@@ -2733,7 +2749,15 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     };
 
     if total_matches > 0 && chunks[0].width > 25 {
-        let counter_text = format!(" [{} matches] ", total_matches);
+        let counter_text = if app.fuzzy_mode == FuzzyMode::SaveAs {
+            if app.save_as_step == crate::app::types::SaveAsStep::SelectFolder {
+                format!(" [{} pastas] ", total_matches)
+            } else {
+                format!(" [{} arquivos] ", total_matches)
+            }
+        } else {
+            format!(" [{} matches] ", total_matches)
+        };
         let counter_w = UnicodeWidthStr::width(counter_text.as_str()) as u16;
         if counter_w < chunks[0].width {
             let counter_x = chunks[0].x + chunks[0].width.saturating_sub(counter_w);
@@ -3146,46 +3170,93 @@ fn draw_list_search_modal(f: &mut Frame, app: &mut App, colors: &UIColors) {
     } else if app.fuzzy_mode == FuzzyMode::SaveAs {
         let safe_start = start_idx.min(app.fuzzy_results.len().saturating_sub(1));
         let end_idx = (safe_start + list_height).min(app.fuzzy_results.len());
-        if app.fuzzy_results.is_empty() {
-            vec![ListItem::new(Span::styled(
-                "  (Pressione Enter para salvar no caminho digitado)",
-                Style::default().fg(colors.text_muted()),
-            ))]
-        } else {
-            let prefer_home = app.fuzzy_query.trim().starts_with('~');
-            app.fuzzy_results[safe_start..end_idx]
-                .iter()
-                .enumerate()
-                .map(|(idx, path)| {
-                    let i = safe_start + idx;
-                    let is_selected = i == app.fuzzy_idx;
-                    let style = if is_selected {
-                        Style::default()
-                            .bg(colors.sel)
-                            .fg(colors.accent)
-                            .add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().fg(colors.fg)
-                    };
-                    let label = app.format_search_dir_for_query(path, prefer_home);
-                    let is_last = app.last_saved_dir.as_ref() == Some(path);
-                    let mut spans = vec![
-                        Span::styled(" 󰉋 ", Style::default().fg(colors.accent)),
-                        Span::styled(format!("{}/", label.trim_end_matches('/')), style),
-                    ];
-                    if is_last {
-                        spans.push(Span::styled(
-                            "  (última pasta)",
-                            Style::default().fg(colors.text_muted()),
-                        ));
-                    }
-                    ListItem::new(Line::from(spans)).style(if is_selected {
-                        Style::default().bg(colors.sel)
-                    } else {
-                        Style::default()
+        if app.save_as_step == crate::app::types::SaveAsStep::SelectFolder {
+            if app.fuzzy_results.is_empty() {
+                vec![ListItem::new(Span::styled(
+                    "  (Nenhuma pasta encontrada — digite para criar nova pasta)",
+                    Style::default().fg(colors.text_muted()),
+                ))]
+            } else {
+                let prefer_home = app.fuzzy_query.trim().starts_with('~');
+                app.fuzzy_results[safe_start..end_idx]
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, path)| {
+                        let i = safe_start + idx;
+                        let is_selected = i == app.fuzzy_idx;
+                        let style = if is_selected {
+                            Style::default()
+                                .bg(colors.sel)
+                                .fg(colors.accent)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(colors.fg)
+                        };
+                        let is_last = app.last_saved_dir.as_ref() == Some(path);
+                        let is_root = path == &app.explorer.root;
+                        let exists = path.is_dir();
+
+                        let (icon, label) = if is_root {
+                            ("󰉋", ".  (raiz do projeto)".to_string())
+                        } else if !exists {
+                            ("󰐕", format!("Criar nova pasta: \"{}/\"", app.format_search_dir_for_query(path, prefer_home).trim_end_matches('/')))
+                        } else {
+                            let l = app.format_search_dir_for_query(path, prefer_home);
+                            ("󰉋", format!("{}/", l.trim_end_matches('/')))
+                        };
+
+                        let mut spans = vec![
+                            Span::styled(format!(" {icon} "), Style::default().fg(colors.accent)),
+                            Span::styled(label, style),
+                        ];
+                        if is_last {
+                            spans.push(Span::styled(
+                                "  (última pasta utilizada)",
+                                Style::default().fg(colors.text_muted()),
+                            ));
+                        }
+                        ListItem::new(Line::from(spans)).style(if is_selected {
+                            Style::default().bg(colors.sel)
+                        } else {
+                            Style::default()
+                        })
                     })
-                })
-                .collect()
+                    .collect()
+            }
+        } else {
+            // EnterFileName step: show files existing in that folder as reference
+            if app.fuzzy_results.is_empty() {
+                vec![ListItem::new(Span::styled(
+                    "  (Pasta vazia — digite o nome do arquivo acima)",
+                    Style::default().fg(colors.text_muted()),
+                ))]
+            } else {
+                app.fuzzy_results[safe_start..end_idx]
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, path)| {
+                        let i = safe_start + idx;
+                        let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let icon = app.icon_registry.get_icon(path, false, false);
+                        let is_selected = i == app.fuzzy_idx;
+                        let style = if is_selected {
+                            Style::default().bg(colors.sel).fg(colors.accent)
+                        } else {
+                            Style::default().fg(colors.fg)
+                        };
+                        let spans = vec![
+                            Span::styled(format!(" {} ", icon), Style::default().fg(colors.accent)),
+                            Span::styled(format!("{:<30}", file_name), style),
+                            Span::styled("  (arquivo existente)", Style::default().fg(colors.text_muted())),
+                        ];
+                        ListItem::new(Line::from(spans)).style(if is_selected {
+                            Style::default().bg(colors.sel)
+                        } else {
+                            Style::default()
+                        })
+                    })
+                    .collect()
+            }
         }
     } else if app.fuzzy_results.is_empty() {
         vec![]

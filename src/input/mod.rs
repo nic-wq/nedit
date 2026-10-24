@@ -108,6 +108,15 @@ fn is_editor_left_drag(app: &App, mouse: MouseEvent) -> bool {
 }
 
 pub(crate) fn cancel_modal(app: &mut App) {
+    if app.fuzzy_mode == crate::app::FuzzyMode::SaveAs
+        && app.save_as_step == crate::app::types::SaveAsStep::EnterFileName
+    {
+        app.save_as_step = crate::app::types::SaveAsStep::SelectFolder;
+        app.clear_fuzzy_query();
+        app.update_fuzzy(true);
+        app.needs_redraw = true;
+        return;
+    }
     if app.fuzzy_mode == crate::app::FuzzyMode::SettingInput {
         app.setting_input_target = None;
         app.modal_button_idx = None;
@@ -482,59 +491,82 @@ pub(crate) fn execute_fuzzy_enter(app: &mut App) {
         app.needs_redraw = true;
         return;
     } else if app.fuzzy_mode == crate::app::FuzzyMode::SaveAs {
-        let trimmed = app.fuzzy_query.trim().to_string();
-        // If the query ends with '/' or is empty, AND a directory is selected in fuzzy_results:
-        // autocompletes that directory into the query so the user can continue typing.
-        if (trimmed.is_empty() || trimmed.ends_with('/')) && !app.fuzzy_results.is_empty() {
-            if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                if path.is_dir() {
-                    let prefer_home = trimmed.starts_with('~');
-                    let dir_str = app.format_search_dir_for_query(&path, prefer_home);
-                    let formatted = format!("{}/", dir_str.trim_end_matches('/'));
-                    app.set_fuzzy_query(formatted);
-                    app.update_fuzzy(true);
-                    app.needs_redraw = true;
-                    return;
-                }
-            }
-        }
+        if app.save_as_step == crate::app::types::SaveAsStep::SelectFolder {
+            let chosen_dir = if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+                path
+            } else if !app.fuzzy_query.trim().is_empty() {
+                let clean = app.fuzzy_query.trim().strip_prefix('@').unwrap_or(app.fuzzy_query.trim());
+                app.resolve_save_as_path(clean)
+            } else {
+                app.explorer.root.clone()
+            };
 
-        // If it specifies a file name (does not end with '/'):
-        if !trimmed.is_empty() && !trimmed.ends_with('/') {
-            let clean = trimmed.strip_prefix('@').unwrap_or(&trimmed);
-            let path = app.resolve_save_as_path(clean);
+            app.save_as_target_dir = Some(chosen_dir);
+            app.save_as_step = crate::app::types::SaveAsStep::EnterFileName;
+            app.clear_fuzzy_query();
 
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-                if parent.is_dir() {
-                    app.last_saved_dir = Some(parent.to_path_buf());
+            // Pre-fill suggested name from buffer if present (e.g. `-- Name: ...`)
+            if let Some(buf) = app.buffers.get(app.current_buffer_idx) {
+                if buf.content.len_lines() > 0 {
+                    let first_line = buf.content.line(0).to_string();
+                    let trimmed = first_line.trim();
+                    if let Some(name) = trimmed.strip_prefix("-- Name: ") {
+                        app.set_fuzzy_query(format!("{}.lua", app.slugify(name.trim())));
+                    }
                 }
             }
 
-            if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
-                buffer.path = Some(path.clone());
-                if let Err(err) = buffer.save() {
-                    app.show_notification(
-                        format!("Could not save file: {}", err),
-                        crate::app::NotificationType::Error,
-                    );
-                    app.needs_redraw = true;
-                    return;
-                }
-                app.record_file_mtime(&path);
-                app.show_notification(
-                    format!("Saved to {}", path.display()),
-                    crate::app::NotificationType::Info,
-                );
-            }
-            app.refresh_explorer();
-            app.ensure_syntax_for_path_loading(Some(&path));
-            app.is_fuzzy = false;
+            app.update_fuzzy(true);
             app.needs_redraw = true;
-            if app.pending_action.is_some() {
-                handle_unsaved_changes_completion(app);
+            return;
+        }
+
+        // Step 2: EnterFileName
+        let trimmed = app.fuzzy_query.trim().to_string();
+        if trimmed.is_empty() {
+            app.show_notification(
+                "Please enter a valid file name".to_string(),
+                crate::app::NotificationType::Error,
+            );
+            app.needs_redraw = true;
+            return;
+        }
+
+        let target_dir = app.save_as_target_dir.clone().unwrap_or_else(|| app.explorer.root.clone());
+        let clean_name = trimmed.strip_prefix('@').unwrap_or(&trimmed).trim_start_matches('/');
+        let path = target_dir.join(clean_name);
+
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+            if parent.is_dir() {
+                app.last_saved_dir = Some(parent.to_path_buf());
             }
         }
+
+        if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+            buffer.path = Some(path.clone());
+            if let Err(err) = buffer.save() {
+                app.show_notification(
+                    format!("Could not save file: {}", err),
+                    crate::app::NotificationType::Error,
+                );
+                app.needs_redraw = true;
+                return;
+            }
+            app.record_file_mtime(&path);
+            app.show_notification(
+                format!("Saved to {}", path.display()),
+                crate::app::NotificationType::Info,
+            );
+        }
+        app.refresh_explorer();
+        app.ensure_syntax_for_path_loading(Some(&path));
+        app.is_fuzzy = false;
+        app.needs_redraw = true;
+        if app.pending_action.is_some() {
+            handle_unsaved_changes_completion(app);
+        }
+        return;
     } else if app.fuzzy_mode == crate::app::FuzzyMode::Local {
         if let Some((line_idx, _)) = app.fuzzy_lines.get(app.fuzzy_idx) {
             if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
@@ -1292,6 +1324,31 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 }
             }
         }
+        MouseEventKind::Down(event::MouseButton::Middle) => {
+            app.close_context_menu();
+            if app
+                .editor_area
+                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            {
+                app.focus = Focus::Editor;
+                if let Some(idx) = app.preview_buffer_idx {
+                    app.clear_preview(idx);
+                }
+                let rel_col = mouse.column.saturating_sub(app.editor_area.x) as usize;
+                let rel_row = mouse.row.saturating_sub(app.editor_area.y) as usize;
+                if let Some(buffer) = app.buffers.get_mut(app.current_buffer_idx) {
+                    if !buffer.is_loading && !buffer.is_read_only {
+                        let target_row = buffer.scroll_row + rel_row;
+                        let target_col =
+                            buffer.scroll_col + rel_col.saturating_sub(buffer.line_number_width());
+                        let row = target_row.min(buffer.content.len_lines().saturating_sub(1));
+                        buffer.place_cursor(row, target_col);
+                        buffer.paste_primary();
+                        app.needs_redraw = true;
+                    }
+                }
+            }
+        }
         MouseEventKind::Drag(event::MouseButton::Left)
             if app
                 .editor_area
@@ -1554,6 +1611,15 @@ fn handle_fuzzy_text_keys(app: &mut App, key: KeyEvent) -> bool {
             mutated = true;
         }
         (KeyCode::Backspace, false, _) => {
+            if app.fuzzy_mode == crate::app::FuzzyMode::SaveAs
+                && app.save_as_step == crate::app::types::SaveAsStep::EnterFileName
+                && app.fuzzy_query.is_empty()
+            {
+                app.save_as_step = crate::app::types::SaveAsStep::SelectFolder;
+                app.update_fuzzy(true);
+                app.needs_redraw = true;
+                return true;
+            }
             app.fuzzy_backspace();
             mutated = true;
         }
@@ -1833,27 +1899,33 @@ fn handle_fuzzy_input(app: &mut App, key: KeyEvent) {
             app.is_fuzzy = false;
         }
         KeyCode::Tab if app.fuzzy_mode == crate::app::FuzzyMode::SaveAs => {
-            if app.fuzzy_query.trim().is_empty() {
-                if let Some(last_dir) = app.last_saved_dir.clone() {
-                    let prefer_home = false;
-                    let dir_str = app.format_search_dir_for_query(&last_dir, prefer_home);
-                    let mut formatted = dir_str.trim_end_matches('/').to_string();
-                    if !formatted.is_empty() && formatted != "." {
-                        formatted.push('/');
-                        app.set_fuzzy_query(formatted);
-                        app.update_fuzzy(true);
-                        app.needs_redraw = true;
-                        return;
+            if app.save_as_step == crate::app::types::SaveAsStep::SelectFolder {
+                if app.fuzzy_query.trim().is_empty() {
+                    if let Some(last_dir) = app.last_saved_dir.clone() {
+                        let prefer_home = false;
+                        let dir_str = app.format_search_dir_for_query(&last_dir, prefer_home);
+                        let mut formatted = dir_str.trim_end_matches('/').to_string();
+                        if !formatted.is_empty() && formatted != "." {
+                            formatted.push('/');
+                            app.set_fuzzy_query(formatted);
+                            app.update_fuzzy(true);
+                            app.needs_redraw = true;
+                            return;
+                        }
                     }
                 }
-            }
-            if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
-                if path.is_dir() {
+                if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
                     let prefer_home = app.fuzzy_query.trim().starts_with('~');
                     let dir_str = app.format_search_dir_for_query(&path, prefer_home);
                     let formatted = format!("{}/", dir_str.trim_end_matches('/'));
                     app.set_fuzzy_query(formatted);
                     app.update_fuzzy(true);
+                    app.needs_redraw = true;
+                    return;
+                }
+            } else if let Some(path) = app.fuzzy_results.get(app.fuzzy_idx).cloned() {
+                if let Some(file_name) = path.file_name() {
+                    app.set_fuzzy_query(file_name.to_string_lossy().to_string());
                     app.needs_redraw = true;
                     return;
                 }
@@ -4188,20 +4260,23 @@ mod tests {
         // Insert some text
         app.buffers[0].insert_text("first content");
 
-        // 2. Ctrl+S on untitled buffer opens FuzzyMode::SaveAs with directory suggestions
+        // 2. Ctrl+S on untitled buffer opens FuzzyMode::SaveAs in Step 1 (SelectFolder)
         super::handle_key_event(&mut app, key_mods(KeyCode::Char('s'), KeyModifiers::CONTROL));
         assert!(app.is_fuzzy);
         assert_eq!(app.fuzzy_mode, crate::app::FuzzyMode::SaveAs);
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::SelectFolder);
         assert!(app.fuzzy_results.iter().any(|p| p == &subfolder));
 
-        // 3. Tab autocompletes subfolder/
+        // 3. Select subfolder and press Enter to confirm folder (advances to Step 2)
         let subfolder_idx = app.fuzzy_results.iter().position(|p| p == &subfolder).unwrap();
         app.fuzzy_idx = subfolder_idx;
-        super::handle_key_event(&mut app, key(KeyCode::Tab));
-        assert_eq!(app.fuzzy_query, "subfolder/");
+        super::handle_key_event(&mut app, key(KeyCode::Enter));
+        assert!(app.is_fuzzy);
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::EnterFileName);
+        assert_eq!(app.save_as_target_dir, Some(subfolder.clone()));
 
-        // 4. Type filename and press Enter
-        app.set_fuzzy_query("subfolder/file1.txt".to_string());
+        // 4. In Step 2: type filename and press Enter -> saved in subfolder/file1.txt
+        app.set_fuzzy_query("file1.txt".to_string());
         super::handle_key_event(&mut app, key(KeyCode::Enter));
         assert!(!app.is_fuzzy);
         assert_eq!(app.buffers[0].path, Some(subfolder.join("file1.txt")));
@@ -4213,19 +4288,83 @@ mod tests {
         assert_eq!(app.buffers.len(), 2);
         assert_eq!(app.buffers[1].path, None);
 
-        // 6. Ctrl+S on the new untitled file: press Tab to pre-fill last_saved_dir
+        // 6. Ctrl+S on the new untitled file: last_saved_dir is first recommendation
         super::handle_key_event(&mut app, key_mods(KeyCode::Char('s'), KeyModifiers::CONTROL));
         assert!(app.is_fuzzy);
-        assert_eq!(app.fuzzy_query, "");
-        super::handle_key_event(&mut app, key(KeyCode::Tab));
-        assert_eq!(app.fuzzy_query, "subfolder/");
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::SelectFolder);
+        assert_eq!(app.fuzzy_results.first(), Some(&subfolder));
 
-        // 7. Type filename for second file and Enter -> saved in subfolder/
-        app.set_fuzzy_query("subfolder/file2.txt".to_string());
+        // 7. Press Enter on the first option (subfolder) -> advances to Step 2
+        super::handle_key_event(&mut app, key(KeyCode::Enter));
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::EnterFileName);
+        assert_eq!(app.save_as_target_dir, Some(subfolder.clone()));
+
+        // 8. Type filename for second file and Enter -> saved in subfolder/file2.txt
+        app.set_fuzzy_query("file2.txt".to_string());
         super::handle_key_event(&mut app, key(KeyCode::Enter));
         assert!(!app.is_fuzzy);
         assert_eq!(app.buffers[1].path, Some(subfolder.join("file2.txt")));
         assert!(subfolder.join("file2.txt").exists());
+    }
+
+    #[test]
+    fn test_save_as_esc_and_backspace_returns_to_select_folder() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut app = App::new(&[]);
+        app.set_explorer_root(temp_dir.path().to_path_buf());
+        app.is_welcome = false;
+
+        super::handle_key_event(&mut app, key_mods(KeyCode::Char('n'), KeyModifiers::CONTROL));
+        super::handle_key_event(&mut app, key_mods(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::SelectFolder);
+
+        // Select root (.) and Enter -> Step 2
+        super::handle_key_event(&mut app, key(KeyCode::Enter));
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::EnterFileName);
+
+        // Esc returns to Step 1
+        super::handle_key_event(&mut app, key(KeyCode::Esc));
+        assert!(app.is_fuzzy);
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::SelectFolder);
+
+        // Advance to Step 2 again
+        super::handle_key_event(&mut app, key(KeyCode::Enter));
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::EnterFileName);
+
+        // Backspace with empty query also returns to Step 1
+        assert_eq!(app.fuzzy_query, "");
+        super::handle_key_event(&mut app, key(KeyCode::Backspace));
+        assert!(app.is_fuzzy);
+        assert_eq!(app.save_as_step, crate::app::types::SaveAsStep::SelectFolder);
+
+        // Esc in Step 1 cancels and closes modal
+        super::handle_key_event(&mut app, key(KeyCode::Esc));
+        assert!(!app.is_fuzzy);
+    }
+
+    #[test]
+    fn test_middle_click_pastes_at_cursor_position() {
+        let mut app = App::new(&[]);
+        app.is_welcome = false;
+        let mut buf = crate::buffer::EditorBuffer::new();
+        buf.insert_text("first line\nsecond line\n");
+        app.buffers.push(buf);
+        app.current_buffer_idx = 0;
+        app.editor_area = ratatui::layout::Rect::new(0, 1, 80, 20);
+
+        // Put text into clipboard
+        crate::clipboard::copy("PASTED");
+
+        let middle_click = crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Middle),
+            column: 6,
+            row: 1, // first line inside editor_area (y=1)
+            modifiers: KeyModifiers::NONE,
+        };
+        super::handle_mouse_event(&mut app, middle_click);
+
+        let content = app.buffers[0].content.to_string();
+        assert!(content.contains("PASTED"));
     }
 }
 
